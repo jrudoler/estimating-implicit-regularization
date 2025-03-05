@@ -36,7 +36,7 @@ class NoisyMLP(LightningModel):
         x, y = batch
         y_hat = self(x)
         loss = nn.functional.cross_entropy(y_hat, y)
-        self.log("train_loss", loss)
+        self.log("train/loss", loss)
         return loss
 
     def configure_optimizers(self):

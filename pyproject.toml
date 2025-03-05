@@ -1,0 +1,22 @@
+[tool.poetry]
+name = "efficient-coding"
+version = "0.1.0"
+description = ""
+authors = ["Joseph Rudoler <jhrudoler@gmail.com>"]
+readme = "README.md"
+package-mode = false
+
+[tool.poetry.dependencies]
+python = "^3.12"
+torch = "^2.6.0"
+lightning = "^2.5.0.post0"
+wandb = "^0.19.8"
+numpy = "^2.2.3"
+seaborn = "^0.13.2"
+ipykernel = "^6.29.5"
+ipywidgets = "^8.1.5"
+
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
