@@ -1,0 +1,6 @@
+# data and models
+MNIST/*
+wandb/*
+
+# logs
+logs/*
