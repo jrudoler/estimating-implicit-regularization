@@ -1,9 +1,17 @@
 import torch
 import torch.nn as nn
 
+import lightning as pl
 from lightning import LightningModule
 from lightning.pytorch.callbacks import Callback
 import wandb
+from torchmetrics.functional import accuracy
+
+
+class WandBCallback(Callback):
+    def on_train_end(self, trainer, pl_module):
+        wandb.finish()
+
 
 import scipy
 
@@ -64,16 +72,75 @@ class NoisyMLP(LightningModule):
         return torch.optim.Adam(self.parameters(), lr=1e-3)
 
 
+class LinearNetwork(pl.LightningModule):
+    """Linear network with one hidden layer."""
+
+    def __init__(self, input_dim, output_dim, hidden_dim, l1_lambda=0.0, l2_lambda=0.0):
+        """
+        Args:
+            input_dim: Input dimension
+            output_dim: Output dimension
+            hidden_dim: Hidden layer dimension
+            l1_lambda: L1 regularization strength
+            l2_lambda: L2 regularization strength
+        """
+        super().__init__()
+        self.save_hyperparameters()
+        self.linear = nn.Sequential(
+            nn.Linear(input_dim, hidden_dim), nn.Linear(hidden_dim, output_dim)
+        )
+        self.loss_func = nn.MSELoss()
+
+    def forward(self, x):
+        return self.linear(x)
+
+    def training_step(self, batch, batch_idx):
+        x, y = batch
+        y_hat = self(x)
+        loss = self.loss_func(y_hat, y)
+        # Add L1 and L2 regularization
+        loss += self.weight_regularization()
+        self.log("train/loss", loss)
+        return loss
+
+    def validation_step(self, batch, batch_idx):
+        x, y = batch
+        y_hat = self(x)
+        loss = self.loss_func(y_hat, y)
+        # Add L1 and L2 regularization
+        loss += self.weight_regularization()
+        # Log the loss
+        self.log("val/loss", loss)
+        return loss
+
+    def weight_regularization(self):
+        """
+        Compute the L1 and L2 regularization terms.
+        """
+        l1_reg = 0.0
+        l2_reg = 0.0
+        for param in self.parameters():
+            l1_reg += torch.sum(torch.abs(param))
+            l2_reg += torch.sum(param**2)
+        return self.hparams.l1_lambda * l1_reg + self.hparams.l2_lambda * l2_reg
+
+    def configure_optimizers(self):
+        return torch.optim.Adam(self.parameters(), lr=1e-2)
+
+
 # Callback for logging activations
 class ActivationLogger(Callback):
-    def __init__(self, log_every_n_epochs=1):
+    def __init__(self, log_every_n_epochs=1, module=torch.nn.ReLU):
         """
         Args:
             log_every_n_epochs: Only log activations every N validation epochs
                                 to avoid huge logs.
+            module: The module type to hook (e.g., nn.ReLU) or tuple of types
+                   to hook (e.g., (nn.Linear, nn.Sigmoid)).
         """
         super().__init__()
         self.log_every_n_epochs = log_every_n_epochs
+        self.module = module  # The module type to hook (e.g., nn.ReLU)
         self.handles = []  # Store hook handles so we can remove them later
         self.activations = {}  # Will hold the latest outputs from each hooked layer
 

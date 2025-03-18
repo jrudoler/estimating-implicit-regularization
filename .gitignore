@@ -1,6 +1,7 @@
 # data and models
 MNIST/*
 wandb/*
+inductive-bias/*
 
 # logs
 logs/*
