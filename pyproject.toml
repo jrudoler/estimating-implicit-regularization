@@ -21,6 +21,7 @@ scipy = "^1.15.2"
 transformers = "^4.49.0"
 datasets = "^3.3.2"
 torchviz = "^0.0.3"
+scikit-learn = "^1.6.1"
 
 
 [build-system]

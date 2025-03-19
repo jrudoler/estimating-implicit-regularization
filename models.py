@@ -5,15 +5,12 @@ import lightning as pl
 from lightning import LightningModule
 from lightning.pytorch.callbacks import Callback
 import wandb
-from torchmetrics.functional import accuracy
+import scipy
 
 
 class WandBCallback(Callback):
     def on_train_end(self, trainer, pl_module):
         wandb.finish()
-
-
-import scipy
 
 
 class NoisyMLP(LightningModule):

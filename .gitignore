@@ -9,3 +9,4 @@ logs/*
 # python extras
 __pycache__/
 *.pyc
+*.cpython*
