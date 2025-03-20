@@ -1,5 +1,5 @@
 [tool.poetry]
-name = "efficient-coding"
+name = "inductive-bias"
 version = "0.1.0"
 description = ""
 authors = ["Joseph Rudoler <jhrudoler@gmail.com>"]

@@ -6,6 +6,7 @@ from lightning import LightningModule
 from lightning.pytorch.callbacks import Callback
 import wandb
 import scipy
+from typing import Union, Tuple, Optional, Any
 
 
 class WandBCallback(Callback):
@@ -72,7 +73,16 @@ class NoisyMLP(LightningModule):
 class LinearNetwork(pl.LightningModule):
     """Linear network with one hidden layer."""
 
-    def __init__(self, input_dim, output_dim, hidden_dim, l1_lambda=0.0, l2_lambda=0.0):
+    def __init__(
+        self,
+        input_dim,
+        output_dim,
+        hidden_dim,
+        l1_lambda=0.0,
+        l2_lambda=0.0,
+        l1_smooth=0.1,
+        lr=1e-2,
+    ):
         """
         Args:
             input_dim: Input dimension
@@ -80,6 +90,7 @@ class LinearNetwork(pl.LightningModule):
             hidden_dim: Hidden layer dimension
             l1_lambda: L1 regularization strength
             l2_lambda: L2 regularization strength
+            l1_smooth: L1 regularization smoothness
         """
         super().__init__()
         self.save_hyperparameters()
@@ -116,18 +127,30 @@ class LinearNetwork(pl.LightningModule):
         """
         l1_reg = 0.0
         l2_reg = 0.0
-        for param in self.parameters():
-            l1_reg += torch.sum(torch.abs(param))
-            l2_reg += torch.sum(param**2)
+        # copy and flatten the parameters
+        flattened_params = torch.cat([param.view(-1) for param in self.parameters()])
+        # L1 and L2 regularization
+        # smooth the L1 regularization
+        l1_reg = torch.nn.functional.smooth_l1_loss(
+            flattened_params,
+            torch.zeros_like(flattened_params),
+            beta=self.hparams.l1_smooth,
+            reduction="sum",
+        )
+        l2_reg = torch.sum(flattened_params**2)
         return self.hparams.l1_lambda * l1_reg + self.hparams.l2_lambda * l2_reg
 
     def configure_optimizers(self):
-        return torch.optim.Adam(self.parameters(), lr=1e-2)
+        return torch.optim.Adam(self.parameters(), lr=self.hparams.lr)
 
 
 # Callback for logging activations
 class ActivationLogger(Callback):
-    def __init__(self, log_every_n_epochs=1, module=torch.nn.ReLU):
+    def __init__(
+        self,
+        log_every_n_epochs: int = 1,
+        module: Union[torch.nn.Module, Tuple[torch.nn.Module]] = torch.nn.ReLU,
+    ):
         """
         Args:
             log_every_n_epochs: Only log activations every N validation epochs
