@@ -6,7 +6,29 @@ from lightning import LightningModule
 from lightning.pytorch.callbacks import Callback
 import wandb
 import scipy
-from typing import Union, Tuple, Optional, Any
+from typing import Union, Tuple, Optional, Any, Type
+
+
+def load_model_from_artifact(
+    model_class: Type, artifact_ref: str, checkpoint_name: str = "model.ckpt"
+) -> Any:
+    """
+    Loads a model checkpoint from a wandb artifact.
+
+    Args:
+        model_class: The model class used to load the checkpoint (e.g., NoisyMLP).
+        artifact_ref: The full artifact reference (e.g., 'jhrudoler-penn/inductive-bias/model-n7awb9ov:v0').
+        checkpoint_name: The name of the checkpoint file within the artifact.
+
+    Returns:
+        The loaded model.
+    """
+    api = wandb.Api()
+    artifact = api.artifact(artifact_ref)
+    checkpoint_path = artifact.download()
+    checkpoint_path = f"{checkpoint_path}/{checkpoint_name}"
+    # Load and return the model using the provided model class
+    return model_class.load_from_checkpoint(checkpoint_path)
 
 
 class WandBCallback(Callback):
@@ -25,12 +47,16 @@ class NoisyMLP(LightningModule):
     ):
         super().__init__()
 
+        self.loss_func = (
+            nn.BCEWithLogitsLoss() if out_features == 1 else nn.CrossEntropyLoss()
+        )
+
         # Build sequential layers dynamically
         layers = []
 
         # Input layer
         layers.append(nn.Linear(in_features, hidden_features))
-        layers.append(nn.ReLU())
+        # layers.append(nn.ReLU())
         layers.append(nn.Dropout(dropout_rate))
 
         # Hidden layers
@@ -45,6 +71,7 @@ class NoisyMLP(LightningModule):
         layers.append(nn.Linear(hidden_features, out_features))
 
         self.layers = nn.Sequential(*layers)
+        self.save_hyperparameters()
 
     def forward(self, x):
         # Flatten input if it's not already flattened
@@ -54,15 +81,21 @@ class NoisyMLP(LightningModule):
 
     def training_step(self, batch, batch_idx):
         x, y = batch
+        # make sure y is the right shape
+        if len(y.shape) == 1:
+            y = y.view(-1, 1).float()
         y_hat = self(x)
-        loss = nn.functional.cross_entropy(y_hat, y)
+        loss = self.loss_func(y_hat, y)
         self.log("train/loss", loss)
         return loss
 
     def validation_step(self, batch, batch_idx):
         x, y = batch
+        # make sure y is the right shape
+        if len(y.shape) == 1:
+            y = y.view(-1, 1).float()
         y_hat = self(x)
-        loss = nn.functional.cross_entropy(y_hat, y)
+        loss = self.loss_func(y_hat, y)
         self.log("val/loss", loss)
         return loss
 
@@ -101,6 +134,7 @@ class LinearNetwork(pl.LightningModule):
 
     def forward(self, x):
         return self.linear(x)
+        # Flatten input if it's not already flattened
 
     def training_step(self, batch, batch_idx):
         x, y = batch

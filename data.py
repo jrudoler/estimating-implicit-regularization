@@ -9,11 +9,20 @@ class MNISTDataModule(LightningDataModule):
         super().__init__()
         self.batch_size = batch_size
         self.transform = transforms.Compose([transforms.ToTensor()])
+        self.target_transform = lambda y: 1 if y == 3 else 0
         self.train_dataset = datasets.MNIST(
-            root=".", train=True, download=True, transform=self.transform
+            root=".",
+            train=True,
+            download=True,
+            transform=self.transform,
+            target_transform=self.target_transform,
         )
         self.val_dataset = datasets.MNIST(
-            root=".", train=False, download=True, transform=self.transform
+            root=".",
+            train=False,
+            download=True,
+            transform=self.transform,
+            target_transform=self.target_transform,
         )
 
     def train_dataloader(self):
