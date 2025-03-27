@@ -3,7 +3,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 import lightning.pytorch as pl
 from abc import ABC, abstractmethod
-from torch.func import functional_call, vjp
+from torch.func import functional_call, vjp, grad
 from torch.optim import Optimizer
 from typing import Dict, Callable, Tuple, Any
 
@@ -82,29 +82,35 @@ class ElasticNet(nn.Module):
         return l1_penalty + l2_penalty
 
 
-class BiasLightningModule(pl.LightningModule):
+class InductiveBiasEstimator(pl.LightningModule):
+    """
+    Base class for inductive bias estimation. Takes in a predictive model (f) and a bias model (R).
+    The bias model (R) is trained to match the gradient of the loss function with respect to the
+    predictive model parameters (f) using the bias model parameters (theta).
+    """
+
     def __init__(
         self,
         predictive_model: nn.Module,
         bias_model: nn.Module,
-        loss_fn: Callable[..., torch.Tensor] = nn.functional.mse_loss,
+        grad_match_loss_fn: Callable[..., torch.Tensor] = nn.functional.mse_loss,
         optimizer_cls: Callable[..., Optimizer] = torch.optim.Adam,
         lr: float = 1e-3,
     ) -> None:
         super().__init__()
         self.predictive_model = predictive_model
         self.bias_model = bias_model
-        self.loss_fn = loss_fn
+        self.grad_match_loss_fn = grad_match_loss_fn
         self.optimizer_cls = optimizer_cls
         self.lr = lr
         self.save_hyperparameters()
 
     @abstractmethod
-    def compute_loss_gradient(
+    def predictive_loss_grad(
         self, predictions: torch.Tensor, targets: torch.Tensor
     ) -> torch.Tensor:
         """
-        Computes the gradient of the loss with respect to the predictions.
+        Computes the gradient of the loss on predictions with respect to predictive model params.
 
         Default implementation for MSE loss gradient: 2*(predictions - targets).
         Override or modify this method to change the loss gradient.
@@ -130,7 +136,9 @@ class BiasLightningModule(pl.LightningModule):
         # Compute predictions and the vector-Jacobian product function.
         predictions, vjp_func = vjp(model_output, params, X)
         # Compute the loss gradient using the dedicated method.
-        loss_gradient = self.compute_loss_gradient(predictions, y)
+        # flip the sign because you set the gradient of (loss + bias) equal to zero
+        # and solve for the bias gradient
+        loss_gradient = -self.predictive_loss_gradient(predictions, y)
         vjp_result = vjp_func(loss_gradient)[0]
         true_grad = torch.cat([v.view(-1) for v in vjp_result.values()]) / X.size(0)
 
@@ -138,8 +146,14 @@ class BiasLightningModule(pl.LightningModule):
         R_val = self.bias_model(flattened_params)
         gradients = torch.autograd.grad(R_val, flattened_params, create_graph=True)[0]
 
-        loss = self.loss_fn(gradients, true_grad, reduction="mean")
-        self.log("train_loss", loss, prog_bar=True)
+        loss = self.grad_match_loss_fn(gradients, true_grad, reduction="mean")
+        self.log("train/loss", loss, prog_bar=False)
+
+        # Log all parameters from the bias model.
+        for name, param in self.bias_model.named_parameters():
+            # Ensure the parameter is logged as a scalar.
+            self.log(f"bias/{name}", param.detach().item(), prog_bar=False)
+
         return loss
 
     def configure_optimizers(self) -> Any:
@@ -147,16 +161,51 @@ class BiasLightningModule(pl.LightningModule):
         return self.optimizer_cls(self.bias_model.parameters(), lr=self.lr)
 
 
-class BiasWithMSE(BiasLightningModule):
-    def compute_loss_gradient(
+class BiasWithMSE(InductiveBiasEstimator):
+    def predictive_loss_grad(
         self, predictions: torch.Tensor, targets: torch.Tensor
     ) -> torch.Tensor:
-        return 2 * (targets - predictions)
+        return -2 * (targets - predictions)
 
 
-class BiasWithCrossEntropy(BiasLightningModule):
-    def compute_loss_gradient(self, predictions, targets):
-        return predictions - targets
+class BiasWithCrossEntropy(InductiveBiasEstimator):
+    def predictive_loss_grad(self, predictions, targets):
+        one_hot_targets = F.one_hot(targets, num_classes=predictions.shape[1]).float()
+        expected_grad = F.softmax(predictions, dim=1) - one_hot_targets
+        return expected_grad
+
+
+class BiasWithAutodiffLoss(InductiveBiasEstimator):
+    def __init__(
+        self,
+        predictive_model: nn.Module,
+        bias_model: nn.Module,
+        predictive_loss_fn: Callable[..., torch.Tensor],
+        grad_match_loss_fn: Callable[..., torch.Tensor] = nn.functional.mse_loss,
+        optimizer_cls: Callable[..., Optimizer] = torch.optim.Adam,
+        lr: float = 1e-3,
+    ) -> None:
+        super().__init__(
+            predictive_model,
+            bias_model,
+            grad_match_loss_fn,
+            optimizer_cls,
+            lr,
+        )
+        self.loss_fn = predictive_loss_fn
+        self.save_hyperparameters()
+
+    def predictive_loss_grad(
+        self, predictions: torch.Tensor, targets: torch.Tensor
+    ) -> torch.Tensor:
+        # Compute per-sample gradient of the loss function with respect to the model params
+        loss = self.loss_fn(predictions, targets)
+        # Compute the gradient of the loss with respect to the model predictions (dL/dy_hat)
+        # because we're using chain rule.
+        per_sample_grad = torch.autograd.grad(
+            loss, predictions, retain_graph=True, create_graph=True
+        )[0]
+        return per_sample_grad
 
 
 # Example usage:
