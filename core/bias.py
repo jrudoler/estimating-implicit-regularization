@@ -138,7 +138,7 @@ class InductiveBiasEstimator(pl.LightningModule):
         # Compute the loss gradient using the dedicated method.
         # flip the sign because you set the gradient of (loss + bias) equal to zero
         # and solve for the bias gradient
-        loss_gradient = -self.predictive_loss_gradient(predictions, y)
+        loss_gradient = -self.predictive_loss_grad(predictions, y)
         vjp_result = vjp_func(loss_gradient)[0]
         true_grad = torch.cat([v.view(-1) for v in vjp_result.values()]) / X.size(0)
 
@@ -170,8 +170,16 @@ class BiasWithMSE(InductiveBiasEstimator):
 
 class BiasWithCrossEntropy(InductiveBiasEstimator):
     def predictive_loss_grad(self, predictions, targets):
+        # print("Predictions shape:", predictions.shape)
+        # targets should be class indices, 1d tensor
+        if targets.ndim == 2:
+            targets = targets.squeeze()
+        # predictions should be logits, 2d tensor
+        # print("Targets shape:", targets.shape)
         one_hot_targets = F.one_hot(targets, num_classes=predictions.shape[1]).float()
+        # print("One-hot targets shape:", one_hot_targets.shape)
         expected_grad = F.softmax(predictions, dim=1) - one_hot_targets
+        # print("Expected gradient:", expected_grad.shape)
         return expected_grad
 
 
@@ -206,32 +214,3 @@ class BiasWithAutodiffLoss(InductiveBiasEstimator):
             loss, predictions, retain_graph=True, create_graph=True
         )[0]
         return per_sample_grad
-
-
-# Example usage:
-if __name__ == "__main__":
-    from pytorch_lightning import Trainer
-    from torch.utils.data import DataLoader, TensorDataset
-
-    # Define your predictive and bias models.
-    predictive_model = nn.Sequential(nn.Linear(10, 5), nn.ReLU(), nn.Linear(5, 1))
-    bias_model = RidgeBias()
-
-    # Create a dummy dataset.
-    X = torch.randn(100, 10)
-    y = torch.randn(100, 1)
-    dataset = TensorDataset(X, y)
-    dataloader = DataLoader(dataset, batch_size=32, shuffle=True)
-
-    # Instantiate the Lightning module.
-    module = BiasLightningModule(
-        predictive_model=predictive_model,
-        bias_model=bias_model,
-        loss_fn=nn.functional.mse_loss,  # Change as needed.
-        optimizer_cls=torch.optim.Adam,
-        lr=1e-3,
-    )
-
-    # Train using the Trainer interface.
-    trainer = Trainer(max_epochs=10)
-    trainer.fit(module, dataloader)

@@ -100,7 +100,8 @@ class NoisyMLP(LightningModule):
         return loss
 
     def configure_optimizers(self):
-        return torch.optim.Adam(self.parameters(), lr=1e-3)
+        return torch.optim.SGD(self.parameters(), lr=1e-2)
+        # return torch.optim.Adam(self.parameters(), lr=1e-3)
 
 
 class LinearNetwork(pl.LightningModule):

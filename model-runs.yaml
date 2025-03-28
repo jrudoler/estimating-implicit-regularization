@@ -10,6 +10,6 @@
   patience: 3
 - run_name: noisy-mlp-noearlystop
   dropout_rate: 0.3
-  max_epochs: 25
+  max_epochs: 50
   early_stopping: false
   patience: 3
