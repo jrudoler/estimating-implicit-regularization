@@ -55,3 +55,14 @@ def test_predictive_loss_grad_cross_entropy():
     assert torch.allclose(grad, expected_grad), (
         f"Expected {expected_grad}, but got {grad}"
     )
+
+
+def test_predictive_loss_grad_bce():
+    predictions = torch.tensor([[0.1], [0.9], [0.5]], requires_grad=True)
+    targets = torch.tensor([[0.0], [1.0], [1.0]])
+    loss_fn = nn.BCEWithLogitsLoss(reduction="sum")
+    grad = predictive_loss_grad(predictions, targets, loss_fn)
+    expected_grad = F.sigmoid(predictions) - targets
+    assert torch.allclose(grad, expected_grad), (
+        f"Expected {expected_grad}, but got {grad}"
+    )

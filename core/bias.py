@@ -168,6 +168,12 @@ class BiasWithMSE(InductiveBiasEstimator):
         return -2 * (targets - predictions)
 
 
+class BiasWithBCE(InductiveBiasEstimator):
+    def predictive_loss_grad(self, predictions, targets):
+        expected_grad = F.sigmoid(predictions) - targets
+        return expected_grad
+
+
 class BiasWithCrossEntropy(InductiveBiasEstimator):
     def predictive_loss_grad(self, predictions, targets):
         # print("Predictions shape:", predictions.shape)
