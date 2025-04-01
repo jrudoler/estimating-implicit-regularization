@@ -2,8 +2,8 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import lightning.pytorch as pl
-from abc import ABC, abstractmethod
-from torch.func import functional_call, vjp, grad
+from abc import abstractmethod
+from torch.func import functional_call, vjp
 from torch.optim import Optimizer
 from typing import Dict, Callable, Tuple, Any
 
@@ -22,24 +22,13 @@ class RidgeBias(nn.Module):
         return self.beta * torch.sum(flattened_params**2)
 
 
-# class LassoBias(nn.Module):
-#     def __init__(self):
-#         super().__init__()
-#         self.alpha = nn.Parameter(torch.tensor([1.0]))  # Initialize parameters
+class LassoBias(nn.Module):
+    def __init__(self):
+        super().__init__()
+        self.alpha = nn.Parameter(torch.tensor([1.0]))  # Initialize parameters
 
-#     def forward(self, flattened_params):
-#         return self.alpha * torch.sum(torch.abs(flattened_params))
-
-
-# class EpsilonSmoothLassoBias(nn.Module):
-#     def __init__(self, beta_init: float = 1.0, eps: float = 1e-6) -> None:
-#         super().__init__()
-#         self.beta = nn.Parameter(torch.tensor([beta_init]))
-#         self.eps = eps
-
-#     def forward(self, flattened_params: torch.Tensor) -> torch.Tensor:
-#         # Smooth L1: sqrt(x^2 + eps) approximates |x|
-#         return self.beta * torch.sum(torch.sqrt(flattened_params**2 + self.eps))
+    def forward(self, flattened_params):
+        return self.alpha * torch.sum(torch.abs(flattened_params))
 
 
 class SmoothLassoBias(nn.Module):

@@ -8,7 +8,7 @@ from lightning.pytorch.loggers import WandbLogger
 from lightning.pytorch.callbacks import EarlyStopping
 from core.data import MNISTDataModule
 from core.models import NoisyMLP
-from core.bias import RidgeBias, BiasWithCrossEntropy
+from core.bias import RidgeBias, BiasWithCrossEntropy, BiasWithBCE
 from accelerate.test_utils.testing import get_backend
 
 torch.set_float32_matmul_precision("high")
@@ -23,7 +23,7 @@ def train_bias(model_ckpt, run_name, max_epochs=10, lr=1e-3):
     model.eval()
 
     # Set up the bias training module
-    module = BiasWithCrossEntropy(
+    module = BiasWithBCE(
         predictive_model=model,
         bias_model=RidgeBias(),
         grad_match_loss_fn=torch.nn.functional.mse_loss,

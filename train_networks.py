@@ -25,7 +25,7 @@ def train_model(
     callbacks = []
     if early_stopping:
         print("Early stopping enabled.")
-        callbacks.append(EarlyStopping(monitor="val/loss", patience=patience))
+        callbacks.append(EarlyStopping(monitor="train/loss", patience=patience))
     trainer = Trainer(
         max_epochs=max_epochs,
         logger=wandb_logger,
