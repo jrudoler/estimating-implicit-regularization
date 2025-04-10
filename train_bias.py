@@ -8,7 +8,8 @@ from lightning.pytorch.loggers import WandbLogger
 from lightning.pytorch.callbacks import EarlyStopping
 from core.data import MNISTDataModule
 from core.models import NoisyMLP
-from core.bias import RidgeBias, BiasWithCrossEntropy, BiasWithBCE
+from core.bias import RidgeBias
+from core.estimators import BiasWithCrossEntropy, BiasWithBCE
 from accelerate.test_utils.testing import get_backend
 
 torch.set_float32_matmul_precision("high")

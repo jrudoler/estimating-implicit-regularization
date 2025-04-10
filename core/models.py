@@ -170,3 +170,47 @@ class LinearNetwork(pl.LightningModule):
 
     def configure_optimizers(self):
         return torch.optim.Adam(self.parameters(), lr=self.hparams.lr)
+
+
+class LinearRegression(LightningModule):
+    def __init__(
+        self,
+        input_dim: int,
+        output_dim: int,
+        fit_intercept=True,
+        lr: float = 1e-2,
+        init_zeros=True,
+    ):
+        super().__init__()
+        self.linear = nn.Linear(input_dim, output_dim, bias=fit_intercept)
+        if init_zeros:
+            # Initialize weights and bias to zero
+            nn.init.zeros_(self.linear.weight)
+            if fit_intercept:
+                nn.init.zeros_(self.linear.bias)
+        self.loss_func = nn.MSELoss()
+        self.save_hyperparameters()
+
+    def forward(self, x):
+        return self.linear(x)
+
+    def training_step(self, batch, batch_idx):
+        x, y = batch
+        y_hat = self(x)
+        # make sure y is the right shape
+        if len(y.shape) == 1:
+            y = y.view(-1, 1).float()
+        assert y.shape == y_hat.shape, f"y shape: {y.shape}, y_hat shape: {y_hat.shape}"
+        loss = self.loss_func(y_hat, y)
+        self.log("train/loss", loss)
+        return loss
+
+    def validation_step(self, batch, batch_idx):
+        x, y = batch
+        y_hat = self(x)
+        loss = self.loss_func(y_hat, y)
+        self.log("val/loss", loss)
+        return loss
+
+    def configure_optimizers(self):
+        return torch.optim.SGD(self.parameters(), lr=self.hparams.lr)
