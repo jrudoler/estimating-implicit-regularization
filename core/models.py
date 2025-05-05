@@ -214,3 +214,42 @@ class LinearRegression(LightningModule):
 
     def configure_optimizers(self):
         return torch.optim.SGD(self.parameters(), lr=self.hparams.lr)
+
+
+class KernelRegression(LightningModule):
+    def __init__(
+        self,
+        kernel_function: Union[str, nn.Module],
+        n_train_samples: int,
+        fit_intercept: bool = True,
+    ):
+        super().__init__()
+        self.kernel_linear = nn.Linear(n_train_samples, 1, bias=fit_intercept)
+        self.kernel_function = kernel_function
+        self.loss_func = nn.MSELoss()
+        self.save_hyperparameters()
+
+    def forward(self, x):
+        K_mat = torch.tensor(self.kernel_function(x, x))
+        return self.kernel_linear(K_mat)
+
+    def training_step(self, batch, batch_idx):
+        x, y = batch
+        y_hat = self(x)
+        # make sure y is the right shape
+        if len(y.shape) == 1:
+            y = y.view(-1, 1).float()
+        assert y.shape == y_hat.shape, f"y shape: {y.shape}, y_hat shape: {y_hat.shape}"
+        loss = self.loss_func(y_hat, y)
+        self.log("train/loss", loss)
+        return loss
+
+    def validation_step(self, batch, batch_idx):
+        x, y = batch
+        y_hat = self(x)
+        loss = self.loss_func(y_hat, y)
+        self.log("val/loss", loss)
+        return loss
+
+    def configure_optimizers(self):
+        return torch.optim.SGD(self.parameters(), lr=1e-2)
