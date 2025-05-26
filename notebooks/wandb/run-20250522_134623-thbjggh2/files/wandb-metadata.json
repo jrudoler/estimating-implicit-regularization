@@ -1,0 +1,45 @@
+{
+  "os": "Linux-4.18.0-553.47.1.el8_10.x86_64-x86_64-with-glibc2.28",
+  "python": "CPython 3.12.7",
+  "startedAt": "2025-05-22T17:46:23.223729Z",
+  "program": "/home/jrudoler/inductive-bias/notebooks/linear-network-elasticnet.ipynb",
+  "codePath": "notebooks/linear-network-elasticnet.ipynb",
+  "git": {
+    "remote": "https://github.com/jrudoler/efficient-coding.git",
+    "commit": "8dea9e6cb4c76e9adf9ec8a90c67b57fa4b8d9a9"
+  },
+  "email": "jhrudoler@gmail.com",
+  "root": ".",
+  "host": "node9.cl.upenn.edu",
+  "executable": "/shared_data0/jrudoler/.cache/pypoetry/virtualenvs/inductive-bias-v8JhmPLZ-py3.12/bin/python",
+  "codePathLocal": "linear-network-elasticnet.ipynb",
+  "cpu_count": 64,
+  "cpu_count_logical": 64,
+  "gpu": "NVIDIA L40S",
+  "gpu_count": 1,
+  "disk": {
+    "/": {
+      "total": "1883399307264",
+      "used": "63410368512"
+    }
+  },
+  "memory": {
+    "total": "1081886633984"
+  },
+  "cpu": {
+    "count": 64,
+    "countLogical": 64
+  },
+  "gpu_nvidia": [
+    {
+      "name": "NVIDIA L40S",
+      "memoryTotal": "48305799168",
+      "cudaCores": 18176,
+      "architecture": "Ada"
+    }
+  ],
+  "slurm": {
+    "job_id": "6582"
+  },
+  "cudaVersion": "12.8"
+}

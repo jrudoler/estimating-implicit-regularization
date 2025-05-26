@@ -1,10 +1,11 @@
 import torch
 import torch.nn as nn
+from torch import Tensor
 
 import lightning as pl
 from lightning import LightningModule
 import wandb
-from typing import Union, Tuple, Optional, Any, Type
+from typing import Union, Optional, Any, Type, Callable, Tuple
 
 
 def load_model_from_artifact(
@@ -177,7 +178,7 @@ class LinearRegression(LightningModule):
         self,
         input_dim: int,
         output_dim: int,
-        fit_intercept=True,
+        fit_intercept=False,
         lr: float = 1e-2,
         init_zeros=True,
     ):
@@ -216,40 +217,89 @@ class LinearRegression(LightningModule):
         return torch.optim.SGD(self.parameters(), lr=self.hparams.lr)
 
 
-class KernelRegression(LightningModule):
+class KernelRegression(pl.LightningModule):
     def __init__(
         self,
-        kernel_function: Union[str, nn.Module],
+        kernel_function: Callable[[Tensor, Tensor], Tensor],
         n_train_samples: int,
-        fit_intercept: bool = True,
-    ):
+        fit_intercept: bool = False,
+        ridge_lambda: Optional[float] = None,
+        init_zeros: bool = True,
+        lr: float = 1e-2,
+    ) -> None:
         super().__init__()
-        self.kernel_linear = nn.Linear(n_train_samples, 1, bias=fit_intercept)
-        self.kernel_function = kernel_function
-        self.loss_func = nn.MSELoss()
         self.save_hyperparameters()
+        self.kernel_linear = nn.Linear(n_train_samples, 1, bias=fit_intercept)
+        # save initial weights
+        self.init_weights = self.kernel_linear.weight.clone()
+        self.init_bias = self.kernel_linear.bias.clone() if fit_intercept else None
+        if init_zeros:
+            nn.init.zeros_(self.kernel_linear.weight)
+            if fit_intercept:
+                nn.init.zeros_(self.kernel_linear.bias)
+        self.kernel_function = kernel_function
+        self.loss_func = KernelRidgeMSELoss(
+            ridge_lambda=self.hparams.ridge_lambda or 0.0
+        )
 
-    def forward(self, x):
-        K_mat = torch.tensor(self.kernel_function(x, x))
-        return self.kernel_linear(K_mat)
+    def forward(
+        self,
+        x: Tensor,
+        *,
+        return_K: bool = False,
+    ) -> Union[Tensor, Tuple[Tensor, Tensor]]:
+        """
+        If return_K is False (default), returns y_hat.
+        If True, returns (y_hat, K).
+        """
+        K = self.kernel_function(x, x)
+        # ensure K is on the same device as the model
+        K = K.to(self.kernel_linear.weight.device)
+        y_hat = self.kernel_linear(K)
+        # print devices
+        print(f"kernel reg forward")
+        print(f"kernel_linear weight device: {self.kernel_linear.weight.device}")
+        print(f"y_hat device: {y_hat.device}, K device: {K.device}")
+        if return_K:
+            return y_hat, K
+        return y_hat
 
-    def training_step(self, batch, batch_idx):
+    def training_step(self, batch: Tuple[Tensor, Tensor], batch_idx: int) -> Tensor:
         x, y = batch
-        y_hat = self(x)
-        # make sure y is the right shape
-        if len(y.shape) == 1:
+        if y.dim() == 1:
             y = y.view(-1, 1).float()
-        assert y.shape == y_hat.shape, f"y shape: {y.shape}, y_hat shape: {y_hat.shape}"
-        loss = self.loss_func(y_hat, y)
+
+        # get both y_hat and K
+        y_hat, K = self(x, return_K=True)
+        alpha = self.kernel_linear.weight.squeeze(0)
+        loss = self.loss_func(y_hat, y, K, alpha)
         self.log("train/loss", loss)
         return loss
 
-    def validation_step(self, batch, batch_idx):
+    def validation_step(self, batch: Tuple[Tensor, Tensor], batch_idx: int) -> Tensor:
         x, y = batch
-        y_hat = self(x)
-        loss = self.loss_func(y_hat, y)
+        if y.dim() == 1:
+            y = y.view(-1, 1).float()
+
+        y_hat, K = self(x, return_K=True)
+        alpha = self.kernel_linear.weight.squeeze(0)
+        loss = self.loss_func(y_hat, y, K, alpha)
         self.log("val/loss", loss)
         return loss
 
-    def configure_optimizers(self):
-        return torch.optim.SGD(self.parameters(), lr=1e-2)
+    def configure_optimizers(self) -> torch.optim.Optimizer:
+        return torch.optim.SGD(self.parameters(), lr=self.hparams.lr)
+
+
+class KernelRidgeMSELoss(nn.MSELoss):
+    def __init__(self, ridge_lambda: float = 0.0, **mse_kwargs) -> None:
+        super().__init__(**mse_kwargs)
+        self.ridge_lambda = ridge_lambda
+
+    def forward(self, y_hat: Tensor, y: Tensor, K: Tensor, alpha: Tensor) -> Tensor:
+        # MSELoss already handles reduction for you
+        base = super().forward(y_hat, y)
+        if self.ridge_lambda != 0.0:
+            reg = alpha @ K @ alpha
+            return base + self.ridge_lambda * reg
+        return base

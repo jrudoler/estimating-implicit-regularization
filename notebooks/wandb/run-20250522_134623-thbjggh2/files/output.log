@@ -1,0 +1,13 @@
+LOCAL_RANK: 0 - CUDA_VISIBLE_DEVICES: [0]
+
+  | Name      | Type       | Params | Mode
+-------------------------------------------------
+0 | linear    | Sequential | 2.4 K  | train
+1 | loss_func | MSELoss    | 0      | train
+-------------------------------------------------
+2.4 K     Trainable params
+0         Non-trainable params
+2.4 K     Total params
+0.010     Total estimated model params size (MB)
+4         Modules in train mode
+0         Modules in eval mode

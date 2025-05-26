@@ -84,9 +84,14 @@ class WikiTextDataModule(LightningDataModule):
 
 
 class FullBatchDataModule(LightningDataModule):
-    def __init__(self, X: torch.Tensor, y: torch.Tensor):
+    def __init__(
+        self, X: torch.Tensor, y: torch.Tensor, num_workers: Optional[int] = None
+    ):
         super().__init__()
         self.dataset = TensorDataset(X, y)
+        self.num_workers = num_workers
 
     def train_dataloader(self):
-        return DataLoader(self.dataset, batch_size=len(self.dataset))
+        return DataLoader(
+            self.dataset, batch_size=len(self.dataset), num_workers=self.num_workers
+        )
