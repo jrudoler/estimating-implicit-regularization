@@ -1,0 +1,9 @@
+method: grid
+parameters:
+  l1:
+    values: [0.0001, 0.001, 0.01, 0.1, 1.0, 10.0]
+  l2:
+    values: [0.0001, 0.001, 0.01, 0.1, 1.0, 10.0]
+  smooth:
+    values: [0.01, 1.0e-3, 1.0e-4, 1.0e-5, 1.0e-6]
+program: elasticnet_train_and_recover.py

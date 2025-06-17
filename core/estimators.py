@@ -52,8 +52,6 @@ class InductiveBiasEstimator(pl.LightningModule):
         self, batch: Tuple[torch.Tensor, torch.Tensor], batch_idx: int
     ) -> torch.Tensor:
         X, y = batch
-        # Ensure the input tensors are on the same device as the model.
-        print(f"X device: {X.device}, y device: {y.device}")
         if y.ndim == 1:
             y = y.view(-1, 1)
 
@@ -62,11 +60,7 @@ class InductiveBiasEstimator(pl.LightningModule):
         flattened_params = (
             torch.cat([p.view(-1) for p in params.values()]).detach().requires_grad_()
         )
-        print(f"Flattened params device: {flattened_params.device}")
         flattened_params = flattened_params.to(self.device)
-        print(
-            f"Flattened params device after to(self.device): {flattened_params.device}"
-        )
 
         def model_output(p: Dict[str, torch.Tensor], x: torch.Tensor) -> torch.Tensor:
             return functional_call(self.predictive_model, p, (x,))
@@ -94,20 +88,21 @@ class InductiveBiasEstimator(pl.LightningModule):
         gradients = torch.autograd.grad(R_val, flattened_params, create_graph=True)[0]
 
         loss = self.grad_match_loss_fn(gradients, true_grad, reduction="mean")
-        # self.log("train/loss", loss, prog_bar=False)
+
+        self.log("train/loss", loss, prog_bar=False)
 
         # Log all parameters from the bias model.
         for name, param in self.bias_model.named_parameters():
             # Ensure the parameter is logged as a scalar if it is a single value.
             if param.numel() == 1:
-                # self.log(f"bias/{name}", param.detach().item(), prog_bar=False)
+                self.log(f"bias/{name}", param.detach().item(), prog_bar=False)
                 continue
             # otherwise, if the parameter is a tensor, log its norm.
             else:
-                # self.log(f"bias/{name}", param.norm(), prog_bar=False)
+                self.log(f"bias/{name}", param.norm(), prog_bar=False)
                 # Log the gradient norm as well.
                 if param.grad is not None:
-                    # self.log(f"bias/{name}_grad", param.grad.norm(), prog_bar=False)
+                    self.log(f"bias/{name}_grad", param.grad.norm(), prog_bar=False)
                     continue
 
         return loss
@@ -116,39 +111,30 @@ class InductiveBiasEstimator(pl.LightningModule):
         # Optimize only the bias model parameters.
         return self.optimizer_cls(self.bias_model.parameters(), lr=self.lr)
 
-    def on_before_backward(self, loss: torch.Tensor) -> None:
-        """Fail fast if any tensor in the backward graph is on a CPU
-        while others are on a GPU (or vice-versa)."""
-        print(
-            f"--- Debugging devices in on_before_backward (Epoch {self.current_epoch}, Global Step {self.global_step}) ---"
-        )
+    # def on_before_backward(self, loss: torch.Tensor) -> None:
+    #     """Fail fast if any tensor in the backward graph is on a CPU
+    #     while others are on a GPU (or vice-versa)."""
+    #     print(
+    #         f"--- Debugging devices in on_before_backward (Epoch {self.current_epoch}, Global Step {self.global_step}) ---"
+    #     )
 
-        expected_device = self.device
-        print(f"Expected device (self.device): {expected_device}")
+    #     expected_device = self.device
+    #     print(f"Expected device (self.device): {expected_device}")
 
-        # Check loss tensor's device
-        if loss.device != expected_device:
-            print(
-                f"WARNING: Loss tensor is on device {loss.device}, but expected {expected_device}."
-            )
-        else:
-            print(f"Loss tensor device: {loss.device} (Matches expected)")
+    #     # Check loss tensor's device
+    #     if loss.device != expected_device:
+    #         print(
+    #             f"WARNING: Loss tensor is on device {loss.device}, but expected {expected_device}."
+    #         )
+    #     else:
+    #         print(f"Loss tensor device: {loss.device} (Matches expected)")
 
-        # Check model parameters' devices
-        for name, param in self.named_parameters():
-            if param.device != expected_device:
-                print(
-                    f"WARNING: Parameter '{name}' is on device {param.device}, but expected {expected_device}."
-                )
-
-        # # inspect gradients
-        # print(f"Loss grad_fn: {loss.grad_fn}")
-        # if loss.grad_fn:
-        #     for fn, _ in loss.grad_fn.next_functions:
-        #         if fn:
-        #             print(f"Next function: {fn}")
-        #             print(f"device: {fn.variable.device}")
-        #             # You can check fn.variable.device if it's a leaf or has a .variable attribute
+    #     # Check model parameters' devices
+    #     for name, param in self.named_parameters():
+    #         if param.device != expected_device:
+    #             print(
+    #                 f"WARNING: Parameter '{name}' is on device {param.device}, but expected {expected_device}."
+    #             )
 
     # def _bias_model(
     #     self, params: torch.Tensor, extra_kwargs: Dict[str, Any]

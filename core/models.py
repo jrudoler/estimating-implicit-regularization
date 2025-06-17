@@ -231,12 +231,14 @@ class KernelRegression(pl.LightningModule):
         self.save_hyperparameters()
         self.kernel_linear = nn.Linear(n_train_samples, 1, bias=fit_intercept)
         # save initial weights
-        self.init_weights = self.kernel_linear.weight.clone()
-        self.init_bias = self.kernel_linear.bias.clone() if fit_intercept else None
         if init_zeros:
             nn.init.zeros_(self.kernel_linear.weight)
             if fit_intercept:
                 nn.init.zeros_(self.kernel_linear.bias)
+        self.init_weights = self.kernel_linear.weight.detach().clone()
+        self.init_bias = (
+            self.kernel_linear.bias.detach().clone() if fit_intercept else None
+        )
         self.kernel_function = kernel_function
         self.loss_func = KernelRidgeMSELoss(
             ridge_lambda=self.hparams.ridge_lambda or 0.0
@@ -256,10 +258,6 @@ class KernelRegression(pl.LightningModule):
         # ensure K is on the same device as the model
         K = K.to(self.kernel_linear.weight.device)
         y_hat = self.kernel_linear(K)
-        # print devices
-        print(f"kernel reg forward")
-        print(f"kernel_linear weight device: {self.kernel_linear.weight.device}")
-        print(f"y_hat device: {y_hat.device}, K device: {K.device}")
         if return_K:
             return y_hat, K
         return y_hat

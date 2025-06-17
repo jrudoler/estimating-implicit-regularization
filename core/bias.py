@@ -187,71 +187,77 @@ class ElasticNet(nn.Module):
 #         return torch.sum(mask * flattened_params)
 
 
-class ImplicitBiasKRR(nn.Module):
-    def __init__(
-        self, dim: int, Q_t_init: torch.Tensor = None, omega_t_init: torch.Tensor = None
-    ):
-        """
-        Initializes the implicit bias module for Kernel Ridge Regression.
+# class ImplicitBiasKRR(nn.Module):
+#     def __init__(
+#         self,
+#         dim: int,
+#         lambda_: float = 0.0,
+#         Q_t_init: torch.Tensor = None,
+#         omega_t_init: torch.Tensor = None,
+#     ):
+#         """
+#         Initializes the implicit bias module for Kernel Ridge Regression.
 
-        Args:
-            dim (int): The dimension of the alpha vector (typically n, the number of samples).
-            Q_t_init (torch.Tensor, optional): Initial value for the Q_t matrix.
-                                               Should be of shape (dim, dim).
-                                               Defaults to an identity matrix if None.
-            omega_t_init (torch.Tensor, optional): Initial value for the omega_t vector.
-                                                   Should be of shape (dim,).
-                                                   Defaults to a zero vector if None.
-        """
-        super().__init__()
-        self.dim = dim
+#         Args:
+#             lambda_ (float): Ridge regularization parameter for KRR.
+#             dim (int): The dimension of the alpha vector (typically n, the number of samples).
+#             Q_t_init (torch.Tensor, optional): Initial value for the Q_t matrix.
+#                                                Should be of shape (dim, dim).
+#                                                Defaults to an identity matrix if None.
+#             omega_t_init (torch.Tensor, optional): Initial value for the omega_t vector.
+#                                                    Should be of shape (dim,).
+#                                                    Defaults to a zero vector if None.
+#         """
+#         super().__init__()
+#         self.dim = dim
+#         self.lambda_ = lambda_
 
-        if Q_t_init is not None:
-            if Q_t_init.shape != (self.dim, self.dim):
-                raise ValueError(
-                    f"Q_t_init should be of shape ({self.dim}, {self.dim}), but got {Q_t_init.shape}"
-                )
-            self.Q_t = nn.Parameter(Q_t_init.clone(), requires_grad=True)
-        else:
-            # Default initialization for Q_t (e.g., identity matrix)
-            self.Q_t = nn.Parameter(torch.eye(self.dim), requires_grad=True)
+#         if Q_t_init is not None:
+#             if Q_t_init.shape != (self.dim, self.dim):
+#                 raise ValueError(
+#                     f"Q_t_init should be of shape ({self.dim}, {self.dim}), but got {Q_t_init.shape}"
+#                 )
+#             self.Q_t = nn.Parameter(Q_t_init.clone(), requires_grad=True)
+#         else:
+#             # Default initialization for Q_t (e.g., identity matrix)
+#             self.Q_t = nn.Parameter(torch.eye(self.dim), requires_grad=True)
 
-        if omega_t_init is not None:
-            if omega_t_init.shape != (self.dim,):
-                raise ValueError(
-                    f"omega_t_init should be of shape ({self.dim},), but got {omega_t_init.shape}"
-                )
-            self.omega_t = nn.Parameter(omega_t_init.clone(), requires_grad=True)
-        else:
-            # Default initialization for omega_t (e.g., zero vector)
-            self.omega_t = nn.Parameter(torch.zeros(self.dim), requires_grad=True)
+#         if omega_t_init is not None:
+#             if omega_t_init.shape != (self.dim,):
+#                 raise ValueError(
+#                     f"omega_t_init should be of shape ({self.dim},), but got {omega_t_init.shape}"
+#                 )
+#             self.omega_t = nn.Parameter(omega_t_init.clone(), requires_grad=True)
+#         else:
+#             # Default initialization for omega_t (e.g., zero vector)
+#             self.omega_t = nn.Parameter(torch.zeros(self.dim), requires_grad=True)
 
-    def forward(self, alpha: torch.Tensor, **kwargs) -> torch.Tensor:
-        """
-        Compute the implicit bias term: alpha^T Q_t alpha - 2 * omega_t^T alpha.
+#     def forward(self, alpha: torch.Tensor, **kwargs) -> torch.Tensor:
+#         """
+#         Compute the implicit bias term: alpha^T Q_t alpha - 2 * omega_t^T alpha.
 
-        Args:
-            alpha (torch.Tensor): The parameter vector alpha, shape (dim,).
+#         Args:
+#             alpha (torch.Tensor): The parameter vector alpha, shape (dim,).
 
-        Returns:
-            torch.Tensor: The scalar value of the implicit bias term.
-        """
-        if alpha.shape != (self.dim,):
-            # If alpha is (dim, 1) or (1, dim), try to reshape.
-            if alpha.numel() == self.dim:
-                alpha = alpha.view(self.dim)
-            else:
-                raise ValueError(
-                    f"alpha should be of shape ({self.dim},) or be reshapeable to it, but got {alpha.shape}"
-                )
+#         Returns:
+#             torch.Tensor: The scalar value of the implicit bias term.
+#         """
+#         if alpha.shape != (self.dim,):
+#             # If alpha is (dim, 1) or (1, dim), try to reshape.
+#             if alpha.numel() == self.dim:
+#                 alpha = alpha.view(self.dim)
+#             else:
+#                 raise ValueError(
+#                     f"alpha should be of shape ({self.dim},) or be reshapeable to it, but got {alpha.shape}"
+#                 )
 
-        # Quadratic term: alpha^T Q_t alpha
-        quadratic_term = alpha @ self.Q_t @ alpha
+#         # Quadratic term: alpha^T Q_t alpha
+#         quadratic_term = alpha @ self.Q_t @ alpha
 
-        # Linear term: -2 * omega_t^T alpha
-        linear_term = -2 * self.omega_t @ alpha
+#         # Linear term: -2 * omega_t^T alpha
+#         linear_term = -2 * self.omega_t @ alpha
 
-        return quadratic_term + linear_term
+#         return quadratic_term + linear_term
 
 
 class DiagMatrixBiasKRR(nn.Module):
@@ -263,26 +269,35 @@ class DiagMatrixBiasKRR(nn.Module):
         K: torch.Tensor = None,
         alpha_init: torch.Tensor = None,
         eta: float = 1e-2,
+        lambda_: float = 0.0,
     ):
         """
         Initializes the implicit bias module for Kernel Ridge Regression,
-        with a diagonal Q_t matrix.
+        with a diagonal Q_t matrix. Computes the linear term based on the full
+        theoretical Q_t matrix, and we learn the diagonal entries of Q_t for the quadratic term.
+
+
         Args:
             Q_t_init (torch.Tensor, optional): Initial value for the Q_t vector.
                                                Should be of shape (dim,).
                                                Defaults to a zero vector if None.
             dim (int, optional): The dimension of the alpha vector (typically n, the number of samples).
                                  If Q_t_init is provided, this can be None.
+            t (int): The time step for the implicit bias computation.
+            K (torch.Tensor): The kernel matrix of shape (n, n).
+                              Must be provided and square.
+            alpha_init (torch.Tensor): Initial value for the alpha vector.
+            eta (float): Learning rate for the implicit bias computation.
+            lambda_ (float): Ridge regularization parameter for KRR
         """
         super().__init__()
         if K is None:
             raise ValueError("Must provide kernel matrix K")
-        # self.K = K.clone()
-        # self.alpha_init = alpha_init.clone()
         self.register_buffer("K", K)
         self.register_buffer("alpha_init", alpha_init)
         self.t = t
         self.eta = eta
+        self.lambda_ = lambda_
 
         if Q_t_init is not None:
             if Q_t_init.ndim != 1:
@@ -309,14 +324,10 @@ class DiagMatrixBiasKRR(nn.Module):
             else torch.zeros(self.dim, device=self.K.device),
             requires_grad=True,
         )
-        # print("Q_t device:", self.Q_t.device)
-        # print("K device:", self.K.device)
-        # print("alpha_init device:", self.alpha_init.device)
-        # check same device
-        assert self.Q_t.device == self.K.device, "Q_t and K must be on the same device"
-        assert self.alpha_init.device == self.K.device, (
-            "alpha_init and K must be on the same device"
-        )
+        # assert self.Q_t.device == self.K.device, "Q_t and K must be on the same device"
+        # assert self.alpha_init.device == self.K.device, (
+        #     "alpha_init and K must be on the same device"
+        # )
 
     def forward(
         self,
@@ -344,23 +355,23 @@ class DiagMatrixBiasKRR(nn.Module):
 
         I = torch.eye(self.dim, device=device)
 
+        C = (1.0 / self.dim) * (self.K @ self.K) + self.lambda_ * self.K
+        A = I - 2 * self.eta * C
+        A_t = torch.linalg.matrix_power(A, self.t)
+        self.Q_t_exact = C @ (torch.linalg.inv(I - A_t) - I)
+
+        # omega_t = (C + torch.diag(self.Q_t)) @ A_t @ self.alpha_init
+        self.omega_t_exact = (C + self.Q_t_exact) @ A_t @ self.alpha_init
         # Linear term: -2 * omega_t^T alpha
-        C = ((1.0 / self.dim) * (self.K @ self.K)).to(device)
-        print("C device:", C.device)
-        A = (I - 2 * self.eta * C).to(device)
-        A_t = torch.linalg.matrix_power(A, self.t).to(device)
-        # print devices for debugging
-        # print(f"Q_t device: {self.Q_t.device}, K device: {self.K.device}")
-        # print(f"A device: {A.device}, alpha device: {alpha.device}")
-        # print(f"alpha_init device: {self.alpha_init.device}")
-
-        omega_t = (C + torch.diag(self.Q_t)) @ A_t @ self.alpha_init.to(device)
-
-        # print(f"omega_t device: {omega_t.device}")
-        linear_term = -2 * omega_t @ alpha
+        linear_term = -2 * self.omega_t_exact @ alpha
         # Quadratic term: sum_i (alpha_i^2 * Q_t[i])
         quadratic_term = torch.sum(alpha**2 * self.Q_t)
-        print(f"linear term: {linear_term.device}")
-        print(f"quadratic term: {quadratic_term.device}")
-        assert self.K.dtype == self.Q_t.dtype == alpha.dtype
+        # Ridge term: lambda_ * alpha^T K alpha
+        if self.lambda_ > 0:
+            ridge_term = self.lambda_ * (alpha @ self.K @ alpha)
+            quadratic_term += ridge_term
+
+        # check if alpha_init is all zeros
+        # if torch.all(self.alpha_init == 0):
+        #     print("linear_term (should be zero):", linear_term)
         return linear_term + quadratic_term

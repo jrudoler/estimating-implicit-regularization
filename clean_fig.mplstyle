@@ -1,0 +1,35 @@
+axes.titlesize : 18
+axes.labelsize : 14
+# lines.linewidth : 3
+# lines.markersize : 10
+xtick.labelsize : 12
+ytick.labelsize : 12
+
+# spine removal
+axes.spines.top     : False
+axes.spines.right   : False
+axes.edgecolor      : black
+
+## ticks and grid
+xtick.direction      : out
+ytick.direction      : out
+xtick.bottom         : True
+ytick.left           : True
+xtick.top            : False
+ytick.right          : False
+
+xtick.major.size     : 4
+ytick.major.size     : 4
+
+grid.color           : lightgray
+grid.linestyle       : --
+grid.linewidth       : 0.5
+axes.grid            : False  # or True for light gridlines
+
+## figure saving
+figure.dpi           : 100
+savefig.dpi          : 300
+savefig.bbox         : tight
+savefig.transparent  : True
+savefig.format       : pdf
+pdf.fonttype         : 42  # for better text rendering in PDFs
