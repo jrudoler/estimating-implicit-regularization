@@ -1,18 +1,7 @@
 import torch
 from torch import Tensor
 from typing import Optional
-
-
-def is_psd(matrix: Tensor, tol: float = 1e-8) -> bool:
-    """Check if a symmetric matrix is positive semidefinite (PSD)."""
-    if not torch.allclose(matrix, matrix.T, atol=tol):
-        return False
-    try:
-        # Eigenvalues should be >= -tol for numerical stability
-        eigvals = torch.linalg.eigvalsh(matrix)
-        return torch.all(eigvals >= -tol).item()
-    except RuntimeError:
-        return False
+import warnings
 
 
 def compute_Q_matrix(X: Tensor, k: int, eps: float, jit=None) -> Tensor:
@@ -99,8 +88,27 @@ def compute_beta_closed_form(X: Tensor, y: Tensor, Q: Tensor) -> Tensor:
     return beta_star
 
 
+def is_psd(matrix: Tensor, tol: float = 1e-5) -> bool:
+    """Check if a symmetric matrix is positive semidefinite (PSD)."""
+    if not torch.allclose(matrix, matrix.T, atol=tol):
+        print("Matrix is not symmetric.")
+        return False
+    else:
+        print("Matrix is symmetric.")
+    try:
+        # Eigenvalues should be >= -tol for numerical stability
+        eigvals = torch.linalg.eigvalsh(matrix)
+        return torch.all(eigvals >= -tol).item()
+    except RuntimeError:
+        return False
+
+
 def rbf_kernel_torch(
-    X: Tensor, Y: Optional[Tensor] = None, gamma: Optional[float] = None
+    X: Tensor,
+    Y: Optional[Tensor] = None,
+    gamma: Optional[float] = None,
+    enforce_psd: bool = True,
+    eps: float = 1e-6,
 ) -> Tensor:
     """
     Compute the RBF (Gaussian) kernel between X and Y:
@@ -112,12 +120,26 @@ def rbf_kernel_torch(
     if Y is None:
         Y = X
     # default gamma = 1/n_features
+    n_features = X.size(1)
     if gamma is None:
-        gamma = 1.0 / X.size(1)
+        gamma = 1.0 / float(n_features)
+    if gamma < 0.0:
+        raise ValueError(f"gamma must be non-negative, got {gamma}")
 
     # ||x - y||^2 = ||x||^2 + ||y||^2 - 2 x·y
-    # X_norm = (X**2).sum(dim=1, keepdim=True)      # (n_X, 1)
-    # Y_norm = (Y**2).sum(dim=1, keepdim=True).t()  # (1, n_Y)
-    # sq_dists = X_norm + Y_norm - 2.0 * X @ Y.t()  # (n_X, n_Y)
-    sq_dists = torch.cdist(X, Y, p=2) ** 2  # (n_X, n_Y)
-    return torch.exp(-gamma * sq_dists)
+    X_norm = (X**2).sum(dim=1, keepdim=True)  # (n_X, 1)
+    Y_norm = (Y**2).sum(dim=1, keepdim=True).t()  # (1, n_Y)
+    sq_dists = X_norm + Y_norm - 2.0 * X @ Y.t()  # (n_X, n_Y)
+    # sq_dists = torch.cdist(X, Y, p=2) ** 2  # (n_X, n_Y)
+    K = torch.exp(-gamma * sq_dists)
+
+    if enforce_psd and (Y is X):
+        warnings.warn(
+            f"Using the same X and Y, enforcing symmetry and positive semidefiniteness by adding {eps} on the diagonal.",
+            UserWarning,
+        )
+        # enforce perfect symmetry
+        K = 0.5 * (K + K.t())
+        # add a tiny diagonal bump so all eigenvalues ≥ 0
+        K = K + eps * torch.eye(K.size(0), device=K.device, dtype=K.dtype)
+    return K

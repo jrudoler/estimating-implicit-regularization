@@ -324,13 +324,6 @@ class DiagMatrixBiasKRR(nn.Module):
             else torch.zeros(self.dim, device=self.K.device),
             requires_grad=True,
         )
-        # assert self.Q_t.device == self.K.device, "Q_t and K must be on the same device"
-        # assert self.alpha_init.device == self.K.device, (
-        #     "alpha_init and K must be on the same device"
-        # )
-        print(
-            f"[class (init)] dim={self.dim}, η={self.eta}, t={self.t}, λ={self.lambda_}"
-        )
 
     def forward(
         self,
@@ -355,22 +348,17 @@ class DiagMatrixBiasKRR(nn.Module):
                 raise ValueError(
                     f"alpha should be of shape ({self.dim},) or be reshapeable to it, but got {alpha.shape}"
                 )
-        print(f"[class (forward)] K dtype: {self.K.dtype}, device: {self.K.device}")
-        print(f"[class (forward)] K first few entries: {self.K[:5, :5]}")
-        print(f"[class (forward)] K norm: {torch.norm(self.K)}")
-        print(f"[class] dim={self.dim}, η={self.eta}, t={self.t}, λ={self.lambda_}")
         I = torch.eye(self.dim, device=device)
         C = (1.0 / self.dim) * (self.K @ self.K) + self.lambda_ * self.K
         A = I - 2 * self.eta * C
         A_t = torch.linalg.matrix_power(A, self.t)
-        self.Q_t_exact = C @ (torch.linalg.inv(I - A_t) - I)
-        print(f"[class] Q_t_exact norm: {torch.norm(self.Q_t_exact, p=2)}")
-
+        Q_t_exact = C @ (torch.linalg.inv(I - A_t) - I)
         # omega_t = (C + torch.diag(self.Q_t)) @ A_t @ self.alpha_init
-        self.omega_t_exact = (C + self.Q_t_exact) @ A_t @ self.alpha_init
+        omega_t_exact = (C + Q_t_exact) @ A_t @ self.alpha_init
+
         # Linear term: -2 * omega_t^T alpha
-        linear_term = -2 * self.omega_t_exact @ alpha
-        # Quadratic term: sum_i (alpha_i^2 * Q_t[i])
+        linear_term = -2 * omega_t_exact @ alpha
+        # Quadratic term: alpha^T Q_t alpha
         # quadratic_term = torch.sum(alpha**2 * self.Q_t)
         quadratic_term = alpha @ torch.diag(self.Q_t) @ alpha
         # Ridge term: lambda_ * alpha^T K alpha

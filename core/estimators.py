@@ -111,31 +111,6 @@ class InductiveBiasEstimator(pl.LightningModule):
         # Optimize only the bias model parameters.
         return self.optimizer_cls(self.bias_model.parameters(), lr=self.lr)
 
-    # def on_before_backward(self, loss: torch.Tensor) -> None:
-    #     """Fail fast if any tensor in the backward graph is on a CPU
-    #     while others are on a GPU (or vice-versa)."""
-    #     print(
-    #         f"--- Debugging devices in on_before_backward (Epoch {self.current_epoch}, Global Step {self.global_step}) ---"
-    #     )
-
-    #     expected_device = self.device
-    #     print(f"Expected device (self.device): {expected_device}")
-
-    #     # Check loss tensor's device
-    #     if loss.device != expected_device:
-    #         print(
-    #             f"WARNING: Loss tensor is on device {loss.device}, but expected {expected_device}."
-    #         )
-    #     else:
-    #         print(f"Loss tensor device: {loss.device} (Matches expected)")
-
-    #     # Check model parameters' devices
-    #     for name, param in self.named_parameters():
-    #         if param.device != expected_device:
-    #             print(
-    #                 f"WARNING: Parameter '{name}' is on device {param.device}, but expected {expected_device}."
-    #             )
-
     # def _bias_model(
     #     self, params: torch.Tensor, extra_kwargs: Dict[str, Any]
     # ) -> torch.Tensor:
