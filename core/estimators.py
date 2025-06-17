@@ -24,7 +24,7 @@ class InductiveBiasEstimator(pl.LightningModule):
         grad_match_loss_fn: Callable[..., torch.Tensor] = nn.functional.mse_loss,
         optimizer_cls: Callable[..., Optimizer] = torch.optim.Adam,
         lr: float = 1e-3,
-        bias_model_kwargs: Dict[str, Any] = None,
+        # bias_model_kwargs: Dict[str, Any] = None,
     ) -> None:
         super().__init__()
         self.predictive_model = predictive_model
@@ -34,7 +34,7 @@ class InductiveBiasEstimator(pl.LightningModule):
         self.grad_match_loss_fn = grad_match_loss_fn
         self.optimizer_cls = optimizer_cls
         self.lr = lr
-        self.bias_model_kwargs = bias_model_kwargs or {}
+        # self.bias_model_kwargs = bias_model_kwargs or {}
         self.save_hyperparameters(ignore=["predictive_model", "bias_model"])
 
     @abstractmethod

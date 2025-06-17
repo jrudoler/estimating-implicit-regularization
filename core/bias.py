@@ -287,8 +287,8 @@ class DiagMatrixBiasKRR(nn.Module):
             K (torch.Tensor): The kernel matrix of shape (n, n).
                               Must be provided and square.
             alpha_init (torch.Tensor): Initial value for the alpha vector.
-            eta (float): Learning rate for the implicit bias computation.
-            lambda_ (float): Ridge regularization parameter for KRR
+            `eta` (float): Learning rate for the implicit bias computation.
+            `lambda_` (float): Ridge regularization parameter for KRR
         """
         super().__init__()
         if K is None:
@@ -328,6 +328,9 @@ class DiagMatrixBiasKRR(nn.Module):
         # assert self.alpha_init.device == self.K.device, (
         #     "alpha_init and K must be on the same device"
         # )
+        print(
+            f"[class (init)] dim={self.dim}, η={self.eta}, t={self.t}, λ={self.lambda_}"
+        )
 
     def forward(
         self,
@@ -352,20 +355,24 @@ class DiagMatrixBiasKRR(nn.Module):
                 raise ValueError(
                     f"alpha should be of shape ({self.dim},) or be reshapeable to it, but got {alpha.shape}"
                 )
-
+        print(f"[class (forward)] K dtype: {self.K.dtype}, device: {self.K.device}")
+        print(f"[class (forward)] K first few entries: {self.K[:5, :5]}")
+        print(f"[class (forward)] K norm: {torch.norm(self.K)}")
+        print(f"[class] dim={self.dim}, η={self.eta}, t={self.t}, λ={self.lambda_}")
         I = torch.eye(self.dim, device=device)
-
         C = (1.0 / self.dim) * (self.K @ self.K) + self.lambda_ * self.K
         A = I - 2 * self.eta * C
         A_t = torch.linalg.matrix_power(A, self.t)
         self.Q_t_exact = C @ (torch.linalg.inv(I - A_t) - I)
+        print(f"[class] Q_t_exact norm: {torch.norm(self.Q_t_exact, p=2)}")
 
         # omega_t = (C + torch.diag(self.Q_t)) @ A_t @ self.alpha_init
         self.omega_t_exact = (C + self.Q_t_exact) @ A_t @ self.alpha_init
         # Linear term: -2 * omega_t^T alpha
         linear_term = -2 * self.omega_t_exact @ alpha
         # Quadratic term: sum_i (alpha_i^2 * Q_t[i])
-        quadratic_term = torch.sum(alpha**2 * self.Q_t)
+        # quadratic_term = torch.sum(alpha**2 * self.Q_t)
+        quadratic_term = alpha @ torch.diag(self.Q_t) @ alpha
         # Ridge term: lambda_ * alpha^T K alpha
         if self.lambda_ > 0:
             ridge_term = self.lambda_ * (alpha @ self.K @ alpha)
