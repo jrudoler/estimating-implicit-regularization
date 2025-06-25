@@ -38,10 +38,12 @@ class NoisyMLP(LightningModule):
         hidden_features=128,
         dropout_rate=0.2,
         num_hidden_layers=4,
+        loss_func=None,
+        lr=1e-2,
     ):
         super().__init__()
 
-        self.loss_func = (
+        self.loss_func = loss_func or (
             nn.BCEWithLogitsLoss() if out_features == 1 else nn.CrossEntropyLoss()
         )
 
@@ -65,7 +67,7 @@ class NoisyMLP(LightningModule):
         layers.append(nn.Linear(hidden_features, out_features))
 
         self.layers = nn.Sequential(*layers)
-        self.save_hyperparameters()
+        self.save_hyperparameters(ignore=["loss_func"])
 
     def forward(self, x):
         # Flatten input if it's not already flattened
@@ -94,7 +96,7 @@ class NoisyMLP(LightningModule):
         return loss
 
     def configure_optimizers(self):
-        return torch.optim.SGD(self.parameters(), lr=1e-2)
+        return torch.optim.SGD(self.parameters(), lr=self.hparams.lr)
         # return torch.optim.Adam(self.parameters(), lr=1e-3)
 
 
@@ -220,11 +222,12 @@ class LinearRegression(LightningModule):
 class KernelRegression(pl.LightningModule):
     def __init__(
         self,
-        kernel_function: Callable[[Tensor, Tensor], Tensor],
+        kernel: Union[Callable[[Tensor, Tensor], Tensor], Tensor],
         n_train_samples: int,
         fit_intercept: bool = False,
         ridge_lambda: Optional[float] = None,
         init_zeros: bool = True,
+        init_weights: Optional[Tensor] = None,
         lr: float = 1e-2,
     ) -> None:
         super().__init__()
@@ -235,11 +238,30 @@ class KernelRegression(pl.LightningModule):
             nn.init.zeros_(self.kernel_linear.weight)
             if fit_intercept:
                 nn.init.zeros_(self.kernel_linear.bias)
+        elif init_weights is not None:
+            # Initialize weights with provided initial weights
+            if init_weights.shape != self.kernel_linear.weight.shape:
+                raise ValueError(
+                    f"Initial weights shape {init_weights.shape} does not match model weights shape {self.kernel_linear.weight.shape}."
+                )
+            self.kernel_linear.weight.data.copy_(init_weights)
+            if fit_intercept and self.kernel_linear.bias is not None:
+                nn.init.zeros_(self.kernel_linear.bias)
         self.init_weights = self.kernel_linear.weight.detach().clone()
         self.init_bias = (
             self.kernel_linear.bias.detach().clone() if fit_intercept else None
         )
-        self.kernel_function = kernel_function
+
+        self.kernel = kernel
+        if isinstance(self.kernel, Tensor):
+            # Ensure kernel is a square matrix
+            assert self.kernel.shape[0] == self.kernel.shape[1], (
+                "Kernel must be square."
+            )
+            # warning
+            import warnings
+
+            warnings.warn("Using a precomputed kernel. batch inputs will be ignored.")
         self.loss_func = KernelRidgeMSELoss(
             ridge_lambda=self.hparams.ridge_lambda or 0.0
         )
@@ -254,12 +276,19 @@ class KernelRegression(pl.LightningModule):
         If return_K is False (default), returns y_hat.
         If True, returns (y_hat, K).
         """
-        K = self.kernel_function(x, x)
-        # ensure K is on the same device as the model
-        K = K.to(self.kernel_linear.weight.device)
-        y_hat = self.kernel_linear(K)
-        if return_K:
-            return y_hat, K
+        if isinstance(self.kernel, Tensor):
+            # Ensure kernel is on the same device as the model
+            self.kernel = self.kernel.to(self.kernel_linear.weight.device)
+            y_hat = self.kernel_linear(self.kernel)
+            if return_K:
+                return y_hat, self.kernel
+        elif callable(self.kernel):
+            K = self.kernel(x, x)
+            # ensure K is on the same device as the model
+            K = K.to(self.kernel_linear.weight.device)
+            y_hat = self.kernel_linear(K)
+            if return_K:
+                return y_hat, K
         return y_hat
 
     def training_step(self, batch: Tuple[Tensor, Tensor], batch_idx: int) -> Tensor:
