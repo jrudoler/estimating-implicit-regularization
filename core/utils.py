@@ -1,6 +1,6 @@
 import torch
 from torch import Tensor
-from typing import Optional
+from typing import Optional, Literal
 import warnings
 
 
@@ -143,3 +143,25 @@ def rbf_kernel_torch(
         # add a tiny diagonal bump so all eigenvalues ≥ 0
         K = K + eps * torch.eye(K.size(0), device=K.device, dtype=K.dtype)
     return K
+
+
+def orthogonal_rows(n: int, d: int, device: str = "cpu") -> Tensor:
+    """
+    Returns X ∈ R^{n×d} with orthonormal rows if n ≤ d,
+    otherwise n near-orthogonal rows by block-stacking.
+    """
+    if n <= d:
+        G = torch.randn(d, n, device=device)  # QR on (d×n)
+        Q, _ = torch.linalg.qr(G, mode="reduced")  # Q: (d×n), orthonormal columns
+        return Q.T  # (n×d), orthonormal rows
+    # n > d: stack multiple near-orthogonal blocks and renormalize
+    blocks = []
+    remaining = n
+    while remaining > 0:
+        k = min(remaining, d)
+        B = orthogonal_rows(k, d, device)
+        blocks.append(B)
+        remaining -= k
+    X = torch.vstack(blocks)
+    X = X / (X.norm(dim=1, keepdim=True) + 1e-12)
+    return X

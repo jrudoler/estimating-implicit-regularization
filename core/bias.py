@@ -1,4 +1,7 @@
+from __future__ import annotations
+import math
 import torch
+from torch import Tensor
 import torch.nn as nn
 import torch.nn.functional as F
 import lightning.pytorch as pl
@@ -108,34 +111,75 @@ class DiagMatrixRidgeBias(nn.Module):
         return loss
 
 
-class PSDMatrixRidgeBias(nn.Module):
+class DiagPSDMatrixRidgeBias(nn.Module):
     """
-    Learns a PSD matrix Q of shape (dim, dim) by
-    parameterizing a lower-triangular matrix L and returning
-    Q = L @ L.T.
+    A numerically stable, efficient, and guaranteed-PSD bias model.
+
+    - Efficient: Avoids creating a large diagonal matrix in memory.
+    - PSD: Enforces positivity on the diagonal of Q via re-parameterization.
     """
 
-    def __init__(self, dim: int):
+    def __init__(self, dim: int, Q_init_diag: torch.Tensor = None):
         super().__init__()
         self.dim = dim
-        # We'll store the unconstrained lower-triangular entries
-        # Initialize with small random values
-        L_init = 0.01 * torch.randn(dim, dim)
-        # We'll force it to be lower-triangular in the forward pass
-        self.L_unconstrained = nn.Parameter(L_init, requires_grad=True)
 
-    def forward(self, flattened_params: torch.Tensor, **kwargs):
+        if Q_init_diag is not None:
+            # If initializing with a Q, store its log.
+            # Add a small epsilon for numerical stability if some values are zero.
+            initial_values = torch.log(Q_init_diag + 1e-8)
+        else:
+            # Start with a default of zeros (which corresponds to Q_diag of 1s).
+            initial_values = torch.zeros(dim)
+
+        # The learnable parameter is the LOG of the diagonal of Q.
+        self.log_Q_diag = nn.Parameter(initial_values)
+
+    def forward(self, flattened_params: torch.Tensor, **kwargs) -> torch.Tensor:
+        """
+        Efficiently computes the quadratic form βᵀQβ.
+        """
         if flattened_params.shape != (self.dim,):
             raise ValueError(
-                f"flattened_params should be of shape ({self.dim},), "
-                f"but got {flattened_params.shape}"
+                f"Expected flattened_params of shape ({self.dim},), but got {flattened_params.shape}"
             )
-        # Create L as strictly lower-triangular or lower-triangular with diagonal
-        L = torch.tril(self.L_unconstrained)
-        # Then Q = L L^T is guaranteed symmetric PSD
-        Q = L @ L.T
-        loss = flattened_params @ Q @ flattened_params
+
+        # 1. Get the positive diagonal of Q by exponentiating the learned log-diagonal.
+        # This is the re-parameterization trick that guarantees Q is positive definite.
+        Q_diag = torch.exp(self.log_Q_diag)
+
+        # 2. Compute the loss efficiently.
+        # This is equivalent to `βᵀ * diag(Q_diag) * β` but avoids creating a huge matrix.
+        loss = torch.sum(Q_diag * flattened_params.pow(2))
+
         return loss
+
+    # """
+    # Learns a PSD matrix Q of shape (dim, dim) by
+    # parameterizing a lower-triangular matrix L and returning
+    # Q = L @ L.T.
+    # """
+
+    # def __init__(self, dim: int):
+    #     super().__init__()
+    #     self.dim = dim
+    #     # We'll store the unconstrained lower-triangular entries
+    #     # Initialize with small random values
+    #     L_init = 0.01 * torch.randn(dim, dim)
+    #     # We'll force it to be lower-triangular in the forward pass
+    #     self.L_unconstrained = nn.Parameter(L_init, requires_grad=True)
+
+    # def forward(self, flattened_params: torch.Tensor, **kwargs):
+    #     if flattened_params.shape != (self.dim,):
+    #         raise ValueError(
+    #             f"flattened_params should be of shape ({self.dim},), "
+    #             f"but got {flattened_params.shape}"
+    #         )
+    #     # Create L as strictly lower-triangular or lower-triangular with diagonal
+    #     L = torch.tril(self.L_unconstrained)
+    #     # Then Q = L L^T is guaranteed symmetric PSD
+    #     Q = L @ L.T
+    #     loss = flattened_params @ Q @ flattened_params
+    #     return loss
 
 
 class ElasticNet(nn.Module):
@@ -144,22 +188,61 @@ class ElasticNet(nn.Module):
         lambda_1_init: float = 1.0,
         lambda_2_init: float = 1.0,
         smooth: float = 0.1,
+        eps: float = 0.0,  # optional floor to avoid exact 0 on logs/plots
     ) -> None:
         super().__init__()
-        self.lambda_1 = nn.Parameter(torch.tensor([0.5]))  # Initialize parameters
-        self.lambda_2 = nn.Parameter(torch.tensor([0.5]))  # Initialize parameters
-        self.smooth = smooth  # smoothness parameter, not learnable
+        # Trainable unconstrained parameters (log-space)
+        self.theta_1 = nn.Parameter(torch.tensor(math.log(max(lambda_1_init, 1e-12))))
+        self.theta_2 = nn.Parameter(torch.tensor(math.log(max(lambda_2_init, 1e-12))))
+        self.smooth = float(smooth)
+        self.eps = float(eps)
 
-    def forward(self, flattened_params, **kwargs):
-        # flattened_params = torch.cat([p.view(-1) for p in params.values()])
-        l1_penalty = self.lambda_1 * torch.nn.functional.smooth_l1_loss(
+    # Positive lambdas exposed as properties
+    @property
+    def lambda_1(self) -> Tensor:
+        return torch.exp(self.theta_1) + self.eps
+
+    @property
+    def lambda_2(self) -> Tensor:
+        return torch.exp(self.theta_2) + self.eps
+
+    def lambdas(self) -> tuple[Tensor, Tensor]:
+        return self.lambda_1, self.lambda_2
+
+    def forward(self, flattened_params: Tensor, **kwargs) -> Tensor:
+        lam1, lam2 = self.lambdas()  # strictly > 0
+        l1_penalty = lam1 * F.smooth_l1_loss(
             flattened_params,
             torch.zeros_like(flattened_params),
             beta=self.smooth,
             reduction="sum",
         )
-        l2_penalty = self.lambda_2 * torch.sum(flattened_params**2)
+        l2_penalty = lam2 * torch.sum(flattened_params**2)
         return l1_penalty + l2_penalty
+
+
+# class ElasticNet(nn.Module):
+#     def __init__(
+#         self,
+#         lambda_1_init: float = 1.0,
+#         lambda_2_init: float = 1.0,
+#         smooth: float = 0.1,
+#     ) -> None:
+#         super().__init__()
+#         self.lambda_1 = nn.Parameter(torch.tensor([0.5]))  # Initialize parameters
+#         self.lambda_2 = nn.Parameter(torch.tensor([0.5]))  # Initialize parameters
+#         self.smooth = smooth  # smoothness parameter, not learnable
+
+#     def forward(self, flattened_params, **kwargs):
+#         # flattened_params = torch.cat([p.view(-1) for p in params.values()])
+#         l1_penalty = self.lambda_1 * torch.nn.functional.smooth_l1_loss(
+#             flattened_params,
+#             torch.zeros_like(flattened_params),
+#             beta=self.smooth,
+#             reduction="sum",
+#         )
+#         l2_penalty = self.lambda_2 * torch.sum(flattened_params**2)
+#         return l1_penalty + l2_penalty
 
 
 # class DropoutBias(nn.Module):

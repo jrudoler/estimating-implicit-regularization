@@ -1,11 +1,12 @@
 import torch
+import torch.nn as nn
 import wandb
 from torch.utils.data import TensorDataset, DataLoader
 from lightning.pytorch import Trainer
 from lightning.pytorch.loggers import WandbLogger
 from lightning.pytorch.callbacks import EarlyStopping
 from core.bias import ElasticNet
-from core.models import LinearNetwork
+from core.models import LinearNetwork, NonLinearNetwork
 from core.estimators import BiasWithMSE
 
 
@@ -39,7 +40,7 @@ train_loader = DataLoader(train_dataset, batch_size=32, shuffle=True, drop_last=
 test_loader = DataLoader(test_dataset, batch_size=32, shuffle=False, drop_last=True)
 
 # ----- STAGE 1: TRAIN LINEAR NETWORK -----
-model = LinearNetwork(
+model = NonLinearNetwork(
     input_dim,
     output_dim,
     hidden_dim,

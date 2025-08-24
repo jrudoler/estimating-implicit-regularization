@@ -175,6 +175,82 @@ class LinearNetwork(pl.LightningModule):
         return torch.optim.Adam(self.parameters(), lr=self.hparams.lr)
 
 
+class NonLinearNetwork(pl.LightningModule):
+    """Same as LinearNetwork but with ReLU activation"""
+
+    def __init__(
+        self,
+        in_features,
+        out_features,
+        hidden_features,
+        l1_lambda=0.0,
+        l2_lambda=0.0,
+        l1_smooth=0.1,
+        lr=1e-2,
+    ):
+        """
+        Args:
+            in_features: Input dimension
+            out_features: Output dimension
+            hidden_features: Hidden layer dimension
+            l1_lambda: L1 regularization strength
+            l2_lambda: L2 regularization strength
+            l1_smooth: L1 regularization smoothness
+        """
+        super().__init__()
+        self.save_hyperparameters()
+        self.net = nn.Sequential(
+            nn.Linear(in_features, hidden_features),
+            nn.ReLU(),
+            nn.Linear(hidden_features, out_features),
+        )
+        self.loss_func = nn.MSELoss()
+
+    def forward(self, x):
+        return self.net(x)
+
+    def training_step(self, batch, batch_idx):
+        x, y = batch
+        y_hat = self(x)
+        loss = self.loss_func(y_hat, y)
+        # Add L1 and L2 regularization
+        loss += self.weight_regularization()
+        self.log("train/loss", loss)
+        return loss
+
+    def validation_step(self, batch, batch_idx):
+        x, y = batch
+        y_hat = self(x)
+        loss = self.loss_func(y_hat, y)
+        # Add L1 and L2 regularization
+        loss += self.weight_regularization()
+        # Log the loss
+        self.log("val/loss", loss)
+        return loss
+
+    def weight_regularization(self):
+        """
+        Compute the L1 and L2 regularization terms.
+        """
+        l1_reg = 0.0
+        l2_reg = 0.0
+        # copy and flatten the parameters
+        flattened_params = torch.cat([param.view(-1) for param in self.parameters()])
+        # L1 and L2 regularization
+        # smooth the L1 regularization
+        l1_reg = torch.nn.functional.smooth_l1_loss(
+            flattened_params,
+            torch.zeros_like(flattened_params),
+            beta=self.hparams.l1_smooth,
+            reduction="sum",
+        )
+        l2_reg = torch.sum(flattened_params**2)
+        return self.hparams.l1_lambda * l1_reg + self.hparams.l2_lambda * l2_reg
+
+    def configure_optimizers(self):
+        return torch.optim.Adam(self.parameters(), lr=self.hparams.lr)
+
+
 class LinearRegression(LightningModule):
     def __init__(
         self,
