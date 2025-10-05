@@ -66,7 +66,7 @@ def set_seed(seed: int) -> None:
 
 @dataclass(slots=True)
 class DatasetConfig:
-    n_samples: int = 5000
+    n_samples: int = 10000
     input_dim: int = 10
     noise_std: float = 0.5
     function_class: str = "linear"

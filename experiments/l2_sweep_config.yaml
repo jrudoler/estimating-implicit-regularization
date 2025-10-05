@@ -9,21 +9,21 @@ parameters:
   function_class:
     values: [linear, sine, polynomial]
   noise_std:
-    values: [0.1, 0.5]
+    values: [0.1]
   seed:
     values: [42]
   batch_size:
     values: [64]
   max_epochs_model:
-    values: [500]
+    values: [None]
   max_epochs_bias:
-    values: [2000]
+    values: [None]
   lr_model:
     values: [0.001]
   lr_bias:
     values: [0.01]
   patience_model:
-    values: [30]
+    values: [100]
   patience_bias:
-    values: [60]
+    values: [100]
 program: experiments/l2_train_and_recover.py
