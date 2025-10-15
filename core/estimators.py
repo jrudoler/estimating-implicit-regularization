@@ -3,11 +3,13 @@ import torch.nn as nn
 import torch.nn.functional as F
 import lightning.pytorch as pl
 from abc import abstractmethod
-from torch.func import functional_call, vjp
+from torch.func import functional_call, grad, jvp, vjp
 from torch.optim import Optimizer
 from typing import Dict, Callable, Tuple, Any, Set
-from collections import deque
+from collections import deque, OrderedDict
 import inspect
+
+from .bias import GradientSquaredPenaltyScale
 
 
 class InductiveBiasEstimator(pl.LightningModule):
@@ -187,3 +189,84 @@ class BiasWithAutodiffLoss(InductiveBiasEstimator):
             loss, predictions, retain_graph=True, create_graph=True
         )[0]
         return per_sample_grad
+
+
+class GradientSquaredPenaltyEstimator(BiasWithMSE):
+    def __init__(
+        self,
+        predictive_model: nn.Module,
+        predictive_loss_fn: Callable[[torch.Tensor, torch.Tensor], torch.Tensor],
+        bias_model: nn.Module = None,
+        grad_match_loss_fn: Callable[..., torch.Tensor] = nn.functional.mse_loss,
+        optimizer_cls: Callable[..., Optimizer] = torch.optim.Adam,
+        lr: float = 1e-3,
+    ) -> None:
+        bias_module = bias_model or GradientSquaredPenaltyScale()
+        super().__init__(
+            predictive_model=predictive_model,
+            # predictive_loss_fn=predictive_loss_fn,
+            bias_model=bias_module,
+            grad_match_loss_fn=grad_match_loss_fn,
+            optimizer_cls=optimizer_cls,
+            lr=lr,
+        )
+        self.predictive_loss_fn = predictive_loss_fn
+        self._parameter_layout = self._build_parameter_layout()
+        self._num_params = sum(p.numel() for p in self.predictive_model.parameters())
+        self.predictive_model.eval()
+        self.predictive_model.requires_grad_(False)
+
+    def _build_parameter_layout(self) -> Tuple[Tuple[str, torch.Size, slice], ...]:
+        layout = []
+        offset = 0
+        for name, param in self.predictive_model.named_parameters():
+            numel = param.numel()
+            layout.append((name, param.shape, slice(offset, offset + numel)))
+            offset += numel
+        return tuple(layout)
+
+    def _vector_to_parameters(self, vector: torch.Tensor) -> OrderedDict:
+        params = OrderedDict()
+        for name, shape, sl in self._parameter_layout:
+            params[name] = vector[sl].view(shape)
+        return params
+
+    def training_step(
+        self, batch: Tuple[torch.Tensor, torch.Tensor], batch_idx: int
+    ) -> torch.Tensor:
+        X, y = batch
+        if y.ndim == 1:
+            y = y.view(-1, 1)
+
+        device = self.device
+        flat_params = torch.cat(
+            [p.reshape(-1) for _, p in self.predictive_model.named_parameters()]
+        ).to(device)
+        flat_params = flat_params.detach().clone()
+
+        def loss_with_flat(params_vector: torch.Tensor) -> torch.Tensor:
+            param_dict = self._vector_to_parameters(params_vector)
+            preds = functional_call(self.predictive_model, param_dict, (X,))
+            return self.predictive_loss_fn(preds, y)
+
+        grad_fn = grad(loss_with_flat)
+        grad_loss = grad_fn(flat_params)
+        true_grad = grad_loss
+
+        _, vjp_fn = vjp(grad_fn, flat_params)
+        hessian_vector = vjp_fn(grad_loss)[0]
+
+        lambda_scale = self.bias_model()
+        scale_factor = (2.0 * lambda_scale) / float(self._num_params)
+        predicted_grad = scale_factor * hessian_vector
+
+        loss_value = self.grad_match_loss_fn(
+            predicted_grad, true_grad, reduction="mean"
+        )
+
+        self.log("train/loss", loss_value, prog_bar=False)
+        self.log("bias/lambda", lambda_scale.detach(), prog_bar=False)
+        self.log("stats/grad_norm", grad_loss.detach().norm(), prog_bar=False)
+        self.log("stats/hvp_norm", hessian_vector.detach().norm(), prog_bar=False)
+
+        return loss_value

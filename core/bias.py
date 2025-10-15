@@ -11,6 +11,30 @@ from torch.optim import Optimizer
 from typing import Dict, Callable, Tuple, Any, Optional
 
 
+class GradientSquaredPenaltyScale(nn.Module):
+    """Learns a scalar multiplier for squared gradient penalties."""
+
+    def __init__(self, lambda_init: float = 1.0, enforce_positive: bool = True) -> None:
+        super().__init__()
+        initial_value = float(lambda_init)
+        if enforce_positive:
+            safe_value = max(initial_value, 1e-8)
+            # Store log(lambda) so the forward pass always returns a positive value.
+            self.lambda_param = nn.Parameter(torch.log(torch.tensor(safe_value)))
+        else:
+            self.lambda_param = nn.Parameter(torch.tensor(initial_value))
+        self.enforce_positive = enforce_positive
+
+    def forward(self, grad_vector: Optional[Tensor] = None) -> Tensor:
+        scale = (
+            torch.exp(self.lambda_param) if self.enforce_positive else self.lambda_param
+        )
+        if grad_vector is None:
+            return scale
+        penalty = torch.sum(grad_vector.pow(2))
+        return scale * penalty
+
+
 # GOAL: implement a class of models that represent a parametrization of the inductive
 # bias of the model. This class should be able to be used with any pretrained model with
 # known activations / weights.
