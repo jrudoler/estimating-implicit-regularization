@@ -200,6 +200,7 @@ class GradientSquaredPenaltyEstimator(BiasWithMSE):
         grad_match_loss_fn: Callable[..., torch.Tensor] = nn.functional.mse_loss,
         optimizer_cls: Callable[..., Optimizer] = torch.optim.Adam,
         lr: float = 1e-3,
+        gd_step_size: float = 0.05,
     ) -> None:
         bias_module = bias_model or GradientSquaredPenaltyScale()
         super().__init__(
@@ -215,6 +216,7 @@ class GradientSquaredPenaltyEstimator(BiasWithMSE):
         self._num_params = sum(p.numel() for p in self.predictive_model.parameters())
         self.predictive_model.eval()
         self.predictive_model.requires_grad_(False)
+        self.gd_step_size = gd_step_size
 
     def _build_parameter_layout(self) -> Tuple[Tuple[str, torch.Size, slice], ...]:
         layout = []
@@ -249,24 +251,31 @@ class GradientSquaredPenaltyEstimator(BiasWithMSE):
             preds = functional_call(self.predictive_model, param_dict, (X,))
             return self.predictive_loss_fn(preds, y)
 
-        grad_fn = grad(loss_with_flat)
-        grad_loss = grad_fn(flat_params)
-        true_grad = grad_loss
+        jacobian_loss_fn = grad(loss_with_flat)
+        loss_gradient_vector = jacobian_loss_fn(flat_params)
 
-        _, vjp_fn = vjp(grad_fn, flat_params)
-        hessian_vector = vjp_fn(grad_loss)[0]
+        _, hvp_fn = vjp(jacobian_loss_fn, flat_params)
+        hessian_times_grad = hvp_fn(loss_gradient_vector)[0]
 
-        lambda_scale = self.bias_model()
-        scale_factor = (2.0 * lambda_scale) / float(self._num_params)
-        predicted_grad = scale_factor * hessian_vector
+        lambda_scale = self.bias_model()  # get the learned lambda value
+        # derivative of lambda/m sum( g_i^2 ) w.r.t. params is 2*lambda/m * H * g
+        predicted_grad = (
+            (2.0 * lambda_scale) / float(self._num_params) * hessian_times_grad
+        )
+
+        # Residual from a single GD step: (-Δw / h) - g ≈ (h / 2) * H g
+        residual_target = 0.5 * self.gd_step_size * hessian_times_grad
 
         loss_value = self.grad_match_loss_fn(
-            predicted_grad, true_grad, reduction="mean"
+            predicted_grad, residual_target, reduction="mean"
         )
 
         self.log("train/loss", loss_value, prog_bar=False)
         self.log("bias/lambda", lambda_scale.detach(), prog_bar=False)
-        self.log("stats/grad_norm", grad_loss.detach().norm(), prog_bar=False)
-        self.log("stats/hvp_norm", hessian_vector.detach().norm(), prog_bar=False)
+        self.log(
+            "stats/grad_norm", loss_gradient_vector.detach().norm(), prog_bar=False
+        )
+        self.log("stats/hvp_norm", hessian_times_grad.detach().norm(), prog_bar=False)
+        self.log("stats/residual_norm", residual_target.detach().norm(), prog_bar=False)
 
         return loss_value

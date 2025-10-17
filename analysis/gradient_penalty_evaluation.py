@@ -351,24 +351,6 @@ def main() -> None:
         theoretical_lambda,
     )
 
-    lambda_ls = float("nan")
-    rel_err_ls = float("nan")
-    if trajectory_stats["hvps"]:
-        hvp_stack = torch.stack(trajectory_stats["hvps"]).to(torch.float64)
-        residual_stack = torch.stack(trajectory_stats["residuals"]).to(torch.float64)
-        numerator = torch.sum(hvp_stack * residual_stack).item()
-        denominator = torch.sum(hvp_stack * hvp_stack).item() + 1e-12
-        lambda_ls = (num_params / 2.0) * (numerator / denominator)
-        LOGGER.info("Trajectory regression lambda: %.6f", lambda_ls)
-        rel_err_ls = abs(lambda_ls - theoretical_lambda) / (
-            abs(theoretical_lambda) + 1e-12
-        )
-        LOGGER.info("Trajectory regression relative error: %.4f%%", rel_err_ls * 100.0)
-    else:
-        LOGGER.warning(
-            "No trajectory statistics collected; skipping regression estimate."
-        )
-
     bias_model = GradientSquaredPenaltyScale(
         lambda_init=args.lambda_init,
         enforce_positive=args.enforce_positive,
@@ -379,6 +361,7 @@ def main() -> None:
         predictive_loss_fn=loss_fn,
         bias_model=bias_model,
         lr=args.bias_lr,
+        gd_step_size=args.gd_step_size,
     )
 
     train_estimator(estimator, dataloader, args.max_epochs)
@@ -386,13 +369,11 @@ def main() -> None:
     with torch.no_grad():
         learned_lambda = estimator.bias_model().detach().cpu().item()
     LOGGER.info("Learned lambda: %.6f", learned_lambda)
-    if not math.isnan(lambda_ls):
-        LOGGER.info(
-            "Lambda comparison | trajectory LS: %.6f | gradient-matching: %.6f | theory: %.6f",
-            lambda_ls,
-            learned_lambda,
-            theoretical_lambda,
-        )
+    LOGGER.info(
+        "Lambda comparison | gradient-matching: %.6f | theory: %.6f",
+        learned_lambda,
+        theoretical_lambda,
+    )
 
     hvp_norm = flat_hvp.norm().item()
     grad_norm = flat_grad.norm().item()
@@ -410,11 +391,9 @@ def main() -> None:
         payload = {
             "lambda_theoretical": torch.tensor([theoretical_lambda]),
             "lambda_estimated": torch.tensor([learned_lambda]),
-            "lambda_trajectory": torch.tensor([lambda_ls]),
             "gradient": flat_grad,
             "hessian_grad": flat_hvp,
             "relative_error": torch.tensor([rel_error]),
-            "trajectory_relative_error": torch.tensor([rel_err_ls]),
             "config": vars(args),
         }
         torch.save(payload, args.save)
