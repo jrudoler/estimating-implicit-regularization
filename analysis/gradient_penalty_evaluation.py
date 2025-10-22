@@ -9,14 +9,16 @@ import math
 import sys
 from collections import OrderedDict
 from pathlib import Path
-from typing import Tuple
+from typing import Sequence, Tuple
 
 import torch
 from torch import nn
-from torch.utils.data import DataLoader, TensorDataset
+from torch.utils.data import DataLoader, TensorDataset, Subset
 from torch.func import functional_call
+from torchvision import datasets, transforms
 
 from lightning.pytorch import Trainer
+from lightning.pytorch.loggers import WandbLogger
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
@@ -97,6 +99,46 @@ def parse_args() -> argparse.Namespace:
         "--seed", type=int, default=17, help="Random seed for reproducibility."
     )
     parser.add_argument(
+        "--dataset",
+        type=str,
+        choices=("synthetic", "mnist"),
+        default="synthetic",
+        help="Dataset to use for the predictive model experiments.",
+    )
+    parser.add_argument(
+        "--hidden-dims",
+        type=int,
+        nargs="*",
+        default=[256, 128],
+        help="Hidden layer sizes for the MLP predictive model (MNIST only).",
+    )
+    parser.add_argument(
+        "--num-classes",
+        type=int,
+        default=None,
+        help="Number of classes for classification tasks (defaults to 10 for MNIST).",
+    )
+    parser.add_argument(
+        "--mnist-root",
+        type=Path,
+        default=REPO_ROOT / "MNIST",
+        help="Directory containing the MNIST dataset.",
+    )
+    parser.add_argument(
+        "--mnist-max-samples",
+        type=int,
+        default=None,
+        help=(
+            "Optional cap on the number of MNIST samples to use for the experiment. "
+            "If not provided, uses the full training set."
+        ),
+    )
+    parser.add_argument(
+        "--mnist-download",
+        action="store_true",
+        help="Download MNIST if it is not already present at --mnist-root.",
+    )
+    parser.add_argument(
         "--save",
         type=Path,
         default=None,
@@ -159,11 +201,80 @@ def make_dataset(
     return TensorDataset(features, targets)
 
 
-def initialise_predictive_model(input_dim: int, weight_value: float) -> nn.Module:
-    model = nn.Linear(input_dim, 1, bias=False)
-    with torch.no_grad():
-        model.weight.fill_(weight_value)
-    return model
+def make_mnist_dataset(
+    root: Path,
+    max_samples: int | None,
+    download: bool,
+    seed: int,
+) -> TensorDataset:
+    """
+    Load (and optionally subsample) the MNIST training set.
+
+    Args:
+        root: Directory containing the MNIST data files.
+        max_samples: Optional cap on the number of samples to retain.
+        download: Whether to download MNIST if it is missing.
+        seed: Random seed used when sub-sampling.
+    Returns:
+        A TensorDataset of flattened images and integer labels.
+    """
+    transform = transforms.Compose(
+        [
+            transforms.ToTensor(),
+            transforms.Normalize((0.1307,), (0.3081,)),
+        ]
+    )
+    dataset = datasets.MNIST(
+        root=root,
+        train=True,
+        download=download,
+        transform=transform,
+    )
+
+    total = len(dataset)
+    if max_samples is not None and 0 < max_samples < total:
+        generator = torch.Generator().manual_seed(seed)
+        indices = torch.randperm(total, generator=generator)[:max_samples].tolist()
+        dataset = Subset(dataset, indices)
+        total = len(dataset)
+
+    loader = DataLoader(dataset, batch_size=min(2048, total))
+    features_list: list[torch.Tensor] = []
+    target_list: list[torch.Tensor] = []
+    for images, labels in loader:
+        features_list.append(images.view(images.size(0), -1))
+        target_list.append(labels)
+
+    features = torch.cat(features_list, dim=0)
+    targets = torch.cat(target_list, dim=0).long()
+    LOGGER.info("Loaded MNIST dataset with %d samples", features.size(0))
+    return TensorDataset(features, targets)
+
+
+def initialise_predictive_model(
+    dataset_type: str,
+    input_dim: int,
+    weight_value: float,
+    hidden_dims: Sequence[int],
+    num_classes: int,
+) -> nn.Module:
+    if dataset_type == "synthetic":
+        model = nn.Linear(input_dim, 1, bias=False)
+        with torch.no_grad():
+            model.weight.fill_(weight_value)
+        return model
+
+    if dataset_type == "mnist":
+        layers: list[nn.Module] = []
+        prev_dim = input_dim
+        for hidden_dim in hidden_dims:
+            layers.append(nn.Linear(prev_dim, hidden_dim, bias=False))
+            layers.append(nn.ReLU())
+            prev_dim = hidden_dim
+        layers.append(nn.Linear(prev_dim, num_classes))
+        return nn.Sequential(*layers)
+
+    raise ValueError(f"Unknown dataset type: {dataset_type}")
 
 
 def flatten_parameters(model: nn.Module) -> torch.Tensor:
@@ -221,10 +332,10 @@ def train_predictive_model(
     dataset: TensorDataset,
     step_size: float,
     num_steps: int,
+    loss_fn: nn.Module,
 ) -> dict:
     features, targets = dataset.tensors
     optimizer = torch.optim.SGD(model.parameters(), lr=step_size)
-    loss_fn = nn.MSELoss(reduction="mean")
 
     trajectory: dict[str, list[torch.Tensor]] = {
         "grads": [],
@@ -284,14 +395,20 @@ def train_estimator(
     else:
         accelerator, devices = "cpu", 1
     LOGGER.info("Training estimator on %s", accelerator.upper())
+    wandb_logger = WandbLogger(
+        project="inductive-bias",
+        name="gradient_penalty_stepsize",
+        log_model=False,
+    )
     trainer = Trainer(
         max_epochs=max_epochs,
-        logger=False,
+        logger=wandb_logger,
         enable_checkpointing=False,
         enable_model_summary=False,
         enable_progress_bar=False,
         accelerator=accelerator,
         devices=devices,
+        log_every_n_steps=1,
     )
     trainer.fit(estimator, train_dataloaders=dataloader)
 
@@ -301,21 +418,47 @@ def main() -> None:
     configure_logging(args.log_level)
     torch.manual_seed(args.seed)
 
-    dataset = make_dataset(
-        n_samples=args.samples,
-        input_dim=args.input_dim,
-        true_weight=args.true_weight,
-        noise_std=args.noise_std,
-        seed=args.seed,
-    )
+    if args.dataset == "synthetic":
+        dataset = make_dataset(
+            n_samples=args.samples,
+            input_dim=args.input_dim,
+            true_weight=args.true_weight,
+            noise_std=args.noise_std,
+            seed=args.seed,
+        )
+        loss_fn: nn.Module = nn.MSELoss(reduction="mean")
+        hidden_dims: Sequence[int] = ()
+        num_classes = 1
+    else:
+        if args.num_classes is None:
+            args.num_classes = 10
+        dataset = make_mnist_dataset(
+            root=args.mnist_root,
+            max_samples=args.mnist_max_samples,
+            download=args.mnist_download,
+            seed=args.seed,
+        )
+        inferred_input_dim = dataset.tensors[0].shape[1]
+        if args.input_dim != inferred_input_dim:
+            LOGGER.info(
+                "Overriding input_dim=%d with inferred MNIST dimension %d",
+                args.input_dim,
+                inferred_input_dim,
+            )
+            args.input_dim = inferred_input_dim
+        hidden_dims = tuple(args.hidden_dims) if args.hidden_dims else (256, 128)
+        loss_fn = nn.CrossEntropyLoss()
+        num_classes = args.num_classes
 
     predictive_model = initialise_predictive_model(
+        dataset_type=args.dataset,
         input_dim=args.input_dim,
         weight_value=args.model_weight,
+        hidden_dims=hidden_dims,
+        num_classes=num_classes,
     )
-    LOGGER.info(
-        "Initial predictive weights: %s", predictive_model.weight.detach().view(-1)
-    )
+    initial_param_norm = flatten_parameters(predictive_model).norm().item()
+    LOGGER.info("Initial predictive parameter norm: %.6f", initial_param_norm)
 
     LOGGER.info(
         "Training predictive model with step size %.5f for %d steps",
@@ -327,13 +470,12 @@ def main() -> None:
         dataset=dataset,
         step_size=args.gd_step_size,
         num_steps=args.predictive_steps,
+        loss_fn=loss_fn,
     )
-    LOGGER.info(
-        "Trained predictive weights: %s", predictive_model.weight.detach().view(-1)
-    )
+    final_param_norm = flatten_parameters(predictive_model).norm().item()
+    LOGGER.info("Trained predictive parameter norm: %.6f", final_param_norm)
 
     dataloader = DataLoader(dataset, batch_size=args.batch_size, shuffle=True)
-    loss_fn = nn.MSELoss(reduction="mean")
 
     flat_grad, flat_hvp = collect_gradients(
         predictive_model=predictive_model,

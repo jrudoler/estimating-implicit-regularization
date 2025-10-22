@@ -237,8 +237,10 @@ class GradientSquaredPenaltyEstimator(BiasWithMSE):
         self, batch: Tuple[torch.Tensor, torch.Tensor], batch_idx: int
     ) -> torch.Tensor:
         X, y = batch
-        if y.ndim == 1:
-            y = y.view(-1, 1)
+        if y.dtype.is_floating_point:
+            y_for_loss = y.view(-1, 1) if y.ndim == 1 else y
+        else:
+            y_for_loss = y.view(-1)
 
         device = self.device
         flat_params = torch.cat(
@@ -249,7 +251,7 @@ class GradientSquaredPenaltyEstimator(BiasWithMSE):
         def loss_with_flat(params_vector: torch.Tensor) -> torch.Tensor:
             param_dict = self._vector_to_parameters(params_vector)
             preds = functional_call(self.predictive_model, param_dict, (X,))
-            return self.predictive_loss_fn(preds, y)
+            return self.predictive_loss_fn(preds, y_for_loss)
 
         jacobian_loss_fn = grad(loss_with_flat)
         loss_gradient_vector = jacobian_loss_fn(flat_params)
