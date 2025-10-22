@@ -259,11 +259,14 @@ class GradientSquaredPenaltyEstimator(BiasWithMSE):
         _, hvp_fn = vjp(jacobian_loss_fn, flat_params)
         hessian_times_grad = hvp_fn(loss_gradient_vector)[0]
 
-        lambda_scale = self.bias_model()  # get the learned lambda value
         # derivative of lambda/m sum( g_i^2 ) w.r.t. params is 2*lambda/m * H * g
-        predicted_grad = (
-            (2.0 * lambda_scale) / float(self._num_params) * hessian_times_grad
-        )
+        # we learn lambda/m directly and multiply by num_params to get lambda
+        # this way we maintain scale invariance w.r.t. model size
+        # otherwise, for large models, the gradients wrt lambda are suppressed by the 1/m factor
+        lambda_per_param = self.bias_model()
+        predicted_grad = (2.0 * lambda_per_param) * hessian_times_grad
+
+        lambda_ = lambda_per_param * self._num_params
 
         # Residual from a single GD step: (-Δw / h) - g ≈ (h / 2) * H g
         residual_target = 0.5 * self.gd_step_size * hessian_times_grad
@@ -272,8 +275,8 @@ class GradientSquaredPenaltyEstimator(BiasWithMSE):
             predicted_grad, residual_target, reduction="mean"
         )
 
-        self.log("train/loss", loss_value, prog_bar=False)
-        self.log("bias/lambda", lambda_scale.detach(), prog_bar=False)
+        self.log("train/loss", loss_value, prog_bar=True)
+        self.log("bias/lambda", lambda_.detach(), prog_bar=True)
         self.log(
             "stats/grad_norm", loss_gradient_vector.detach().norm(), prog_bar=False
         )

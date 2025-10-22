@@ -509,7 +509,8 @@ def main() -> None:
     train_estimator(estimator, dataloader, args.max_epochs)
 
     with torch.no_grad():
-        learned_lambda = estimator.bias_model().detach().cpu().item()
+        learned_lambda_per_param = estimator.bias_model().detach().cpu().item()
+        learned_lambda = learned_lambda_per_param * num_params
     LOGGER.info("Learned lambda: %.6f", learned_lambda)
     LOGGER.info(
         "Lambda comparison | gradient-matching: %.6f | theory: %.6f",
