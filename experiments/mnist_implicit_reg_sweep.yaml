@@ -12,4 +12,6 @@ parameters:
     values: [50]
   seed:
     values: [17]
+  wandb-project:
+    values: ["inductive-bias-experiments"]
 program: experiments/mnist_implicit_reg.py

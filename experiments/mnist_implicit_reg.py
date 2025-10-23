@@ -282,7 +282,7 @@ class MNISTImplicitDataModule(LightningDataModule):
             shuffle=True,
             num_workers=self.cfg.num_workers,
             pin_memory=True,
-            persistent_workers=self.cfg.num_workers > 0,
+            persistent_workers=False,
         )
 
     def val_dataloader(self) -> DataLoader:
@@ -294,7 +294,7 @@ class MNISTImplicitDataModule(LightningDataModule):
             shuffle=False,
             num_workers=self.cfg.num_workers,
             pin_memory=True,
-            persistent_workers=self.cfg.num_workers > 0,
+            persistent_workers=False,
         )
 
     def test_dataloader(self) -> DataLoader:
@@ -306,7 +306,7 @@ class MNISTImplicitDataModule(LightningDataModule):
             shuffle=False,
             num_workers=self.cfg.num_workers,
             pin_memory=True,
-            persistent_workers=self.cfg.num_workers > 0,
+            persistent_workers=False,
         )
 
     def train_eval_dataloader(self) -> DataLoader:
@@ -318,7 +318,7 @@ class MNISTImplicitDataModule(LightningDataModule):
             shuffle=False,
             num_workers=self.cfg.num_workers,
             pin_memory=True,
-            persistent_workers=self.cfg.num_workers > 0,
+            persistent_workers=False,
         )
 
 
