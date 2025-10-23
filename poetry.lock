@@ -1441,6 +1441,33 @@ strategies = ["bitsandbytes (>=0.45.2,<1.0)", "deepspeed (>=0.8.2,<=0.9.3)"]
 test = ["click (==8.1.7)", "cloudpickle (>=1.3,<3.0)", "coverage (==7.3.1)", "fastapi", "numpy (>=1.17.2,<2.0)", "onnx (>=1.12.0,<2.0)", "onnxruntime (>=1.12.0,<2.0)", "pandas (>1.0,<3.0)", "psutil (<6.0)", "pytest (==7.4.0)", "pytest-cov (==4.1.0)", "pytest-random-order (==1.1.0)", "pytest-rerunfailures (==12.0)", "pytest-timeout (==2.1.0)", "scikit-learn (>0.22.1,<2.0)", "tensorboard (>=2.9.1,<3.0)", "tensorboardX (>=2.2,<3.0)", "torchmetrics (>=0.7.0,<2.0)", "uvicorn"]
 
 [[package]]
+name = "lightning-lite"
+version = "1.8.6"
+description = ""
+optional = false
+python-versions = ">=3.7"
+files = [
+    {file = "lightning-lite-1.8.6.tar.gz", hash = "sha256:2236c612ac71c2677621edbf103868216109f8d121472211361b0b049a25e42c"},
+    {file = "lightning_lite-1.8.6-py3-none-any.whl", hash = "sha256:73cc62c79178704d71316acbcb8f71a58aefc35f58635932558ef1f0e51f088b"},
+]
+
+[package.dependencies]
+fsspec = {version = ">2021.06.0", extras = ["http"]}
+lightning-utilities = ">=0.3.0,<0.4.0 || >0.4.0"
+numpy = ">=1.17.2"
+packaging = ">=17.0"
+torch = ">=1.9.0"
+typing-extensions = ">=4.0.0"
+
+[package.extras]
+all = ["codecov (==2.1.12)", "coverage (==6.5.0)", "deepspeed (>=0.6.0)", "fairscale (>=0.4.5)", "pre-commit (==2.20.0)", "pytest (==7.2.0)", "pytest-cov (==4.0.0)"]
+deepspeed = ["deepspeed (>=0.6.0)"]
+dev = ["codecov (==2.1.12)", "coverage (==6.5.0)", "pre-commit (==2.20.0)", "pytest (==7.2.0)", "pytest-cov (==4.0.0)"]
+fairscale = ["fairscale (>=0.4.5)"]
+strategies = ["deepspeed (>=0.6.0)", "fairscale (>=0.4.5)"]
+test = ["codecov (==2.1.12)", "coverage (==6.5.0)", "pre-commit (==2.20.0)", "pytest (==7.2.0)", "pytest-cov (==4.0.0)"]
+
+[[package]]
 name = "lightning-utilities"
 version = "0.14.3"
 description = "Lightning toolbox for across the our ecosystem."
@@ -4526,4 +4553,4 @@ propcache = ">=0.2.1"
 [metadata]
 lock-version = "2.0"
 python-versions = "^3.12"
-content-hash = "c3a99b47a8212727fce384d4b6323aaba8ca16f5eefbc249df651a7f9265e236"
+content-hash = "9195474c3c1f706791a616c30f30658692de838f715c1291cc3fd8b518dd5fc7"

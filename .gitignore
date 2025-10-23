@@ -6,6 +6,10 @@ inductive-bias/*
 # logs
 logs/*
 
+# results and saved models
+results/*
+saved_models/*
+
 # python extras
 __pycache__/
 *.pyc

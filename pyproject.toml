@@ -27,6 +27,7 @@ nbformat = "^5.10.4"
 torchopt = "^0.7.3"
 optree = "^0.17.0"
 huggingface-hub = {extras = ["cli"], version = "^0.35.3"}
+lightning-lite = "^1.8.6"
 
 
 [build-system]
