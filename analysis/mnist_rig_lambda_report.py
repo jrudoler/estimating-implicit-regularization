@@ -332,6 +332,7 @@ def estimate_lambda(
     estimator_lr: float,
     batch_size: int,
     max_epochs: int,
+    num_params: int,
 ) -> float:
     loss_fn: nn.Module = nn.CrossEntropyLoss()
     estimator = GradientSquaredPenaltyEstimator(
@@ -345,7 +346,7 @@ def estimate_lambda(
         "max_epochs": max_epochs,
         "accelerator": "auto",
         "devices": 1,
-        "logger": False,
+        "logger": True,
         "enable_checkpointing": False,
         "enable_model_summary": False,
         "enable_progress_bar": False,
@@ -356,7 +357,6 @@ def estimate_lambda(
     trainer.fit(estimator, train_dataloaders=dataloader)
     with torch.no_grad():
         lambda_per_param = estimator.bias_model().detach().cpu().item()
-    num_params = sum(p.numel() for p in predictive_model.parameters() if p.requires_grad)
     return lambda_per_param * num_params
 
 
@@ -370,11 +370,14 @@ def compute_run_analysis(
     args: argparse.Namespace,
 ) -> RunAnalysis | None:
     logger = logging.getLogger(__name__)
+    logger.info("Loading checkpoint for run %s from %s", run_id, checkpoint_path)
     checkpoint_payload = checkpoint_payload or load_checkpoint_payload(checkpoint_path)
+    print(checkpoint_payload.keys())
     if not checkpoint_payload:
         return None
 
     state_dict = checkpoint_payload.get("state_dict")
+    print(state_dict)
     if state_dict is None:
         logger.error("Checkpoint %s is missing a 'state_dict' entry.", checkpoint_path)
         return None
@@ -388,6 +391,8 @@ def compute_run_analysis(
     module.requires_grad_(False)
     module.load_state_dict(state_dict)
     predictive_model = module.model
+    print(type(predictive_model))
+    print(sum(p.numel() for p in predictive_model.parameters()))
     predictive_model.eval()
     predictive_model.requires_grad_(False)
 
