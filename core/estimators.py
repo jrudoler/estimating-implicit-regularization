@@ -51,7 +51,7 @@ class InductiveBiasEstimator(pl.LightningModule):
         pass
 
     def training_step(
-        self, batch: Tuple[torch.Tensor, torch.Tensor], batch_idx: int
+        self, batch:  Tuple[torch.Tensor, torch.Tensor], batch_idx: int
     ) -> torch.Tensor:
         X, y = batch
         if y.ndim == 1:
@@ -191,7 +191,7 @@ class BiasWithAutodiffLoss(InductiveBiasEstimator):
         return per_sample_grad
 
 
-class GradientSquaredPenaltyEstimator(BiasWithMSE):
+class GradientSquaredPenaltyEstimator(InductiveBiasEstimator):
     def __init__(
         self,
         predictive_model: nn.Module,
@@ -256,6 +256,9 @@ class GradientSquaredPenaltyEstimator(BiasWithMSE):
         jacobian_loss_fn = grad(loss_with_flat)
         loss_gradient_vector = jacobian_loss_fn(flat_params)
 
+        # compute a weight update step
+        flat_params_delta = - self.gd_step_size * loss_gradient_vector
+
         _, hvp_fn = vjp(jacobian_loss_fn, flat_params)
         hessian_times_grad = hvp_fn(loss_gradient_vector)[0]
 
@@ -266,10 +269,12 @@ class GradientSquaredPenaltyEstimator(BiasWithMSE):
         lambda_per_param = self.bias_model()
         predicted_grad = (2.0 * lambda_per_param) * hessian_times_grad
 
+
         lambda_ = lambda_per_param * self._num_params
 
         # Residual from a single GD step: (-Δw / h) - g ≈ (h / 2) * H g
         residual_target = 0.5 * self.gd_step_size * hessian_times_grad
+        # residual_target = - loss_gradient_vector
 
         loss_value = self.grad_match_loss_fn(
             predicted_grad, residual_target, reduction="mean"
@@ -278,9 +283,9 @@ class GradientSquaredPenaltyEstimator(BiasWithMSE):
         self.log("train/loss", loss_value, prog_bar=True)
         self.log("bias/lambda", lambda_.detach(), prog_bar=True)
         self.log(
-            "stats/grad_norm", loss_gradient_vector.detach().norm(), prog_bar=False
+            "stats/grad_norm", loss_gradient_vector.detach().norm(), prog_bar=True
         )
-        self.log("stats/hvp_norm", hessian_times_grad.detach().norm(), prog_bar=False)
-        self.log("stats/residual_norm", residual_target.detach().norm(), prog_bar=False)
+        self.log("stats/hvp_norm", hessian_times_grad.detach().norm(), prog_bar=True)
+        self.log("stats/residual_norm", residual_target.detach().norm(), prog_bar=True)
 
         return loss_value

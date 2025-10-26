@@ -15,6 +15,7 @@ import argparse
 import csv
 import logging
 import math
+import random
 import sys
 from collections import defaultdict
 from dataclasses import dataclass
@@ -27,6 +28,7 @@ import torch
 from lightning.pytorch import Trainer
 from torch import nn
 from torch.utils.data import DataLoader, TensorDataset
+from lightning.pytorch.loggers import WandbLogger
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
@@ -37,6 +39,7 @@ from analysis.wandb_utils import (  # noqa: E402
     load_run_config,
 )
 from core.estimators import GradientSquaredPenaltyEstimator  # noqa: E402
+from core.bias import GradientSquaredPenaltyScale  # noqa: E402
 from experiments.mnist_implicit_reg import (  # noqa: E402
     MNISTImplicitDataModule,
     MNISTImplicitModule,
@@ -115,6 +118,36 @@ def parse_args(argv: Iterable[str] | None = None) -> argparse.Namespace:
         type=int,
         default=1024,
         help="Batch size used when fitting the estimator.",
+    )
+    parser.add_argument(
+        "--lambda-noise-sigma",
+        type=float,
+        default=0.75,
+        help="Log-space standard deviation for the noisy λ/m initialiser (0 disables noise).",
+    )
+    parser.add_argument(
+        "--lambda-noise-floor",
+        type=float,
+        default=1e-4,
+        help="Lower bound applied after sampling the noisy λ/m initial value.",
+    )
+    parser.add_argument(
+        "--lambda-noise-ceil",
+        type=float,
+        default=10.0,
+        help="Upper bound applied after sampling the noisy λ/m initial value.",
+    )
+    parser.add_argument(
+        "--lambda-noise-min-ratio",
+        type=float,
+        default=0.5,
+        help="Lower multiplicative ratio applied relative to the theoretical λ/m.",
+    )
+    parser.add_argument(
+        "--lambda-noise-max-ratio",
+        type=float,
+        default=2.0,
+        help="Upper multiplicative ratio applied relative to the theoretical λ/m.",
     )
     parser.add_argument(
         "--figure-dir",
@@ -242,6 +275,59 @@ def format_learning_rate(value: float) -> str:
     return format(value, "g")
 
 
+def sample_noisy_lambda_per_param(
+    base_value: float,
+    *,
+    seed: int,
+    sigma: float,
+    floor: float,
+    ceil: float,
+    min_ratio: float,
+    max_ratio: float,
+    allow_negative: bool = False,
+) -> float:
+    logger = logging.getLogger(__name__)
+    if not math.isfinite(base_value) or base_value <= 0.0:
+        base_value = max(floor, 1e-4)
+        logger.debug("Base λ/m was non-positive; using fallback %.3e", base_value)
+
+    rng = random.Random(seed)
+    multiplier = math.exp(rng.gauss(0.0, sigma)) if sigma > 0.0 else 1.0
+    proposed = base_value * multiplier
+
+    min_ratio = max(min_ratio, 1e-6)
+    max_ratio = max(max_ratio, min_ratio)
+
+    lower_rel = base_value * min_ratio
+    upper_rel = base_value * max_ratio
+    lower_abs = max(floor, lower_rel)
+    upper_abs = upper_rel if ceil <= 0 else min(ceil, upper_rel)
+    upper_abs = max(upper_abs, lower_abs)
+
+    if allow_negative:
+        if rng.random() < 0.5:
+            proposed = -proposed
+        max_abs = max(upper_abs, lower_abs, floor)
+        proposed = max(-max_abs, min(max_abs, proposed))
+        if 0 < abs(proposed) < lower_abs:
+            proposed = math.copysign(lower_abs, proposed)
+    else:
+        proposed = max(lower_abs, min(upper_abs, proposed))
+
+    clipped = proposed
+    logger.debug(
+        "Initialising λ/m: base=%.3e, multiplier=%.3f, clipped=%.3e "
+        "(bounds=[%.3e, %.3e], allow_negative=%s)",
+        base_value,
+        multiplier,
+        clipped,
+        -upper_abs if allow_negative else lower_abs,
+        upper_abs,
+        allow_negative,
+    )
+    return clipped
+
+
 def resolve_checkpoint_path(width: int, learning_rate: float, run_id: str) -> Path | None:
     lr_fragment = format_learning_rate(learning_rate)
     direct = MODEL_DIR / f"mnist_width{width}_lr{lr_fragment}_{run_id}.pt"
@@ -333,23 +419,39 @@ def estimate_lambda(
     batch_size: int,
     max_epochs: int,
     num_params: int,
+    lambda_init_per_param: float,
+    enforce_positive: bool,
 ) -> float:
     loss_fn: nn.Module = nn.CrossEntropyLoss()
+    bias_model = GradientSquaredPenaltyScale(
+        lambda_init=lambda_init_per_param,
+        enforce_positive=enforce_positive,
+    )
     estimator = GradientSquaredPenaltyEstimator(
         predictive_model=predictive_model,
         predictive_loss_fn=loss_fn,
+        bias_model=bias_model,
         lr=estimator_lr,
         gd_step_size=learning_rate,
+    )
+    logger = logging.getLogger(__name__)
+    logger.debug(
+        "Initial λ estimate: %.3e (per-parameter %.3e)",
+        estimator.bias_model().detach().cpu().item() * num_params,
+        estimator.bias_model().detach().cpu().item(),
     )
     dataloader = DataLoader(dataset, batch_size=batch_size, shuffle=True, num_workers=0)
     trainer_kwargs: dict[str, Any] = {
         "max_epochs": max_epochs,
         "accelerator": "auto",
         "devices": 1,
-        "logger": True,
+        "logger": WandbLogger(
+            project="mnist_implicit_reg_analysis",
+            log_model=True,
+        ),
         "enable_checkpointing": False,
         "enable_model_summary": False,
-        "enable_progress_bar": False,
+        "enable_progress_bar": True,
         "log_every_n_steps": 10,
         "deterministic": True,
     }
@@ -372,12 +474,10 @@ def compute_run_analysis(
     logger = logging.getLogger(__name__)
     logger.info("Loading checkpoint for run %s from %s", run_id, checkpoint_path)
     checkpoint_payload = checkpoint_payload or load_checkpoint_payload(checkpoint_path)
-    print(checkpoint_payload.keys())
     if not checkpoint_payload:
         return None
 
     state_dict = checkpoint_payload.get("state_dict")
-    print(state_dict)
     if state_dict is None:
         logger.error("Checkpoint %s is missing a 'state_dict' entry.", checkpoint_path)
         return None
@@ -388,13 +488,13 @@ def compute_run_analysis(
 
     module = MNISTImplicitModule(run_cfg)
     module.eval()
-    module.requires_grad_(False)
+    num_params = module.num_params
+    module.requires_grad_(True)
     module.load_state_dict(state_dict)
     predictive_model = module.model
-    print(type(predictive_model))
-    print(sum(p.numel() for p in predictive_model.parameters()))
-    predictive_model.eval()
-    predictive_model.requires_grad_(False)
+    check_num_params = sum(p.numel() for p in predictive_model.parameters() if p.requires_grad)
+    assert check_num_params == num_params, f"Parameter count mismatch: {check_num_params} != {num_params}"
+
 
     datamodule = MNISTImplicitDataModule(run_cfg)
     dataset = collect_tensor_dataset(
@@ -403,6 +503,7 @@ def compute_run_analysis(
         batch_size=run_cfg.batch_size,
     )
     dataset_size = len(dataset)
+    logger.info("Collected dataset of %d samples with batch size %d for run %s", dataset_size, run_cfg.batch_size, run_id)
     if dataset_size == 0:
         logger.error("Dataset for run %s is empty; skipping analysis.", run_id)
         return None
@@ -414,13 +515,23 @@ def compute_run_analysis(
         estimator_lr=args.estimator_lr,
         batch_size=min(args.estimator_batch_size, dataset_size),
         max_epochs=args.estimator_epochs,
+        num_params=num_params,
+        lambda_init_per_param=sample_noisy_lambda_per_param(
+            base_value=run_cfg.learning_rate / 4.0,
+            seed=run_cfg.seed,
+            sigma=args.lambda_noise_sigma,
+            floor=args.lambda_noise_floor,
+            ceil=args.lambda_noise_ceil,
+            min_ratio=args.lambda_noise_min_ratio,
+            max_ratio=args.lambda_noise_max_ratio,
+        ),
+        enforce_positive=False,
     )
-    num_params = sum(p.numel() for p in predictive_model.parameters() if p.requires_grad)
     lambda_theoretical = run_cfg.learning_rate * num_params / 4.0
     relative_error = abs(lambda_estimated - lambda_theoretical) / max(abs(lambda_theoretical), 1e-12)
 
     logger.info(
-        "Run %s | width=%d depth=%d lr=%.5g | λ_theory=%.4f | λ_est=%.4f | rel_err=%.3f%%",
+        "Run %s | width=%d depth=%d lr=%.5g | λ_theory=%.4e | λ_est=%.4e | rel_err=%.3f%%",
         run_id,
         run_cfg.width,
         run_cfg.depth,

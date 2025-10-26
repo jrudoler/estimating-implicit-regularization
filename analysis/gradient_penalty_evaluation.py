@@ -487,7 +487,7 @@ def main() -> None:
     LOGGER.info("Number of parameters in the predictive model: %d", num_params)
     theoretical_lambda = args.gd_step_size * num_params / 4.0
     LOGGER.info(
-        "Theoretical lambda (h m / 4) with h=%.5f, m=%d: %.6f",
+        "`Theoretical lambda (h m / 4) with h=%.5f, m=%d: %.6f",
         args.gd_step_size,
         num_params,
         theoretical_lambda,

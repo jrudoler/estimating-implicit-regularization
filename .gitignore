@@ -5,6 +5,7 @@ inductive-bias/*
 
 # logs
 logs/*
+lightning_logs/*
 
 # results and saved models
 results/*
