@@ -1,35 +1,38 @@
-[tool.poetry]
+[project]
 name = "inductive-bias"
 version = "0.1.0"
 description = ""
-authors = ["Joseph Rudoler <jhrudoler@gmail.com>"]
+authors = [{ name = "Joseph Rudoler", email = "jhrudoler@gmail.com" }]
+requires-python = "~=3.12.0"
 readme = "README.md"
-package-mode = false
+dependencies = [
+    "torch>=2.6.0,<3",
+    "lightning>=2.5.0.post0,<3",
+    "wandb>=0.19.8,<0.20",
+    "numpy>=2.2.3,<3",
+    "seaborn>=0.13.2,<0.14",
+    "ipykernel>=6.29.5,<7",
+    "ipywidgets>=8.1.5,<9",
+    "torchvision>=0.21.0,<0.22",
+    "accelerate>=1.4.0,<2",
+    "scipy>=1.15.2,<2",
+    "transformers>=4.49.0,<5",
+    "datasets>=3.3.2,<4",
+    "torchviz>=0.0.3,<0.0.4",
+    "scikit-learn>=1.6.1,<2",
+    "pytest>=8.3.5,<9",
+    "nbformat>=5.10.4,<6",
+    "torchopt>=0.7.3,<0.8",
+    "optree>=0.17.0,<0.18",
+    "huggingface-hub[cli]>=0.35.3,<0.36",
+    "lightning-lite>=1.8.6,<2",
+    "ffmpeg>=1.4",
+    "ipympl>=0.9.8",
+]
 
-[tool.poetry.dependencies]
-python = "^3.12"
-torch = "^2.6.0"
-lightning = "^2.5.0.post0"
-wandb = "^0.19.8"
-numpy = "^2.2.3"
-seaborn = "^0.13.2"
-ipykernel = "^6.29.5"
-ipywidgets = "^8.1.5"
-torchvision = "^0.21.0"
-accelerate = "^1.4.0"
-scipy = "^1.15.2"
-transformers = "^4.49.0"
-datasets = "^3.3.2"
-torchviz = "^0.0.3"
-scikit-learn = "^1.6.1"
-pytest = "^8.3.5"
-nbformat = "^5.10.4"
-torchopt = "^0.7.3"
-optree = "^0.17.0"
-huggingface-hub = {extras = ["cli"], version = "^0.35.3"}
-lightning-lite = "^1.8.6"
-
+[tool.uv]
+package = false
 
 [build-system]
-requires = ["poetry-core"]
-build-backend = "poetry.core.masonry.api"
+requires = ["hatchling"]
+build-backend = "hatchling.build"
