@@ -64,6 +64,14 @@ class InductiveBiasEstimator(pl.LightningModule):
         )
         flattened_params = flattened_params.to(self.device)
 
+        offset = 0
+        named_param_views: Dict[str, torch.Tensor] = {}
+        for name, param in params.items():
+            numel = param.numel()
+            view = flattened_params[offset : offset + numel].view_as(param)
+            named_param_views[name] = view
+            offset += numel
+
         def model_output(p: Dict[str, torch.Tensor], x: torch.Tensor) -> torch.Tensor:
             return functional_call(self.predictive_model, p, (x,))
 
@@ -79,7 +87,7 @@ class InductiveBiasEstimator(pl.LightningModule):
         # vjp returns the sum of the gradients over the batch
 
         # Compute the bias output and its gradient.
-        R_val = self.bias_model(flattened_params)
+        R_val = self.bias_model(flattened_params, named_param_views)
         # flattened_params,
         # extra_kwargs=self.bias_model_kwargs
         # | {

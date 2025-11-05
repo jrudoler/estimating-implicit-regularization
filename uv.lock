@@ -498,6 +498,11 @@ dependencies = [
     { name = "wandb" },
 ]
 
+[package.dev-dependencies]
+dev = [
+    { name = "ipykernel" },
+]
+
 [package.metadata]
 requires-dist = [
     { name = "accelerate", specifier = ">=1.4.0,<2" },
@@ -523,6 +528,9 @@ requires-dist = [
     { name = "transformers", specifier = ">=4.49.0,<5" },
     { name = "wandb", specifier = ">=0.19.8,<0.20" },
 ]
+
+[package.metadata.requires-dev]
+dev = [{ name = "ipykernel", specifier = ">=6.29.5" }]
 
 [[package]]
 name = "iniconfig"
