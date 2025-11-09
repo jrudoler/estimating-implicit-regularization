@@ -1,8 +1,0 @@
-batchnorm: true
-depth: 3
-dropout: 0.2
-input_dim: 784
-l2_penalty: 0.0001
-lr: 0.01
-momentum: 0.9
-width: 256

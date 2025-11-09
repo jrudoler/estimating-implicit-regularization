@@ -3,6 +3,7 @@ MNIST/*
 wandb/*
 inductive-bias/*
 
+
 # logs
 logs/*
 lightning_logs/*
@@ -10,6 +11,8 @@ lightning_logs/*
 # results and saved models
 results/*
 saved_models/*
+checkpoints/*
+notebooks/artifacts/*
 
 # python extras
 __pycache__/

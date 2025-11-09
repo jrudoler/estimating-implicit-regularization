@@ -390,7 +390,12 @@ def fit_predictive_model(
         devices=1,
         callbacks=[
             EarlyStopping(monitor="train/loss_epoch", mode="min", patience=5),
-            ModelCheckpoint(monitor="train/loss_epoch", mode="min"),
+            ModelCheckpoint(
+                dirpath="checkpoints/",
+                filename="model_{epoch:03d}",
+                monitor="train/loss_epoch", 
+                mode="min",
+                ),
         ],
         logger=WandbLogger(
             name="train_deep_ReLU_model",
