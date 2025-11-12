@@ -163,6 +163,11 @@ def prepare_dataframe(df: pd.DataFrame) -> pd.DataFrame:
         target="rel_error",
         candidates=("l2_rel_error", "l2/rel_error"),
     )
+    
+    # Try to extract performance metrics
+    for col in prepared.columns:
+        if "test/acc" in col or "val/acc" in col:
+            prepared[col] = pd.to_numeric(prepared[col], errors="coerce")
 
     numeric_cols = [
         "true_l2",
@@ -185,6 +190,8 @@ def prepare_dataframe(df: pd.DataFrame) -> pd.DataFrame:
 
     if "function_class" in prepared.columns:
         prepared["function_class"] = prepared["function_class"].astype("string")
+    if "dataset" in prepared.columns:
+        prepared["dataset"] = prepared["dataset"].astype("string")
 
     missing_true = prepared["true_l2"].isna()
     missing_est = prepared["estimated_l2"].isna()
@@ -212,7 +219,7 @@ def prepare_dataframe(df: pd.DataFrame) -> pd.DataFrame:
 
 def build_summary_table(df: pd.DataFrame) -> pd.DataFrame:
     """Aggregate errors by key hyperparameters."""
-    group_cols = [col for col in ("function_class", "depth", "width", "noise_std", "l2_lambda") if col in df.columns]
+    group_cols = [col for col in ("dataset", "function_class", "depth", "width", "noise_std", "l2_lambda") if col in df.columns]
     if not group_cols:
         LOGGER.debug("No grouping columns available for summary table.")
         return pd.DataFrame()
@@ -238,14 +245,16 @@ def plot_estimated_vs_true(df: pd.DataFrame, output_path: Path) -> None:
         return
 
     fig, ax = plt.subplots(figsize=(7, 6))
-    hue_order = sorted(df["function_class"].dropna().unique()) if "function_class" in df.columns else None
+    # Prefer dataset over function_class for hue
+    hue_col = "dataset" if "dataset" in df.columns else ("function_class" if "function_class" in df.columns else None)
+    hue_order = sorted(df[hue_col].dropna().unique()) if hue_col else None
     style_order = sorted(df["depth"].dropna().unique()) if "depth" in df.columns else None
 
     sns.scatterplot(
         data=df,
         x="true_l2",
         y="estimated_l2",
-        hue="function_class" if hue_order else None,
+        hue=hue_col,
         style="depth" if style_order else None,
         palette="tab10",
         ax=ax,
@@ -284,10 +293,14 @@ def plot_architecture_heatmaps(df: pd.DataFrame, output_path: Path, metric: str 
         LOGGER.warning("Skipping heatmaps: no rows left after dropping NaNs.")
         return
 
-    classes = sorted(subset["function_class"].dropna().unique()) if "function_class" in subset.columns else []
-    if not classes:
+    # Prefer dataset over function_class for grouping
+    group_col = "dataset" if "dataset" in subset.columns else ("function_class" if "function_class" in subset.columns else None)
+    if group_col:
+        classes = sorted(subset[group_col].dropna().unique())
+    else:
         classes = ["All"]
-        subset = subset.assign(function_class="All")
+        subset = subset.assign(group="All")
+        group_col = "group"
 
     n_classes = len(classes)
     ncols = min(3, n_classes)
@@ -297,12 +310,12 @@ def plot_architecture_heatmaps(df: pd.DataFrame, output_path: Path, metric: str 
     for ax in axes.flat[n_classes:]:
         ax.remove()
 
-    for idx, function_class in enumerate(classes):
+    for idx, class_val in enumerate(classes):
         ax = axes.flat[idx]
-        data = subset[subset["function_class"] == function_class]
+        data = subset[subset[group_col] == class_val]
         pivot = data.pivot_table(index="depth", columns="width", values=metric, aggfunc="mean")
         sns.heatmap(pivot, annot=True, fmt=".3f", cmap="magma_r", ax=ax, cbar=idx == n_classes - 1)
-        ax.set_title(f"{function_class}")
+        ax.set_title(f"{class_val}")
         ax.set_xlabel("Width")
         ax.set_ylabel("Depth")
 
@@ -346,6 +359,71 @@ def plot_error_vs_noise(df: pd.DataFrame, output_path: Path) -> None:
     fig.savefig(output_path, bbox_inches="tight")
     plt.close(fig)
     LOGGER.info("Saved error-vs-noise plot to %s", output_path)
+
+
+def plot_performance_vs_l2(df: pd.DataFrame, output_path: Path) -> None:
+    """Plot validation/test performance as a function of L2 penalty."""
+    # Try to find performance metrics
+    perf_cols = [col for col in df.columns if any(x in col.lower() for x in ["val/acc", "test/acc", "val_acc", "test_acc", "accuracy"])]
+    if not perf_cols or "true_l2" not in df.columns:
+        LOGGER.warning("Skipping performance-vs-l2 plot: required columns missing.")
+        return
+    
+    perf_col = perf_cols[0]  # Use first available performance column
+    subset = df.dropna(subset=["true_l2", perf_col]).copy()
+    if subset.empty:
+        LOGGER.warning("Skipping performance-vs-l2 plot: no data available after dropna.")
+        return
+
+    fig, axes = plt.subplots(1, 2, figsize=(14, 5.5))
+    
+    # Plot 1: Performance vs L2 (log scale)
+    ax = axes[0]
+    hue_order = sorted(subset["dataset"].dropna().unique()) if "dataset" in subset.columns else None
+    sns.lineplot(
+        data=subset,
+        x="true_l2",
+        y=perf_col,
+        hue="dataset" if hue_order else None,
+        style="depth" if "depth" in subset.columns else None,
+        marker="o",
+        ax=ax,
+        estimator="mean",
+        errorbar="sd",
+    )
+    ax.set_xscale("log")
+    ax.set_xlabel(r"L2 Penalty ($\lambda$)")
+    ax.set_ylabel("Accuracy")
+    ax.set_title("Model Performance vs L2 Penalty")
+    ax.grid(True, which="both", linestyle=":", linewidth=0.7)
+    if hue_order:
+        ax.legend(title="Dataset")
+    
+    # Plot 2: Recovery error vs L2 scale
+    ax = axes[1]
+    sns.scatterplot(
+        data=subset,
+        x="true_l2",
+        y="rel_error",
+        hue="dataset" if hue_order else None,
+        style="depth" if "depth" in subset.columns else None,
+        ax=ax,
+        s=70,
+    )
+    ax.set_xscale("log")
+    ax.set_yscale("log")
+    ax.set_xlabel(r"L2 Penalty ($\lambda$)")
+    ax.set_ylabel("Relative Recovery Error")
+    ax.set_title("L2 Recovery Error vs Penalty Scale")
+    ax.grid(True, which="both", linestyle=":", linewidth=0.7)
+    if hue_order:
+        ax.legend(title="Dataset")
+    
+    fig.tight_layout()
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    fig.savefig(output_path, bbox_inches="tight")
+    plt.close(fig)
+    LOGGER.info("Saved performance-vs-l2 plot to %s", output_path)
 
 
 def parse_args() -> argparse.Namespace:
@@ -410,10 +488,12 @@ def main() -> None:
     scatter_path = FIGURES_DIR / f"l2_sweep_{sweep_label}_estimated_vs_true.pdf"
     heatmap_path = FIGURES_DIR / f"l2_sweep_{sweep_label}_architecture_heatmap.pdf"
     noise_path = FIGURES_DIR / f"l2_sweep_{sweep_label}_error_vs_noise.pdf"
+    perf_path = FIGURES_DIR / f"l2_sweep_{sweep_label}_performance_vs_l2.pdf"
 
     plot_estimated_vs_true(prepared_df, scatter_path)
     plot_architecture_heatmaps(prepared_df, heatmap_path)
     plot_error_vs_noise(prepared_df, noise_path)
+    plot_performance_vs_l2(prepared_df, perf_path)
 
     LOGGER.info("Analysis complete.")
 

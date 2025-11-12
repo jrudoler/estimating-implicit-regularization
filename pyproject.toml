@@ -28,6 +28,7 @@ dependencies = [
     "ffmpeg>=1.4",
     "ipympl>=0.9.8",
     "torchvision>=0.24.0",
+    "nvidia-ml-py>=13.580.82",
 ]
 
 [tool.uv]

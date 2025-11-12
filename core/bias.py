@@ -41,12 +41,22 @@ class GradientSquaredPenaltyScale(nn.Module):
 
 
 class RidgeBias(nn.Module):
-    def __init__(self):
+    def __init__(self, enforce_positive: bool = True):
         super().__init__()
-        self.beta = nn.Parameter(torch.tensor([1.0]))  # Initialize parameter
+        self.beta = nn.Parameter(
+            torch.tensor([1.0 if enforce_positive else 0.0])
+        )  # Initialize parameter
+        self.enforce_positive = enforce_positive
 
-    def forward(self, flattened_params: torch.Tensor, **kwargs):
-        return self.beta * torch.sum(flattened_params**2)
+    def forward(self, flattened_params: torch.Tensor, named_param_views=None, **kwargs):
+        scale = torch.exp(self.beta) if self.enforce_positive else self.beta
+        return scale.squeeze() * torch.sum(flattened_params**2)
+
+    def get_bias_params(self) -> float:
+        if self.enforce_positive:
+            return torch.exp(self.beta).item()
+        else:
+            return self.beta.item()
 
 
 class LassoBias(nn.Module):

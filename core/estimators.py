@@ -51,7 +51,7 @@ class InductiveBiasEstimator(pl.LightningModule):
         pass
 
     def training_step(
-        self, batch:  Tuple[torch.Tensor, torch.Tensor], batch_idx: int
+        self, batch: Tuple[torch.Tensor, torch.Tensor], batch_idx: int
     ) -> torch.Tensor:
         X, y = batch
         if y.ndim == 1:
@@ -99,20 +99,26 @@ class InductiveBiasEstimator(pl.LightningModule):
 
         loss = self.grad_match_loss_fn(gradients, true_grad, reduction="mean")
 
-        self.log("train/loss", loss, prog_bar=False)
+        self.log("train_bias/loss", loss, prog_bar=False)
 
         # Log all parameters from the bias model.
         for name, param in self.bias_model.named_parameters():
             # Ensure the parameter is logged as a scalar if it is a single value.
             if param.numel() == 1:
-                self.log(f"bias/{name}", param.detach().item(), prog_bar=False)
+                self.log(f"train_bias/{name}", param.detach().item(), prog_bar=False)
+                if param.grad is not None:
+                    self.log(
+                        f"train_bias/{name}_grad", param.grad.norm(), prog_bar=False
+                    )
                 continue
             # otherwise, if the parameter is a tensor, log its norm.
             else:
-                self.log(f"bias/{name}", param.norm(), prog_bar=False)
+                self.log(f"train_bias/{name}", param.norm(), prog_bar=False)
                 # Log the gradient norm as well.
                 if param.grad is not None:
-                    self.log(f"bias/{name}_grad", param.grad.norm(), prog_bar=False)
+                    self.log(
+                        f"train_bias/{name}_grad", param.grad.norm(), prog_bar=False
+                    )
                     continue
 
         return loss
@@ -265,7 +271,7 @@ class GradientSquaredPenaltyEstimator(InductiveBiasEstimator):
         loss_gradient_vector = jacobian_loss_fn(flat_params)
 
         # compute a weight update step
-        flat_params_delta = - self.gd_step_size * loss_gradient_vector
+        flat_params_delta = -self.gd_step_size * loss_gradient_vector
 
         _, hvp_fn = vjp(jacobian_loss_fn, flat_params)
         hessian_times_grad = hvp_fn(loss_gradient_vector)[0]
@@ -277,7 +283,6 @@ class GradientSquaredPenaltyEstimator(InductiveBiasEstimator):
         lambda_per_param = self.bias_model()
         predicted_grad = (2.0 * lambda_per_param) * hessian_times_grad
 
-
         lambda_ = lambda_per_param * self._num_params
 
         # Residual from a single GD step: (-Δw / h) - g ≈ (h / 2) * H g
@@ -288,11 +293,9 @@ class GradientSquaredPenaltyEstimator(InductiveBiasEstimator):
             predicted_grad, residual_target, reduction="mean"
         )
 
-        self.log("train/loss", loss_value, prog_bar=True)
-        self.log("bias/lambda", lambda_.detach(), prog_bar=True)
-        self.log(
-            "stats/grad_norm", loss_gradient_vector.detach().norm(), prog_bar=True
-        )
+        self.log("train_bias/loss", loss_value, prog_bar=True)
+        self.log("train_bias/lambda", lambda_.detach(), prog_bar=True)
+        self.log("stats/grad_norm", loss_gradient_vector.detach().norm(), prog_bar=True)
         self.log("stats/hvp_norm", hessian_times_grad.detach().norm(), prog_bar=True)
         self.log("stats/residual_norm", residual_target.detach().norm(), prog_bar=True)
 
