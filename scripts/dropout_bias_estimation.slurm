@@ -1,6 +1,6 @@
 #!/bin/bash
 #SBATCH --partition=whartonstat
-#SBATCH --job-name=dropout_l2_estimation
+#SBATCH --job-name=dropout_bias_estimation
 #SBATCH --gres=gpu:1
 #SBATCH --cpus-per-task=4
 #SBATCH --mem=32G
@@ -11,7 +11,6 @@
 set -euo pipefail
 
 mkdir -p logs/slurm
-mkdir -p results/data/dropout_bias
 
 SWEEP_ID="${1:-${WANDB_SWEEP_ID:-}}"
 if [[ -z "${SWEEP_ID}" ]]; then

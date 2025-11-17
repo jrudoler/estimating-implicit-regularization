@@ -5,7 +5,9 @@ from torch import Tensor
 import lightning as pl
 from lightning import LightningModule
 import wandb
-from typing import Union, Optional, Any, Type, Callable, Tuple
+from typing import Union, Optional, Any, Type, Callable, Tuple, List
+
+from torchmetrics.classification import Accuracy
 
 
 def load_model_from_artifact(
@@ -406,3 +408,136 @@ class KernelRidgeMSELoss(nn.MSELoss):
             reg = alpha @ K @ alpha
             return base + self.ridge_lambda * reg
         return base
+
+
+class DeepReLUClassifier(LightningModule):
+    """Deep ReLU MLP classifier with dropout, optional batchnorm, and L2 regularization."""
+
+    def __init__(
+        self,
+        input_dim: int,
+        num_classes: int,
+        depth: int,
+        width: int,
+        dropout: float,
+        batchnorm: bool,
+        l2_lambda: float,
+        lr: float,
+        momentum: float = 0.9,
+        linear_layer_bias: bool = True,
+    ) -> None:
+        super().__init__()
+        self.save_hyperparameters()
+        if depth < 1:
+            raise ValueError("Depth must be >= 1")
+
+        layers: List[nn.Module] = []
+        layers.append(nn.Flatten())
+        prev_dim = input_dim
+        for i in range(depth):
+            layers.append(nn.Linear(prev_dim, width, bias=linear_layer_bias))
+            if batchnorm and i < depth - 1:  # No batchnorm before final layer
+                layers.append(nn.BatchNorm1d(width))
+            layers.append(nn.ReLU())
+            if dropout > 0 and i < depth - 1:  # No dropout before final layer
+                layers.append(nn.Dropout(dropout))
+            prev_dim = width
+        layers.append(nn.Linear(prev_dim, num_classes))
+        # Note: No Softmax - we use raw logits with CrossEntropyLoss
+
+        self.network = nn.Sequential(*layers)
+        self.loss_fn = nn.CrossEntropyLoss()
+        self.train_accuracy = Accuracy(task="multiclass", num_classes=num_classes)
+        self.val_accuracy = Accuracy(task="multiclass", num_classes=num_classes)
+        self.test_accuracy = Accuracy(task="multiclass", num_classes=num_classes)
+
+    def forward(self, x: Tensor) -> Tensor:
+        return self.network(x)
+
+    def training_step(self, batch: Tuple[Tensor, Tensor], batch_idx: int) -> Tensor:
+        x, y = batch
+        logits = self(x)
+        loss = self.loss_fn(logits, y)
+        loss += self.weight_regularization()
+        self.log("train/loss", loss, on_step=False, on_epoch=True, prog_bar=True)
+        self.log(
+            "train/acc",
+            self.train_accuracy(logits.argmax(dim=1), y),
+            on_step=False,
+            on_epoch=True,
+            prog_bar=True,
+        )
+        if float(self.hparams.l2_lambda) > 0:
+            l2_penalty = self.weight_regularization()
+            self.log(
+                "train/l2_penalty_epoch",
+                l2_penalty,
+                on_step=False,
+                on_epoch=True,
+                prog_bar=False,
+            )
+        return loss
+
+    def validation_step(self, batch: Tuple[Tensor, Tensor], batch_idx: int) -> Tensor:
+        x, y = batch
+        logits = self(x)
+        loss = self.loss_fn(logits, y)
+        loss += self.weight_regularization()
+        self.log("val/loss", loss, on_step=False, on_epoch=True, prog_bar=True)
+        self.log(
+            "val/acc",
+            self.val_accuracy(logits.argmax(dim=1), y),
+            on_step=False,
+            on_epoch=True,
+            prog_bar=True,
+        )
+        return loss
+
+    def test_step(self, batch: Tuple[Tensor, Tensor], batch_idx: int) -> Tensor:
+        x, y = batch
+        logits = self(x)
+        loss = self.loss_fn(logits, y)
+        loss += self.weight_regularization()
+        self.log("test/loss", loss, on_step=False, on_epoch=True, prog_bar=True)
+        self.log(
+            "test/acc",
+            self.test_accuracy(logits.argmax(dim=1), y),
+            on_step=False,
+            on_epoch=True,
+            prog_bar=True,
+        )
+        return loss
+
+    def on_train_epoch_end(self) -> None:
+        self.train_accuracy.reset()
+
+    def on_validation_epoch_end(self) -> None:
+        self.val_accuracy.reset()
+
+    def on_test_epoch_end(self) -> None:
+        self.test_accuracy.reset()
+
+    def weight_regularization(self) -> Tensor:
+        coefficient: float = float(self.hparams.l2_lambda)
+        if coefficient <= 0:
+            return torch.zeros((), device=self.device)
+        penalty = torch.zeros((), device=self.device)
+        for param in self.parameters():
+            if param.requires_grad:
+                penalty = penalty + param.pow(2).sum()
+        return 0.5 * coefficient * penalty
+
+    def configure_optimizers(self):
+        optimizer = torch.optim.SGD(
+            self.parameters(),
+            lr=self.hparams.lr,
+            momentum=self.hparams.momentum,
+            weight_decay=0.0,  # No weight decay - only L2 penalty in loss
+        )
+        # Reduce lr by a factor of 10 at epochs 60, 100, and 200
+        scheduler = torch.optim.lr_scheduler.MultiStepLR(
+            optimizer,
+            milestones=[60, 100, 200],
+            gamma=0.1,
+        )
+        return [optimizer], [scheduler]

@@ -82,7 +82,7 @@ class DeepReLUClassifier(pl.LightningModule):
             layers.append(nn.ReLU())
             prev_dim = width
         layers.append(nn.Linear(prev_dim, num_classes))
-        layers.append(nn.Softmax(dim=1))
+        # Note: No Softmax - CrossEntropyLoss expects raw logits and applies log-softmax internally
 
         self.network = nn.Sequential(*layers)
         self.loss_fn = nn.CrossEntropyLoss()

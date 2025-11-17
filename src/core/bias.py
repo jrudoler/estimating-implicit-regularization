@@ -5,10 +5,9 @@ from torch import Tensor
 import torch.nn as nn
 import torch.nn.functional as F
 import lightning.pytorch as pl
-from abc import abstractmethod
 from torch.func import functional_call, vjp, hessian
 from torch.optim import Optimizer
-from typing import Dict, Callable, Tuple, Any, Optional
+from typing import Dict, Callable, Tuple, Any, Optional, Iterable
 
 
 class GradientSquaredPenaltyScale(nn.Module):
@@ -40,17 +39,35 @@ class GradientSquaredPenaltyScale(nn.Module):
 # known activations / weights.
 
 
-class RidgeBias(nn.Module):
-    def __init__(self, enforce_positive: bool = True):
+class NuclearNormBias(nn.Module):
+    bias_name = "nuclear_norm"
+
+    def __init__(
+        self, enforce_positive: bool = True, init_value: Optional[float] = None
+    ):
         super().__init__()
         self.beta = nn.Parameter(
-            torch.tensor([1.0 if enforce_positive else 0.0])
+            torch.tensor(init_value) if init_value is not None else torch.randn(1) * 0.1
         )  # Initialize parameter
         self.enforce_positive = enforce_positive
 
-    def forward(self, flattened_params: torch.Tensor, named_param_views=None, **kwargs):
+    def forward(
+        self,
+        flattened_params: torch.Tensor,
+        named_params: Dict[str, torch.Tensor],
+        **kwargs,
+    ) -> torch.Tensor:
+        penalty = torch.zeros(
+            (), device=flattened_params.device, dtype=flattened_params.dtype
+        )
+        for weight in named_params.values():
+            if weight.ndim >= 2:
+                matrix = (
+                    weight if weight.ndim == 2 else weight.reshape(weight.shape[0], -1)
+                )
+                penalty = penalty + torch.linalg.matrix_norm(matrix, ord="nuc")
         scale = torch.exp(self.beta) if self.enforce_positive else self.beta
-        return scale.squeeze() * torch.sum(flattened_params**2)
+        return scale.squeeze() * penalty
 
     def get_bias_params(self) -> float:
         if self.enforce_positive:
@@ -59,29 +76,156 @@ class RidgeBias(nn.Module):
             return self.beta.item()
 
 
+class LowRankBias(nn.Module):
+    bias_name = "low_rank"
+
+    def __init__(self, enforce_positive: bool = True):
+        super().__init__()
+        self.beta = nn.Parameter(torch.tensor([1.0]))  # Initialize parameter
+        self.enforce_positive = enforce_positive
+
+    def compute_rank(self, weight_matrix: torch.Tensor) -> torch.Tensor:
+        rank = torch.linalg.matrix_rank(weight_matrix)
+        return rank.to(weight_matrix.dtype)
+
+    def compute_average_rank(
+        self,
+        named_params: Dict[str, torch.Tensor],
+        device: torch.device,
+        dtype: torch.dtype,
+    ) -> torch.Tensor:
+        total_rank = torch.zeros((), device=device, dtype=dtype)
+        count = 0
+        for _, weight in iter_weight_matrices(named_params):
+            matrix = weight if weight.ndim == 2 else weight.reshape(weight.shape[0], -1)
+            total_rank = total_rank + self.compute_rank(matrix)
+            count += 1
+        if count == 0:
+            return total_rank
+        return total_rank / float(count)
+
+    def forward(
+        self,
+        flattened_params: torch.Tensor,
+        named_params: Dict[str, torch.Tensor],
+        **kwargs,
+    ) -> torch.Tensor:
+        average_rank = self.compute_average_rank(
+            named_params, device=flattened_params.device, dtype=flattened_params.dtype
+        )
+        scale = torch.exp(self.beta) if self.enforce_positive else self.beta
+        return scale.squeeze() * average_rank
+
+    def get_bias_params(self) -> float:
+        if self.enforce_positive:
+            return torch.exp(self.beta).item()
+        else:
+            return self.beta.item()
+
+
+def iter_weight_matrices(
+    named_params: Dict[str, torch.Tensor],
+) -> Iterable[Tuple[str, torch.Tensor]]:
+    for name, parameter in named_params.items():
+        if parameter.ndim >= 2:
+            yield name, parameter
+
+
+class JointBias(nn.Module):
+    """Combines multiple bias models, summing their losses together."""
+
+    def __init__(self, bias_models: Iterable[nn.Module]):
+        super().__init__()
+        self.bias_models = nn.ModuleList(list(bias_models))
+
+    def forward(
+        self,
+        flattened_params: torch.Tensor,
+        named_params: Dict[str, torch.Tensor],
+        **kwargs,
+    ) -> torch.Tensor:
+        total = torch.zeros(
+            (), device=flattened_params.device, dtype=flattened_params.dtype
+        )
+        for bias_model in self.bias_models:
+            total = total + bias_model(flattened_params, named_params, **kwargs)
+        return total
+
+    def report_parameters(self) -> Dict[str, float]:
+        report: Dict[str, float] = {}
+        for idx, bias_model in enumerate(self.bias_models):
+            key = getattr(bias_model, "bias_name", bias_model.__class__.__name__)
+            if key in report:
+                key = f"{key}_{idx}"
+            if hasattr(bias_model, "get_bias_params"):
+                report[key] = bias_model.get_bias_params()
+        return report
+
+
+class RidgeBias(nn.Module):
+    bias_name = "ridge"
+
+    def __init__(
+        self, enforce_positive: bool = True, init_value: Optional[float] = None
+    ):
+        super().__init__()
+        self.beta = nn.Parameter(
+            torch.tensor(init_value) if init_value is not None else torch.randn(1) * 0.1
+        )  # Initialize parameter
+        self.enforce_positive = enforce_positive
+        self.init_value = init_value
+
+    def get_bias_params(self) -> float:
+        if self.enforce_positive:
+            return torch.exp(self.beta).item()
+        else:
+            return self.beta.item()
+
+    def forward(self, flattened_params: torch.Tensor, named_param_views=None, **kwargs):
+        penalty = torch.sum(flattened_params.pow(2))
+        scale = torch.exp(self.beta) if self.enforce_positive else self.beta
+        return scale.squeeze() * penalty
+
+
 class LassoBias(nn.Module):
     def __init__(self):
         super().__init__()
         self.alpha = nn.Parameter(torch.tensor([1.0]))  # Initialize parameters
 
-    def forward(self, flattened_params, **kwargs):
+    def forward(self, flattened_params, named_param_views=None, **kwargs):
         return self.alpha * torch.sum(torch.abs(flattened_params))
 
 
 class SmoothLassoBias(nn.Module):
-    def __init__(self, alpha_init: float = 1.0, smooth: float = 0.1) -> None:
+    def __init__(
+        self,
+        enforce_positive: bool = True,
+        init_value: Optional[float] = None,
+        smooth: float = 0.1,
+    ) -> None:
         super().__init__()
-        self.alpha = nn.Parameter(torch.tensor([alpha_init]))  # Initialize parameters
+        self.alpha = nn.Parameter(
+            torch.tensor([init_value]) if init_value is not None else None
+        )  # Initialize parameters
         self.smooth = smooth  # smoothness parameter, not learnable
+        self.enforce_positive = enforce_positive
+        self.init_value = init_value
 
-    def forward(self, flattened_params: torch.Tensor, **kwargs):
+    def get_bias_params(self) -> float:
+        if self.enforce_positive:
+            return torch.exp(self.alpha).item()
+        else:
+            return self.alpha.item()
+
+    def forward(self, flattened_params: torch.Tensor, named_param_views=None, **kwargs):
         smooth_loss = torch.nn.functional.smooth_l1_loss(
             flattened_params,
             torch.zeros_like(flattened_params),
             beta=self.smooth,
             reduction="sum",
         )
-        return self.alpha * smooth_loss
+        scale = torch.exp(self.alpha) if self.enforce_positive else self.alpha
+        return scale.squeeze() * smooth_loss
 
 
 class MatrixRidgeBias(nn.Module):
@@ -99,7 +243,7 @@ class MatrixRidgeBias(nn.Module):
             else nn.Parameter(torch.eye(dim))
         )  # Initialize parameter
 
-    def forward(self, flattened_params: torch.Tensor, **kwargs):
+    def forward(self, flattened_params: torch.Tensor, named_param_views=None, **kwargs):
         """
         Compute the quadratic form x^T Q x, where x is the flattened parameters.
         This is equivalent to the L2 regularization term with a matrix Q.
@@ -129,7 +273,7 @@ class DiagMatrixRidgeBias(nn.Module):
             else nn.Parameter(torch.zeros(dim))
         )  # Initialize parameter
 
-    def forward(self, flattened_params: torch.Tensor, **kwargs):
+    def forward(self, flattened_params: torch.Tensor, named_param_views=None, **kwargs):
         """
         Compute the quadratic form x^T Q x, where x is the flattened parameters.
         This is equivalent to the L2 regularization term with a matrix Q.
@@ -168,7 +312,9 @@ class DiagPSDMatrixRidgeBias(nn.Module):
         # The learnable parameter is the LOG of the diagonal of Q.
         self.log_Q_diag = nn.Parameter(initial_values)
 
-    def forward(self, flattened_params: torch.Tensor, **kwargs) -> torch.Tensor:
+    def forward(
+        self, flattened_params: torch.Tensor, named_param_views=None, **kwargs
+    ) -> torch.Tensor:
         """
         Efficiently computes the quadratic form βᵀQβ.
         """
@@ -243,7 +389,9 @@ class ElasticNet(nn.Module):
     def lambdas(self) -> tuple[Tensor, Tensor]:
         return self.lambda_1, self.lambda_2
 
-    def forward(self, flattened_params: Tensor, **kwargs) -> Tensor:
+    def forward(
+        self, flattened_params: Tensor, named_param_views=None, **kwargs
+    ) -> Tensor:
         lam1, lam2 = self.lambdas()  # strictly > 0
         l1_penalty = lam1 * F.smooth_l1_loss(
             flattened_params,

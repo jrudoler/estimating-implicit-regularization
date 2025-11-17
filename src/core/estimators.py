@@ -173,6 +173,41 @@ class BiasWithCrossEntropy(InductiveBiasEstimator):
         return expected_grad
 
 
+class BiasWithCrossEntropyScheduled(BiasWithCrossEntropy):
+    """Bias estimator with adaptive LR scheduling."""
+
+    def __init__(
+        self,
+        *args,
+        bias_lr: float = 0.1,
+        monitor_lr: str = "train_bias/loss",
+        patience_lr: int = 10,
+        factor_lr: float = 0.5,
+        **kwargs,
+    ):
+        super().__init__(*args, **kwargs)
+        self.bias_lr = bias_lr
+        self.monitor_lr = monitor_lr
+        self.patience_lr = patience_lr
+        self.factor_lr = factor_lr
+
+    def configure_optimizers(self):
+        optimizer = torch.optim.Adam(self.bias_model.parameters(), lr=self.bias_lr)
+        scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
+            optimizer,
+            mode="min",
+            factor=self.factor_lr,
+            patience=self.patience_lr,
+        )
+        return {
+            "optimizer": optimizer,
+            "lr_scheduler": {
+                "scheduler": scheduler,
+                "monitor": self.monitor_lr,
+            },
+        }
+
+
 class BiasWithAutodiffLoss(InductiveBiasEstimator):
     def __init__(
         self,

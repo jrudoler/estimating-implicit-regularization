@@ -1,4 +1,4 @@
-name: mnist_deep_relu_bias_grid
+name: mnist_dropout_l2_bias
 project: inductive-bias
 method: grid
 metric:
@@ -6,9 +6,9 @@ metric:
   goal: maximize
 parameters:
   batch_size:
-    value: 256
+    value: 2048
   lr:
-    value: 0.005
+    value: 0.05
   epochs:
     value: 500
   momentum:
@@ -16,11 +16,11 @@ parameters:
   l2_penalty:
     value: 0.0
   width:
-    value: 256
+    values: [128, 256, 512]
   depth:
     values: [1, 3, 5]
   dropout:
-    values: [0.0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9]
+    values: [0.0, 0.05, 0.1, 0.15, 0.2, 0.3, 0.4, 0.5]
   batchnorm:
     value: false
   seed:
@@ -34,8 +34,4 @@ command:
   - run
   - python
   - ${program}
-  - --use-wandb
-  - --wandb-log-model
-  - --output-dir
-  - results/data/dropout_bias
-program: analysis/dropout_bias_l2_estimation.py
+program: analysis/dropout_bias_estimation.py

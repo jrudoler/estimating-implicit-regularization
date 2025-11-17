@@ -31,8 +31,15 @@ dependencies = [
     "nvidia-ml-py>=13.580.82",
 ]
 
+[build-system]
+requires = ["uv_build"]
+build-backend = "uv_build"
+
 [tool.uv]
-package = false
+package = true
+
+[tool.uv.build-backend]
+namespace = true
 
 [tool.uv.sources]
 torch = { index = "pytorch-cu128" }
@@ -42,11 +49,6 @@ torchvision = { index = "pytorch-cu128" }
 name = "pytorch-cu128"
 url = "https://download.pytorch.org/whl/cu128"
 explicit = true
-
-
-[build-system]
-requires = ["hatchling"]
-build-backend = "hatchling.build"
 
 [dependency-groups]
 dev = [

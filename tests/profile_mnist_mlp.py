@@ -19,6 +19,7 @@ import time
 import lightning.pytorch as pl
 from lightning.pytorch.callbacks import DeviceStatsMonitor
 from lightning.pytorch.loggers import CSVLogger
+from lightning.pytorch.tuner import Tuner
 import statistics
 import torch
 from torch import nn, optim, Tensor
@@ -36,13 +37,13 @@ except Exception:
 # ---- Defaults for the sweep space (edit here or supply a YAML) ----
 DEFAULT_SWEEP: Dict[str, Sequence[Any]] = {
     # Core sweep knobs (lists or scalars)
-    "batch_size": [2048, 8192, 16384, 32768],
-    "gpu_resident": [True, False],
-    "precision": ["bf16-mixed", "32-true"],  # will auto-fallback to 32 on CPU
-    "width": [128, 256, 512],
+    "accelerator": ["cpu", "gpu"],
+    "width": [128, 256, 512, 1024],
+    "batch_size": [4096],
+    "gpu_resident": [False],
+    "precision": ["32-true"],  # consistent dtype across devices
     "depth": [5],
-    "compile_model": [False, True],
-    "num_workers": [0, 4, 8],  # 0 when gpu_resident=True is fine
+    "num_workers": [8],  # beefier input pipeline
     # Optimizer hyperparams
     "optimizer": ["sgd"],  # or "adamw"
     "base_lr": [1e-2],
@@ -220,6 +221,9 @@ class MLP(pl.LightningModule):
         self.weight_decay = float(weight_decay)
         self.optimizer_name = optimizer_name
         self.global_batch_size = int(global_batch_size)
+        # Expose batch_size for Lightning Tuner
+        self.batch_size = int(global_batch_size)
+        self.save_hyperparameters(ignore=["compile_model"])
 
     def forward(self, x: Tensor) -> Tensor:
         return self.net(x)
@@ -275,15 +279,17 @@ class MNISTGPUDataModule(pl.LightningDataModule):
     def __init__(self, conf: DataConf) -> None:
         super().__init__()
         self.conf = conf
+        # Expose batch_size for Lightning Tuner
+        self.batch_size = conf.batch_size
         self.train_ds: Optional[TensorDataset] = None
         self.val_ds: Optional[TensorDataset] = None
 
     def prepare_data(self) -> None:
-        MNIST(root=".", train=True, download=True)
-        MNIST(root=".", train=False, download=True)
+        MNIST(root="./MNIST", train=True, download=True)
+        MNIST(root="./MNIST", train=False, download=True)
 
     def setup(self, stage: Optional[str] = None) -> None:
-        raw = MNIST(root=".", train=True, download=False)
+        raw = MNIST(root="./MNIST", train=True, download=False)
         x_u8 = torch.from_numpy(raw.data.numpy())  # [N, 28, 28], uint8
         y = torch.tensor(raw.targets.numpy(), dtype=torch.long)
 
@@ -429,13 +435,12 @@ def _load_sweep(path: Optional[str]) -> Dict[str, Sequence[Any]]:
 def run_once(cfg: Dict[str, Any], use_gpu: bool) -> Dict[str, Any]:
     """Execute one training-throughput measurement for a given config."""
     # Extract knobs with defaults
-    batch_size: int = int(cfg.get("batch_size", 16384))
-    gpu_resident: bool = bool(cfg.get("gpu_resident", True))
-    precision_req: str = str(cfg.get("precision", "bf16-mixed"))
+    batch_size: int = int(cfg.get("batch_size", 4096))
+    gpu_resident: bool = bool(cfg.get("gpu_resident", False))
+    precision_req: str = str(cfg.get("precision", "32-true"))
     width: int = int(cfg.get("width", 256))
     depth: int = int(cfg.get("depth", 5))
-    compile_model: bool = bool(cfg.get("compile_model", True))
-    num_workers: int = int(cfg.get("num_workers", 0))
+    num_workers: int = int(cfg.get("num_workers", 8))
     optimizer: str = str(cfg.get("optimizer", "sgd"))
     base_lr: float = float(cfg.get("base_lr", 1e-2))
     weight_decay: float = float(cfg.get("weight_decay", 0.0))
@@ -462,7 +467,7 @@ def run_once(cfg: Dict[str, Any], use_gpu: bool) -> Dict[str, Any]:
         base_lr=base_lr,
         weight_decay=weight_decay,
         optimizer_name=("sgd" if optimizer.lower() == "sgd" else "adamw"),
-        compile_model=(compile_model and hasattr(torch, "compile")),
+        compile_model=False,  # Disabled for fair CPU vs GPU comparison
         global_batch_size=batch_size,
     )
 
@@ -483,9 +488,25 @@ def run_once(cfg: Dict[str, Any], use_gpu: bool) -> Dict[str, Any]:
     if gpumon:
         callbacks.append(gpumon)
 
+    # For CPU training, use a reasonable number of processes to avoid OOM
+    # For GPU training, use auto (which will use all available GPUs)
+    if use_gpu:
+        devices_setting = "auto"
+        strategy_setting = "auto"
+    else:
+        # Limit to 4-8 processes for CPU to avoid OOM (each process loads full model/data)
+        # Single process with DataLoader workers + PyTorch threading is often more efficient
+        cpu_count = os.cpu_count() or 1
+        # Use single process - parallelism comes from DataLoader workers and PyTorch threading
+        devices_setting = 1
+        strategy_setting = "auto"
+        # Set PyTorch threading to use available cores for compute
+        torch.set_num_threads(cpu_count)
+
     trainer = pl.Trainer(
         accelerator=("gpu" if use_gpu else "cpu"),
-        devices=1,
+        devices=devices_setting,
+        strategy=strategy_setting,
         precision=precision,
         max_epochs=10_000,
         logger=logger,  # <— logger ON so DeviceStatsMonitor works
@@ -496,6 +517,52 @@ def run_once(cfg: Dict[str, Any], use_gpu: bool) -> Dict[str, Any]:
         max_steps=10_000,
         callbacks=callbacks,
     )
+
+    # Extract number of devices used by trainer
+    num_devices = trainer.num_devices
+    device_ids = getattr(trainer, "device_ids", None)
+    if device_ids is not None and isinstance(device_ids, list):
+        device_ids_str = ",".join(str(d) for d in device_ids)
+    else:
+        device_ids_str = None
+
+    # Use Tuner to find optimal batch size and learning rate
+    tuner = Tuner(trainer)
+    optimal_batch_size = batch_size
+    optimal_lr = base_lr
+    
+    try:
+        # Find maximum batch size that fits in memory
+        optimal_batch_size = tuner.scale_batch_size(
+            model, datamodule=dm, mode="power", max_trials=25
+        )
+        # Update model and datamodule with optimal batch size
+        model.global_batch_size = optimal_batch_size
+        model.batch_size = optimal_batch_size  # Update for Tuner
+        dataconf.batch_size = optimal_batch_size
+        # Recreate datamodule with updated batch size
+        dm = MNISTGPUDataModule(dataconf)
+        dm.batch_size = optimal_batch_size  # Update for Tuner
+        dm.setup("fit")
+        
+        # Calculate what the effective LR will be after model's internal scaling
+        # Model scales LR as: base_lr * (global_batch_size / 128.0)
+        # So effective LR = base_lr * (optimal_batch_size / 128.0)
+        optimal_lr = base_lr * (optimal_batch_size / 128.0)
+        
+        # Optional: Use LR finder to find optimal LR (commented out as it's slower)
+        # This would override the linear scaling rule
+        # lr_finder = tuner.lr_find(model, datamodule=dm, min_lr=1e-6, max_lr=1.0)
+        # optimal_lr_suggestion = lr_finder.suggestion()
+        # # Back-calculate what base_lr would give us this optimal LR
+        # model.base_lr = optimal_lr_suggestion * (128.0 / optimal_batch_size)
+        # optimal_lr = optimal_lr_suggestion
+        
+    except Exception as tune_err:
+        # If tuning fails, use original values
+        print(f"Warning: Tuning failed ({tune_err}), using original batch_size={batch_size}, lr={base_lr}")
+        optimal_batch_size = batch_size
+        optimal_lr = base_lr * (batch_size / 128.0)  # Model's effective LR with original batch size
 
     started = time.perf_counter()
     err: Optional[str] = None
@@ -517,16 +584,19 @@ def run_once(cfg: Dict[str, Any], use_gpu: bool) -> Dict[str, Any]:
         "timestamp": time.strftime("%Y-%m-%d %H:%M:%S"),
         "device": ("gpu" if use_gpu else "cpu"),
         "gpu_name": gpu_name,
-        "batch_size": batch_size,
+        "num_devices": num_devices,
+        "device_ids": device_ids_str,
+        "batch_size": batch_size,  # Original requested batch size
+        "optimal_batch_size": optimal_batch_size,  # Tuned batch size
         "gpu_resident": gpu_resident,
         "precision_requested": precision_req,
         "precision_effective": precision,
         "width": width,
         "depth": depth,
-        "compile_model": compile_model and hasattr(torch, "compile"),
         "num_workers": dataconf.num_workers,
         "optimizer": optimizer,
-        "base_lr": base_lr,
+        "base_lr": base_lr,  # Original requested LR
+        "optimal_lr": optimal_lr,  # Tuned LR
         "weight_decay": weight_decay,
         "warmup_steps": warmup_steps,
         "measure_steps": measure_steps,
@@ -575,13 +645,6 @@ def main() -> None:
     )
     args = parser.parse_args()
 
-    if args.accelerator == "gpu":
-        use_gpu = torch.cuda.is_available()
-    elif args.accelerator == "cpu":
-        use_gpu = False
-    else:
-        use_gpu = torch.cuda.is_available()
-
     sweep_space = _load_sweep(args.config)
 
     # Expand to list of configs (dicts)
@@ -599,16 +662,20 @@ def main() -> None:
         "timestamp",
         "device",
         "gpu_name",
+        "num_devices",
+        "device_ids",
+        "requested_accelerator",
         "batch_size",
+        "optimal_batch_size",
         "gpu_resident",
         "precision_requested",
         "precision_effective",
         "width",
         "depth",
-        "compile_model",
         "num_workers",
         "optimizer",
         "base_lr",
+        "optimal_lr",
         "weight_decay",
         "warmup_steps",
         "measure_steps",
@@ -625,13 +692,38 @@ def main() -> None:
         "reserved_peak_GiB",
     ]
 
+    def _use_gpu_for_cfg(cfg_accel: str, cli_accel: str) -> Optional[bool]:
+        """Determine if GPU should be used based on config and CLI args."""
+        # Honour CLI filter if provided
+        if cli_accel != "auto" and cfg_accel != cli_accel:
+            return None
+        if cfg_accel == "gpu":
+            return True if torch.cuda.is_available() else None
+        if cfg_accel == "cpu":
+            return False
+        # cfg_accel == "auto" (or missing): fall back to CLI choice
+        if cli_accel == "cpu":
+            return False
+        if cli_accel == "gpu":
+            return True if torch.cuda.is_available() else None
+        return torch.cuda.is_available()
+
     # Run sweep
     rows: List[Dict[str, Any]] = []
     with open(args.out, "w", newline="", encoding="utf-8") as f:
         writer = csv.DictWriter(f, fieldnames=fieldnames)
         writer.writeheader()
         for i, cfg in enumerate(grid, 1):
+            cfg_accel = str(cfg.get("accelerator", "auto"))
+            use_gpu = _use_gpu_for_cfg(cfg_accel, args.accelerator)
+            if use_gpu is None:
+                print(
+                    f"[{i:>4}/{len(grid)}] Skipping {cfg_accel} config "
+                    f"(filtered or GPU unavailable)"
+                )
+                continue
             result = run_once(cfg, use_gpu=use_gpu)
+            result["requested_accelerator"] = cfg_accel
             writer.writerow(result)
             f.flush()
             rows.append(result)
@@ -648,9 +740,9 @@ def main() -> None:
     print("\nTop 5 configs by samples/s:")
     for r in top:
         print(
-            f" {r['samples_per_sec']:.1f} sps | bsz={r['batch_size']} width={r['width']} "
-            f"prec={r['precision_effective']} gpu_res={r['gpu_resident']} "
-            f"workers={r['num_workers']} compile={r['compile_model']}"
+            f" {r['samples_per_sec']:.1f} sps | {r['device']} width={r['width']} "
+            f"bsz={r['batch_size']} prec={r['precision_effective']} "
+            f"gpu_res={r['gpu_resident']} workers={r['num_workers']}"
         )
 
 

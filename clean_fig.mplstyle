@@ -26,10 +26,14 @@ grid.linestyle       : --
 grid.linewidth       : 0.5
 axes.grid            : False  # or True for light gridlines
 
+# background color transparent
+# axes.facecolor        : 'none'
+figure.facecolor      : 'white'
+
 ## figure saving
 figure.dpi           : 100
 savefig.dpi          : 300
 savefig.bbox         : tight
-savefig.transparent  : True
+# savefig.transparent  : True
 savefig.format       : pdf
 pdf.fonttype         : 42  # for better text rendering in PDFs
