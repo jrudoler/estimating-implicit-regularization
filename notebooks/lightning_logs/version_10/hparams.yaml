@@ -1,0 +1,11 @@
+batchnorm: false
+depth: 3
+dropout: 0.0
+input_dim: 784
+l2_lambda: 0.04
+linear_layer_bias: true
+lr: 0.01
+momentum: 0.9
+nuclear_lambda: 0.1
+num_classes: 10
+width: 100
