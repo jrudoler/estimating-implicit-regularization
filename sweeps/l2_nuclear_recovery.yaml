@@ -1,0 +1,37 @@
+method: grid
+parameters:
+  dataset:
+    values: [mnist]
+  l2_lambda:
+    values: [0., 0.001, 0.01, 0.05]
+  nuclear_lambda:
+    values: [0.0, 0.001, 0.01, 0.05]
+  depth:
+    values: [3]
+  width:
+    values: [256]
+  seed:
+    values: [42, 123, 456, 789, 999]
+  batch_size:
+    value: 256
+  lr:
+    value: 0.001
+  max_epochs:
+    value: 300
+  patience:
+    value: 30
+  bias_lr:
+    value: 0.05
+  bias_max_epochs:
+    value: 2000
+  bias_patience:
+    value: 100
+  val_fraction:
+    value: 0.1
+command:
+  - uv
+  - run
+  - python
+  - ${program}
+program: experiments/l2_nuclear_train_and_recover.py
+
