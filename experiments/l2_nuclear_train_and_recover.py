@@ -97,15 +97,15 @@ class DeepReLUClassifierJoint(pl.LightningModule):
         x, y = batch
         logits = self(x)
         loss = self.loss_fn(logits, y)
-        
+
         # Add L2 regularization
         l2_penalty = self.weight_regularization()
         loss += l2_penalty
-        
+
         # Add nuclear norm regularization
         nuclear_penalty = self.nuclear_regularization()
         loss += nuclear_penalty
-        
+
         self.log("train/loss", loss, on_step=False, on_epoch=True, prog_bar=True)
         self.log("train/acc", self._accuracy(logits, y), on_step=False, on_epoch=True)
         self.log("train/l2_penalty", l2_penalty, on_step=False, on_epoch=True)
@@ -347,7 +347,7 @@ def main() -> None:
     # Estimate BOTH L2 and nuclear norm penalties using JointBias
     l2_bias = RidgeBias(enforce_positive=True)
     nuclear_bias = NuclearNormBias(enforce_positive=True)
-    
+
     # Initialize with ground truth values (good starting point)
     l2_bias.beta.data = torch.tensor(
         [l2_lambda],
@@ -359,7 +359,7 @@ def main() -> None:
         dtype=nuclear_bias.beta.dtype,
         device=nuclear_bias.beta.device,
     )
-    
+
     joint_bias = JointBias([l2_bias, nuclear_bias])
 
     bias_estimator = BiasWithCrossEntropyScheduled(
@@ -398,14 +398,14 @@ def main() -> None:
     estimated_params = joint_bias.report_parameters()
     estimated_l2 = estimated_params.get("ridge", 0.0)
     estimated_nuclear = estimated_params.get("nuclear_norm", 0.0)
-    
+
     # Calculate errors
     l2_abs_error = abs(estimated_l2 - l2_lambda)
     l2_rel_error = l2_abs_error / max(l2_lambda, 1e-12)
-    
+
     nuclear_abs_error = abs(estimated_nuclear - nuclear_lambda)
     nuclear_rel_error = nuclear_abs_error / max(nuclear_lambda, 1e-12)
-    
+
     # Log identifiability metrics
     wandb.log(
         {
@@ -421,20 +421,22 @@ def main() -> None:
             "identifiability/max_rel_error": max(l2_rel_error, nuclear_rel_error),
         }
     )
-    
+
     # Update run summary
-    run.summary.update({
-        "l2_true": l2_lambda,
-        "l2_estimated": estimated_l2,
-        "l2_abs_error": l2_abs_error,
-        "l2_rel_error": l2_rel_error,
-        "nuclear_true": nuclear_lambda,
-        "nuclear_estimated": estimated_nuclear,
-        "nuclear_abs_error": nuclear_abs_error,
-        "nuclear_rel_error": nuclear_rel_error,
-        "mean_rel_error": (l2_rel_error + nuclear_rel_error) / 2,
-        "max_rel_error": max(l2_rel_error, nuclear_rel_error),
-    })
+    run.summary.update(
+        {
+            "l2_true": l2_lambda,
+            "l2_estimated": estimated_l2,
+            "l2_abs_error": l2_abs_error,
+            "l2_rel_error": l2_rel_error,
+            "nuclear_true": nuclear_lambda,
+            "nuclear_estimated": estimated_nuclear,
+            "nuclear_abs_error": nuclear_abs_error,
+            "nuclear_rel_error": nuclear_rel_error,
+            "mean_rel_error": (l2_rel_error + nuclear_rel_error) / 2,
+            "max_rel_error": max(l2_rel_error, nuclear_rel_error),
+        }
+    )
 
     LOGGER.info(
         "L2 Recovery: true=%.6f | estimated=%.6f | abs_error=%.6f | rel_error=%.6f",
@@ -461,4 +463,3 @@ if __name__ == "__main__":
         datefmt="%Y-%m-%d %H:%M:%S",
     )
     main()
-
