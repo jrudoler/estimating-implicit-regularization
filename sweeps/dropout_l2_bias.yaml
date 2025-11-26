@@ -34,4 +34,4 @@ command:
   - run
   - python
   - ${program}
-program: analysis/dropout_bias_estimation.py
+program: experiments/dropout_bias_estimation.py
