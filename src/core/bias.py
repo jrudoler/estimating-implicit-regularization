@@ -4,14 +4,32 @@ import torch
 from torch import Tensor
 import torch.nn as nn
 import torch.nn.functional as F
-import lightning.pytorch as pl
-from torch.func import functional_call, vjp, hessian
-from torch.optim import Optimizer
-from typing import Dict, Callable, Tuple, Any, Optional, Iterable
+from typing import Dict, Callable, Tuple, Any, Optional, Iterable, List
+from abc import abstractmethod
 
 
-class GradientSquaredPenaltyScale(nn.Module):
+class Bias(nn.Module):
+    @property
+    @abstractmethod
+    def bias_name(self) -> str:
+        pass
+
+    def __init__(self):
+        super().__init__()
+
+    @abstractmethod
+    def forward(self, flattened_params, structured_params, **kwargs):
+        pass
+
+    @abstractmethod
+    def get_bias_params(self) -> Dict[str, float]:
+        pass
+
+
+class GradientSquaredPenaltyScale(Bias):
     """Learns a scalar multiplier for squared gradient penalties."""
+
+    bias_name = "grad_squared"
 
     def __init__(self, lambda_init: float = 1.0, enforce_positive: bool = True) -> None:
         super().__init__()
@@ -33,13 +51,75 @@ class GradientSquaredPenaltyScale(nn.Module):
         penalty = torch.sum(grad_vector.pow(2))
         return scale * penalty
 
+    def get_bias_params(self) -> Dict[str, float]:
+        val = (
+            torch.exp(self.lambda_param).item()
+            if self.enforce_positive
+            else self.lambda_param.item()
+        )
+        return {"scale": val}
+
 
 # GOAL: implement a class of models that represent a parametrization of the inductive
 # bias of the model. This class should be able to be used with any pretrained model with
 # known activations / weights.
 
 
-class NuclearNormBias(nn.Module):
+class ScalarBias(Bias):
+    bias_name = "scalar"
+
+    def __init__(
+        self, enforce_positive: bool = True, init_value: Optional[float] = None
+    ):
+        super().__init__()
+        self.beta = nn.Parameter(
+            torch.tensor(init_value) if init_value is not None else torch.randn(1) * 0.1
+        )  # Initialize parameter
+        self.enforce_positive = enforce_positive
+
+    @abstractmethod
+    def forward(self, flattened_params, structured_params, **kwargs):
+        pass
+
+    def get_bias_params(self) -> Dict[str, float]:
+        if self.enforce_positive:
+            return {"scale": torch.exp(self.beta).item()}
+        else:
+            return {"scale": self.beta.item()}
+
+
+class OrthogonalBias(ScalarBias):
+    bias_name = "orthogonal"
+
+    def __init__(
+        self, enforce_positive: bool = True, init_value: Optional[float] = None
+    ):
+        super().__init__(enforce_positive=enforce_positive, init_value=init_value)
+
+    def forward(self, flattened_params, structured_params, **kwargs):
+        penalty = torch.tensor(0.0, device=flattened_params.device)
+
+        for w in structured_params:
+            if w.ndim == 2:
+                # Rows: features, Cols: dim
+                # Check if we want row or col orthogonality.
+                # Usually row orthogonality for Linear layers (neurons are orthogonal)
+                # If W is (out_features, in_features):
+
+                rows, cols = w.shape
+                if rows > cols:
+                    # Cannot be orthogonal if rows > cols
+                    continue
+
+                gram = torch.mm(w, w.t())  # (out, out)
+                eye = torch.eye(rows, device=w.device)
+                penalty = penalty + torch.norm(gram - eye, p="fro") ** 2
+
+        scale = torch.exp(self.beta) if self.enforce_positive else self.beta
+        return scale * penalty
+
+
+class NuclearNormBias(Bias):
     bias_name = "nuclear_norm"
 
     def __init__(
@@ -54,13 +134,13 @@ class NuclearNormBias(nn.Module):
     def forward(
         self,
         flattened_params: torch.Tensor,
-        named_params: Dict[str, torch.Tensor],
+        structured_params: List[torch.Tensor],
         **kwargs,
     ) -> torch.Tensor:
         penalty = torch.zeros(
             (), device=flattened_params.device, dtype=flattened_params.dtype
         )
-        for weight in named_params.values():
+        for weight in structured_params:
             if weight.ndim >= 2:
                 matrix = (
                     weight if weight.ndim == 2 else weight.reshape(weight.shape[0], -1)
@@ -69,14 +149,14 @@ class NuclearNormBias(nn.Module):
         scale = torch.exp(self.beta) if self.enforce_positive else self.beta
         return scale.squeeze() * penalty
 
-    def get_bias_params(self) -> float:
+    def get_bias_params(self) -> Dict[str, float]:
         if self.enforce_positive:
-            return torch.exp(self.beta).item()
+            return {"scale": torch.exp(self.beta).item()}
         else:
-            return self.beta.item()
+            return {"scale": self.beta.item()}
 
 
-class LowRankBias(nn.Module):
+class LowRankBias(Bias):
     bias_name = "low_rank"
 
     def __init__(self, enforce_positive: bool = True):
@@ -90,13 +170,13 @@ class LowRankBias(nn.Module):
 
     def compute_average_rank(
         self,
-        named_params: Dict[str, torch.Tensor],
+        structured_params: List[torch.Tensor],
         device: torch.device,
         dtype: torch.dtype,
     ) -> torch.Tensor:
         total_rank = torch.zeros((), device=device, dtype=dtype)
         count = 0
-        for _, weight in iter_weight_matrices(named_params):
+        for weight in structured_params:
             matrix = weight if weight.ndim == 2 else weight.reshape(weight.shape[0], -1)
             total_rank = total_rank + self.compute_rank(matrix)
             count += 1
@@ -107,28 +187,30 @@ class LowRankBias(nn.Module):
     def forward(
         self,
         flattened_params: torch.Tensor,
-        named_params: Dict[str, torch.Tensor],
+        structured_params: List[torch.Tensor],
         **kwargs,
     ) -> torch.Tensor:
         average_rank = self.compute_average_rank(
-            named_params, device=flattened_params.device, dtype=flattened_params.dtype
+            structured_params,
+            device=flattened_params.device,
+            dtype=flattened_params.dtype,
         )
         scale = torch.exp(self.beta) if self.enforce_positive else self.beta
         return scale.squeeze() * average_rank
 
-    def get_bias_params(self) -> float:
+    def get_bias_params(self) -> Dict[str, float]:
         if self.enforce_positive:
-            return torch.exp(self.beta).item()
+            return {"scale": torch.exp(self.beta).item()}
         else:
-            return self.beta.item()
+            return {"scale": self.beta.item()}
 
 
 def iter_weight_matrices(
-    named_params: Dict[str, torch.Tensor],
+    structured_params: List[torch.Tensor],
 ) -> Iterable[Tuple[str, torch.Tensor]]:
-    for name, parameter in named_params.items():
+    for parameter in structured_params:
         if parameter.ndim >= 2:
-            yield name, parameter
+            yield parameter
 
 
 class JointBias(nn.Module):
@@ -141,28 +223,54 @@ class JointBias(nn.Module):
     def forward(
         self,
         flattened_params: torch.Tensor,
-        named_params: Dict[str, torch.Tensor],
+        structured_params: List[torch.Tensor],
+        return_components: bool = False,
         **kwargs,
-    ) -> torch.Tensor:
+    ):
         total = torch.zeros(
             (), device=flattened_params.device, dtype=flattened_params.dtype
         )
-        for bias_model in self.bias_models:
-            total = total + bias_model(flattened_params, named_params, **kwargs)
-        return total
+        components = {}
 
-    def report_parameters(self) -> Dict[str, float]:
-        report: Dict[str, float] = {}
         for idx, bias_model in enumerate(self.bias_models):
             key = getattr(bias_model, "bias_name", bias_model.__class__.__name__)
-            if key in report:
+            if key in components:
                 key = f"{key}_{idx}"
+
+            val = bias_model(flattened_params, structured_params, **kwargs)
+            total = total + val
+
+            # only store component if requested
+            if return_components:
+                components[key] = val
+
+        if return_components:
+            return total, components
+        else:
+            return total
+
+    def get_bias_params(self) -> Dict[str, float]:
+        bias_params = {}
+        used_prefixes = set()
+
+        for idx, bias_model in enumerate(self.bias_models):
+            base_name = bias_model.bias_name
+            prefix = base_name
+            if prefix in used_prefixes:
+                prefix = f"{base_name}_{idx}"
+            used_prefixes.add(prefix)
+
             if hasattr(bias_model, "get_bias_params"):
-                report[key] = bias_model.get_bias_params()
-        return report
+                params = bias_model.get_bias_params()
+                if isinstance(params, dict):
+                    for k, v in params.items():
+                        bias_params[f"{prefix}/{k}"] = v
+                else:
+                    bias_params[prefix] = params
+        return bias_params
 
 
-class RidgeBias(nn.Module):
+class RidgeBias(Bias):
     bias_name = "ridge"
 
     def __init__(
@@ -175,28 +283,35 @@ class RidgeBias(nn.Module):
         self.enforce_positive = enforce_positive
         self.init_value = init_value
 
-    def get_bias_params(self) -> float:
+    def get_bias_params(self) -> Dict[str, float]:
         if self.enforce_positive:
-            return torch.exp(self.beta).item()
+            return {"scale": torch.exp(self.beta).item()}
         else:
-            return self.beta.item()
+            return {"scale": self.beta.item()}
 
-    def forward(self, flattened_params: torch.Tensor, named_param_views=None, **kwargs):
+    def forward(self, flattened_params: torch.Tensor, structured_params=None, **kwargs):
         penalty = torch.sum(flattened_params.pow(2))
         scale = torch.exp(self.beta) if self.enforce_positive else self.beta
         return scale.squeeze() * penalty
 
 
-class LassoBias(nn.Module):
+class LassoBias(Bias):
+    bias_name = "lasso"
+
     def __init__(self):
         super().__init__()
         self.alpha = nn.Parameter(torch.tensor([1.0]))  # Initialize parameters
 
-    def forward(self, flattened_params, named_param_views=None, **kwargs):
+    def forward(self, flattened_params, structured_params=None, **kwargs):
         return self.alpha * torch.sum(torch.abs(flattened_params))
 
+    def get_bias_params(self) -> Dict[str, float]:
+        return {"alpha": self.alpha.item()}
 
-class SmoothLassoBias(nn.Module):
+
+class SmoothLassoBias(Bias):
+    bias_name = "smooth_lasso"
+
     def __init__(
         self,
         enforce_positive: bool = True,
@@ -211,13 +326,13 @@ class SmoothLassoBias(nn.Module):
         self.enforce_positive = enforce_positive
         self.init_value = init_value
 
-    def get_bias_params(self) -> float:
+    def get_bias_params(self) -> Dict[str, float]:
         if self.enforce_positive:
-            return torch.exp(self.alpha).item()
+            return {"scale": torch.exp(self.alpha).item()}
         else:
-            return self.alpha.item()
+            return {"scale": self.alpha.item()}
 
-    def forward(self, flattened_params: torch.Tensor, named_param_views=None, **kwargs):
+    def forward(self, flattened_params: torch.Tensor, structured_params=None, **kwargs):
         smooth_loss = torch.nn.functional.smooth_l1_loss(
             flattened_params,
             torch.zeros_like(flattened_params),
@@ -228,7 +343,9 @@ class SmoothLassoBias(nn.Module):
         return scale.squeeze() * smooth_loss
 
 
-class MatrixRidgeBias(nn.Module):
+class MatrixRidgeBias(Bias):
+    bias_name = "matrix_ridge"
+
     def __init__(self, dim: int = 10, Q_init: torch.Tensor = None):
         super().__init__()
         self.dim = dim
@@ -243,7 +360,7 @@ class MatrixRidgeBias(nn.Module):
             else nn.Parameter(torch.eye(dim))
         )  # Initialize parameter
 
-    def forward(self, flattened_params: torch.Tensor, named_param_views=None, **kwargs):
+    def forward(self, flattened_params: torch.Tensor, structured_params=None, **kwargs):
         """
         Compute the quadratic form x^T Q x, where x is the flattened parameters.
         This is equivalent to the L2 regularization term with a matrix Q.
@@ -257,8 +374,16 @@ class MatrixRidgeBias(nn.Module):
         loss = flattened_params @ self.Q @ flattened_params
         return loss
 
+    def get_bias_params(self) -> Dict[str, float]:
+        # Return something informative? Or just ignore for now since it's a big matrix?
+        # User wants "name" logic fixed primarily.
+        # For matrices, returning the whole thing is too much. Maybe just norm?
+        return {"norm": self.Q.norm().item()}
 
-class DiagMatrixRidgeBias(nn.Module):
+
+class DiagMatrixRidgeBias(Bias):
+    bias_name = "diag_matrix_ridge"
+
     def __init__(self, dim: int = 10, Q_init: torch.Tensor = None):
         super().__init__()
         self.dim = dim
@@ -273,7 +398,7 @@ class DiagMatrixRidgeBias(nn.Module):
             else nn.Parameter(torch.zeros(dim))
         )  # Initialize parameter
 
-    def forward(self, flattened_params: torch.Tensor, named_param_views=None, **kwargs):
+    def forward(self, flattened_params: torch.Tensor, structured_params=None, **kwargs):
         """
         Compute the quadratic form x^T Q x, where x is the flattened parameters.
         This is equivalent to the L2 regularization term with a matrix Q.
@@ -288,14 +413,19 @@ class DiagMatrixRidgeBias(nn.Module):
         loss = flattened_params @ Q @ flattened_params
         return loss
 
+    def get_bias_params(self) -> Dict[str, float]:
+        return {"norm": self.Q.norm().item()}
 
-class DiagPSDMatrixRidgeBias(nn.Module):
+
+class DiagPSDMatrixRidgeBias(Bias):
     """
     A numerically stable, efficient, and guaranteed-PSD bias model.
 
     - Efficient: Avoids creating a large diagonal matrix in memory.
     - PSD: Enforces positivity on the diagonal of Q via re-parameterization.
     """
+
+    bias_name = "diag_psd_matrix_ridge"
 
     def __init__(self, dim: int, Q_init_diag: torch.Tensor = None):
         super().__init__()
@@ -313,7 +443,7 @@ class DiagPSDMatrixRidgeBias(nn.Module):
         self.log_Q_diag = nn.Parameter(initial_values)
 
     def forward(
-        self, flattened_params: torch.Tensor, named_param_views=None, **kwargs
+        self, flattened_params: torch.Tensor, structured_params=None, **kwargs
     ) -> torch.Tensor:
         """
         Efficiently computes the quadratic form βᵀQβ.
@@ -332,6 +462,9 @@ class DiagPSDMatrixRidgeBias(nn.Module):
         loss = torch.sum(Q_diag * flattened_params.pow(2))
 
         return loss
+
+    def get_bias_params(self) -> Dict[str, float]:
+        return {"norm": torch.exp(self.log_Q_diag).norm().item()}
 
     # """
     # Learns a PSD matrix Q of shape (dim, dim) by
@@ -362,7 +495,9 @@ class DiagPSDMatrixRidgeBias(nn.Module):
     #     return loss
 
 
-class ElasticNet(nn.Module):
+class ElasticNet(Bias):
+    bias_name = "elastic_net"
+
     def __init__(
         self,
         lambda_1_init: float = 1.0,
@@ -389,8 +524,12 @@ class ElasticNet(nn.Module):
     def lambdas(self) -> tuple[Tensor, Tensor]:
         return self.lambda_1, self.lambda_2
 
+    def get_bias_params(self) -> Dict[str, float]:
+        l1, l2 = self.lambdas()
+        return {"lambda_1": l1.item(), "lambda_2": l2.item()}
+
     def forward(
-        self, flattened_params: Tensor, named_param_views=None, **kwargs
+        self, flattened_params: Tensor, structured_params=None, **kwargs
     ) -> Tensor:
         lam1, lam2 = self.lambdas()  # strictly > 0
         l1_penalty = lam1 * F.smooth_l1_loss(
@@ -525,7 +664,9 @@ class ElasticNet(nn.Module):
 #         return quadratic_term + linear_term
 
 
-class DiagMatrixBiasKRR(nn.Module):
+class DiagMatrixBiasKRR(Bias):
+    bias_name = "diag_matrix_bias_krr"
+
     def __init__(
         self,
         Q_t_init: torch.Tensor = None,
@@ -636,8 +777,13 @@ class DiagMatrixBiasKRR(nn.Module):
         #     print("linear_term (should be zero):", linear_term)
         return linear_term + quadratic_term
 
+    def get_bias_params(self) -> Dict[str, float]:
+        return {"norm": self.Q_t.norm().item()}
 
-class DiagMatrixBiasNTKRR(nn.Module):
+
+class DiagMatrixBiasNTKRR(Bias):
+    bias_name = "diag_matrix_bias_ntkrr"
+
     def __init__(
         self,
         Q_t_init: Optional[torch.Tensor] = None,
@@ -727,3 +873,6 @@ class DiagMatrixBiasNTKRR(nn.Module):
             ridge_term = self.lambda_ * (alpha @ self.K @ alpha)
             quadratic_term += ridge_term
         return linear_term + quadratic_term
+
+    def get_bias_params(self) -> Dict[str, float]:
+        return {"norm": self.Q_t.norm().item()}

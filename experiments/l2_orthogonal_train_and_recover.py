@@ -1,12 +1,11 @@
 #!/usr/bin/env python3
-"""Recover L2 and nuclear norm penalties from trained deep ReLU networks to test identifiability."""
+"""Recover L2 and orthogonal penalties from trained deep ReLU networks to test identifiability."""
 
 from __future__ import annotations
 
 import argparse
 import logging
 from pathlib import Path
-import sys
 
 import lightning as pl
 from lightning.pytorch.callbacks import EarlyStopping, ModelCheckpoint
@@ -17,12 +16,7 @@ from torch.utils.data import DataLoader, random_split
 from torchvision import datasets, transforms
 import wandb
 
-SCRIPT_DIR = Path(__file__).resolve().parent
-REPO_ROOT = SCRIPT_DIR.parent
-if str(REPO_ROOT) not in sys.path:
-    sys.path.append(str(REPO_ROOT))
-
-from core.bias import RidgeBias, NuclearNormBias, JointBias
+from core.bias import RidgeBias, OrthogonalBias, JointBias
 from core.estimators import BiasWithCrossEntropy
 
 LOGGER = logging.getLogger(__name__)
@@ -66,8 +60,8 @@ def set_seed(seed: int) -> None:
     torch.backends.cudnn.benchmark = False
 
 
-class DeepReLUClassifierJoint(pl.LightningModule):
-    """Deep ReLU MLP classifier with L2 AND nuclear norm regularization."""
+class DeepReLUClassifierL2Orthogonal(pl.LightningModule):
+    """Deep ReLU MLP classifier with L2 AND orthogonal regularization."""
 
     def __init__(
         self,
@@ -76,7 +70,7 @@ class DeepReLUClassifierJoint(pl.LightningModule):
         depth: int,
         width: int,
         l2_lambda: float,
-        nuclear_lambda: float,
+        orthogonal_lambda: float,
         lr: float,
         linear_layer_bias: bool = True,
     ) -> None:
@@ -109,14 +103,16 @@ class DeepReLUClassifierJoint(pl.LightningModule):
         l2_penalty = self.weight_regularization()
         loss += l2_penalty
 
-        # Add nuclear norm regularization
-        nuclear_penalty = self.nuclear_regularization()
-        loss += nuclear_penalty
+        # Add orthogonal regularization
+        orthogonal_penalty = self.orthogonal_regularization()
+        loss += orthogonal_penalty
 
         self.log("train/loss", loss, on_step=False, on_epoch=True, prog_bar=True)
         self.log("train/acc", self._accuracy(logits, y), on_step=False, on_epoch=True)
         self.log("train/l2_penalty", l2_penalty, on_step=False, on_epoch=True)
-        self.log("train/nuclear_penalty", nuclear_penalty, on_step=False, on_epoch=True)
+        self.log(
+            "train/orthogonal_penalty", orthogonal_penalty, on_step=False, on_epoch=True
+        )
         return loss
 
     def validation_step(self, batch: tuple[Tensor, Tensor], batch_idx: int) -> Tensor:
@@ -124,7 +120,7 @@ class DeepReLUClassifierJoint(pl.LightningModule):
         logits = self(x)
         loss = self.loss_fn(logits, y)
         loss += self.weight_regularization()
-        loss += self.nuclear_regularization()
+        loss += self.orthogonal_regularization()
         self.log("val/loss", loss, on_step=False, on_epoch=True, prog_bar=True)
         self.log("val/acc", self._accuracy(logits, y), on_step=False, on_epoch=True)
         return loss
@@ -134,7 +130,7 @@ class DeepReLUClassifierJoint(pl.LightningModule):
         logits = self(x)
         loss = self.loss_fn(logits, y)
         loss += self.weight_regularization()
-        loss += self.nuclear_regularization()
+        loss += self.orthogonal_regularization()
         self.log("test/loss", loss, on_step=False, on_epoch=True)
         self.log("test/acc", self._accuracy(logits, y), on_step=False, on_epoch=True)
         return loss
@@ -145,14 +141,25 @@ class DeepReLUClassifierJoint(pl.LightningModule):
         l2_penalty = torch.sum(flattened.pow(2))
         return self.hparams.l2_lambda * l2_penalty
 
-    def nuclear_regularization(self) -> Tensor:
-        """Nuclear norm penalty on weight matrices."""
+    def orthogonal_regularization(self) -> Tensor:
+        """Orthogonal penalty on weight matrices."""
         penalty = torch.zeros((), device=self.device)
+        # Iterate over modules to find Linear layers easily, or inspect parameters
+        # Using parameters() and checking shape is simpler given the structure
         for param in self.parameters():
-            if param.ndim >= 2:
-                matrix = param if param.ndim == 2 else param.reshape(param.shape[0], -1)
-                penalty = penalty + torch.linalg.matrix_norm(matrix, ord="nuc")
-        return self.hparams.nuclear_lambda * penalty
+            if param.ndim == 2:
+                # Linear layer weights: (out_features, in_features)
+                w = param
+                rows, cols = w.shape
+                if rows > cols:
+                    # Cannot be orthogonal if rows > cols
+                    continue
+
+                gram = torch.mm(w, w.t())
+                eye = torch.eye(rows, device=w.device)
+                penalty = penalty + torch.norm(gram - eye, p="fro") ** 2
+
+        return self.hparams.orthogonal_lambda * penalty
 
     def _accuracy(self, logits: Tensor, targets: Tensor) -> Tensor:
         preds = logits.argmax(dim=1)
@@ -241,7 +248,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--depth", type=int, default=3)
     parser.add_argument("--width", type=int, default=256)
     parser.add_argument("--l2-lambda", type=float, default=0.01)
-    parser.add_argument("--nuclear-lambda", type=float, default=0.01)
+    parser.add_argument("--orthogonal-lambda", type=float, default=0.01)
     parser.add_argument("--lr", type=float, default=1e-3)
     parser.add_argument("--max-epochs", type=int, default=300)
     parser.add_argument("--patience", type=int, default=100)
@@ -256,7 +263,7 @@ def parse_args() -> argparse.Namespace:
 
 def main() -> None:
     # Initialize W&B
-    run = wandb.init(project="inductive-bias", job_type="l2_nuclear_recovery")
+    run = wandb.init(project="inductive-bias", job_type="l2_orthogonal_recovery")
     cfg = run.config
 
     # Parse args, but override with W&B config if available
@@ -267,7 +274,7 @@ def main() -> None:
     depth = cfg.get("depth", args.depth)
     width = cfg.get("width", args.width)
     l2_lambda = cfg.get("l2_lambda", args.l2_lambda)
-    nuclear_lambda = cfg.get("nuclear_lambda", args.nuclear_lambda)
+    orthogonal_lambda = cfg.get("orthogonal_lambda", args.orthogonal_lambda)
     lr = cfg.get("lr", args.lr)
     max_epochs = cfg.get("max_epochs", args.max_epochs)
     patience = cfg.get("patience", args.patience)
@@ -280,14 +287,14 @@ def main() -> None:
 
     set_seed(seed)
 
-    LOGGER.info("Starting L2 + Nuclear Norm recovery experiment")
+    LOGGER.info("Starting L2 + Orthogonal recovery experiment")
     LOGGER.info(
-        "Config: dataset=%s, depth=%d, width=%d, l2_lambda=%.6f, nuclear_lambda=%.6f, seed=%d",
+        "Config: dataset=%s, depth=%d, width=%d, l2_lambda=%.6f, orthogonal_lambda=%.6f, seed=%d",
         dataset_name,
         depth,
         width,
         l2_lambda,
-        nuclear_lambda,
+        orthogonal_lambda,
         seed,
     )
 
@@ -318,13 +325,13 @@ def main() -> None:
     num_classes = get_num_classes(dataset_name)
 
     # Train predictive model with BOTH penalties
-    model = DeepReLUClassifierJoint(
+    model = DeepReLUClassifierL2Orthogonal(
         input_dim=input_dim,
         num_classes=num_classes,
         depth=depth,
         width=width,
         l2_lambda=l2_lambda,
-        nuclear_lambda=nuclear_lambda,
+        orthogonal_lambda=orthogonal_lambda,
         lr=lr,
     )
 
@@ -333,7 +340,7 @@ def main() -> None:
 
     model_logger = WandbLogger(
         project="inductive-bias",
-        name=f"model-{dataset_name}-d{depth}w{width}-l2{l2_lambda:.4f}-nuc{nuclear_lambda:.4f}-s{seed}",
+        name=f"model-{dataset_name}-d{depth}w{width}-l2{l2_lambda:.4f}-orth{orthogonal_lambda:.4f}-s{seed}",
         experiment=run,
         log_model=False,
     )
@@ -368,23 +375,11 @@ def main() -> None:
 
     LOGGER.info("Finished training predictive model")
 
-    # Estimate BOTH L2 and nuclear norm penalties using JointBias
+    # Estimate BOTH L2 and orthogonal penalties using JointBias
     l2_bias = RidgeBias(enforce_positive=True)
-    nuclear_bias = NuclearNormBias(enforce_positive=True)
+    orthogonal_bias = OrthogonalBias(enforce_positive=True)
 
-    # Initialize with ground truth values (good starting point)
-    l2_bias.beta.data = torch.tensor(
-        [l2_lambda],
-        dtype=l2_bias.beta.dtype,
-        device=l2_bias.beta.device,
-    )
-    nuclear_bias.beta.data = torch.tensor(
-        [nuclear_lambda],
-        dtype=nuclear_bias.beta.dtype,
-        device=nuclear_bias.beta.device,
-    )
-
-    joint_bias = JointBias([l2_bias, nuclear_bias])
+    joint_bias = JointBias([l2_bias, orthogonal_bias])
 
     bias_estimator = BiasWithCrossEntropyScheduled(
         predictive_model=model,
@@ -398,7 +393,7 @@ def main() -> None:
 
     bias_logger = WandbLogger(
         project="inductive-bias",
-        name=f"bias-{dataset_name}-d{depth}w{width}-l2{l2_lambda:.4f}-nuc{nuclear_lambda:.4f}-s{seed}",
+        name=f"bias-{dataset_name}-d{depth}w{width}-l2{l2_lambda:.4f}-orth{orthogonal_lambda:.4f}-s{seed}",
         experiment=run,
         log_model=False,
     )
@@ -420,62 +415,18 @@ def main() -> None:
     bias_trainer.fit(bias_estimator, train_dataloaders=train_loader)
 
     # Extract estimated parameters
-    estimated_params = joint_bias.report_parameters()
+    estimated_params = joint_bias.get_bias_params()
     estimated_l2 = estimated_params.get("ridge", 0.0)
-    estimated_nuclear = estimated_params.get("nuclear_norm", 0.0)
-
-    # Calculate errors
-    l2_abs_error = abs(estimated_l2 - l2_lambda)
-    l2_rel_error = l2_abs_error / max(l2_lambda, 1e-12)
-
-    nuclear_abs_error = abs(estimated_nuclear - nuclear_lambda)
-    nuclear_rel_error = nuclear_abs_error / max(nuclear_lambda, 1e-12)
-
-    # Log identifiability metrics
-    wandb.log(
-        {
-            "l2/true": l2_lambda,
-            "l2/estimated": estimated_l2,
-            "l2/abs_error": l2_abs_error,
-            "l2/rel_error": l2_rel_error,
-            "nuclear/true": nuclear_lambda,
-            "nuclear/estimated": estimated_nuclear,
-            "nuclear/abs_error": nuclear_abs_error,
-            "nuclear/rel_error": nuclear_rel_error,
-            "identifiability/mean_rel_error": (l2_rel_error + nuclear_rel_error) / 2,
-            "identifiability/max_rel_error": max(l2_rel_error, nuclear_rel_error),
-        }
-    )
+    estimated_orthogonal = estimated_params.get("orthogonal", 0.0)
 
     # Update run summary
     run.summary.update(
         {
             "l2_true": l2_lambda,
             "l2_estimated": estimated_l2,
-            "l2_abs_error": l2_abs_error,
-            "l2_rel_error": l2_rel_error,
-            "nuclear_true": nuclear_lambda,
-            "nuclear_estimated": estimated_nuclear,
-            "nuclear_abs_error": nuclear_abs_error,
-            "nuclear_rel_error": nuclear_rel_error,
-            "mean_rel_error": (l2_rel_error + nuclear_rel_error) / 2,
-            "max_rel_error": max(l2_rel_error, nuclear_rel_error),
+            "orthogonal_true": orthogonal_lambda,
+            "orthogonal_estimated": estimated_orthogonal,
         }
-    )
-
-    LOGGER.info(
-        "L2 Recovery: true=%.6f | estimated=%.6f | abs_error=%.6f | rel_error=%.6f",
-        l2_lambda,
-        estimated_l2,
-        l2_abs_error,
-        l2_rel_error,
-    )
-    LOGGER.info(
-        "Nuclear Recovery: true=%.6f | estimated=%.6f | abs_error=%.6f | rel_error=%.6f",
-        nuclear_lambda,
-        estimated_nuclear,
-        nuclear_abs_error,
-        nuclear_rel_error,
     )
 
     wandb.finish()

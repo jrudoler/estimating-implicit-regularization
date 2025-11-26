@@ -1,6 +1,6 @@
 #!/bin/bash
 #SBATCH --partition=whartonstat
-#SBATCH --job-name=l2_nuclear_recovery
+#SBATCH --job-name=wandb_sweep
 #SBATCH --gres=gpu:1
 #SBATCH --cpus-per-task=4
 #SBATCH --mem=32G

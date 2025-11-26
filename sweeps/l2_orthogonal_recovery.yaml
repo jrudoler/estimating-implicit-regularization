@@ -4,8 +4,8 @@ parameters:
   dataset:
     values: [mnist]
   l2_lambda:
-    values: [0., 0.001, 0.01,]
-  nuclear_lambda:
+    values: [0., 0.001, 0.01]
+  orthogonal_lambda:
     values: [0.0, 0.001, 0.01]
   depth:
     values: [3]
@@ -16,15 +16,15 @@ parameters:
   batch_size:
     value: 4096
   lr:
-    value: 0.001
+    value: 0.01
   max_epochs:
     value: 300
   patience:
-    value: 30
+    value: 100
   bias_lr:
     value: 0.05
   bias_weight_decay:
-    values: [0.001, 0.01, 0.1]
+    value: 0.0
   bias_max_epochs:
     value: 2000
   bias_patience:
@@ -36,5 +36,5 @@ command:
   - run
   - python
   - ${program}
-program: experiments/l2_nuclear_train_and_recover.py
+program: experiments/l2_orthogonal_train_and_recover.py
 

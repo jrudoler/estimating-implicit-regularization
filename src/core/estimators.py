@@ -3,11 +3,10 @@ import torch.nn as nn
 import torch.nn.functional as F
 import lightning.pytorch as pl
 from abc import abstractmethod
-from torch.func import functional_call, grad, jvp, vjp
+from torch.func import functional_call, grad, vjp
 from torch.optim import Optimizer
 from typing import Dict, Callable, Tuple, Any, Set
-from collections import deque, OrderedDict
-import inspect
+from collections import OrderedDict
 
 from .bias import GradientSquaredPenaltyScale
 
@@ -30,13 +29,12 @@ class InductiveBiasEstimator(pl.LightningModule):
     ) -> None:
         super().__init__()
         self.predictive_model = predictive_model
-        # self.predictive_model.eval()
+        self.predictive_model.eval()
         # self.predictive_model.requires_grad_(False)
         self.bias_model = bias_model
         self.grad_match_loss_fn = grad_match_loss_fn
         self.optimizer_cls = optimizer_cls
         self.lr = lr
-        # self.bias_model_kwargs = bias_model_kwargs or {}
         self.save_hyperparameters(ignore=["predictive_model", "bias_model"])
 
     @abstractmethod
@@ -50,6 +48,17 @@ class InductiveBiasEstimator(pl.LightningModule):
         """
         pass
 
+    def setup(self, stage: str) -> None:
+        self.flattened_params = (
+            torch.nn.utils.parameters_to_vector(self.predictive_model.parameters())
+            .detach()
+            .requires_grad_()
+            .to(self.device)
+        )
+        self.structured_params = vector_to_parameter_views(
+            self.flattened_params, self.predictive_model
+        )
+
     def training_step(
         self, batch: Tuple[torch.Tensor, torch.Tensor], batch_idx: int
     ) -> torch.Tensor:
@@ -59,18 +68,6 @@ class InductiveBiasEstimator(pl.LightningModule):
 
         # Get current parameters from the predictive model.
         params: Dict[str, torch.Tensor] = dict(self.predictive_model.named_parameters())
-        flattened_params = (
-            torch.cat([p.view(-1) for p in params.values()]).detach().requires_grad_()
-        )
-        flattened_params = flattened_params.to(self.device)
-
-        offset = 0
-        named_param_views: Dict[str, torch.Tensor] = {}
-        for name, param in params.items():
-            numel = param.numel()
-            view = flattened_params[offset : offset + numel].view_as(param)
-            named_param_views[name] = view
-            offset += numel
 
         def model_output(p: Dict[str, torch.Tensor], x: torch.Tensor) -> torch.Tensor:
             return functional_call(self.predictive_model, p, (x,))
@@ -87,39 +84,28 @@ class InductiveBiasEstimator(pl.LightningModule):
         # vjp returns the sum of the gradients over the batch
 
         # Compute the bias output and its gradient.
-        R_val = self.bias_model(flattened_params, named_param_views)
-        # flattened_params,
-        # extra_kwargs=self.bias_model_kwargs
-        # | {
-        #     "epoch": self.current_epoch,
-        #     "global_step": self.global_step,
-        # },
-        # )
-        gradients = torch.autograd.grad(R_val, flattened_params, create_graph=True)[0]
+        R_val = self.bias_model(self.flattened_params, self.structured_params)
+        gradients = torch.autograd.grad(
+            R_val, self.flattened_params, create_graph=True
+        )[0]
 
         loss = self.grad_match_loss_fn(gradients, true_grad, reduction="mean")
 
         self.log("train_bias/loss", loss, prog_bar=False)
 
-        # Log all parameters from the bias model.
-        for name, param in self.bias_model.named_parameters():
-            # Ensure the parameter is logged as a scalar if it is a single value.
-            if param.numel() == 1:
-                self.log(f"train_bias/{name}", param.detach().item(), prog_bar=False)
-                if param.grad is not None:
-                    self.log(
-                        f"train_bias/{name}_grad", param.grad.norm(), prog_bar=False
-                    )
-                continue
-            # otherwise, if the parameter is a tensor, log its norm.
+        # Log parameters from the bias model
+        if hasattr(self.bias_model, "get_bias_params"):
+            bias_params = self.bias_model.get_bias_params()
+            if isinstance(bias_params, dict):
+                for name, value in bias_params.items():
+                    self.log(f"train_bias/{name}", value, prog_bar=False)
             else:
-                self.log(f"train_bias/{name}", param.norm(), prog_bar=False)
-                # Log the gradient norm as well.
-                if param.grad is not None:
-                    self.log(
-                        f"train_bias/{name}_grad", param.grad.norm(), prog_bar=False
-                    )
-                    continue
+                self.log("train_bias/param", bias_params, prog_bar=False)
+
+        # Log gradients of the raw parameters
+        for name, param in self.bias_model.named_parameters():
+            if param.grad is not None:
+                self.log(f"train_bias/{name}_grad", param.grad.norm(), prog_bar=False)
 
         return loss
 
@@ -143,6 +129,22 @@ class InductiveBiasEstimator(pl.LightningModule):
     #         in (inspect.Parameter.POSITIONAL_OR_KEYWORD, inspect.Parameter.KEYWORD_ONLY)
     #     }
     #     return self.bias_model(params, **accepted)
+
+
+def vector_to_parameter_views(
+    vector: torch.Tensor, model: torch.nn.Module
+) -> Dict[str, torch.Tensor]:
+    """
+    Creates a dictionary of views into 'vector' that match the structure of 'model.named_parameters()'.
+    The returned views are part of the same computational graph as 'vector'.
+    """
+    pointer = 0
+    views = []
+    for param in model.parameters():
+        numel = param.numel()
+        views.append(vector[pointer : pointer + numel].view_as(param))
+        pointer += numel
+    return views
 
 
 class BiasWithMSE(InductiveBiasEstimator):

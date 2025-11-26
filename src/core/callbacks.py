@@ -1,8 +1,9 @@
-from typing import Union, Tuple
+from typing import Union, Tuple, List, Dict
 import torch
 from lightning.pytorch.callbacks import Callback
 import wandb
 import scipy
+import itertools
 
 
 class WandBCallback(Callback):
@@ -93,3 +94,106 @@ class ActivationLogger(Callback):
         for h in self.handles:
             h.remove()
         self.handles.clear()
+
+
+def r2_subset(Xs: List[torch.Tensor], y: torch.Tensor, subset):
+    if len(subset) == 0:
+        return 0.0
+    X = torch.stack([Xs[i] for i in subset], dim=1)  # d × k
+    beta = torch.linalg.pinv(X) @ y
+    y_hat = X @ beta
+    return float((y_hat @ y_hat) / (y @ y + 1e-12))
+
+
+def shapley_R2(Xs: List[torch.Tensor], y: torch.Tensor, nsamples=None):
+    m = len(Xs)
+    players = list(range(m))
+    phi = torch.zeros(m)
+
+    if nsamples is None:
+        perms = list(itertools.permutations(players))
+    else:
+        perms = [torch.randperm(m).tolist() for _ in range(nsamples)]
+
+    for perm in perms:
+        S = []
+        r2_S = 0.0
+        for p in perm:
+            r2_before = r2_S
+            r2_after = r2_subset(Xs, y, S + [p])
+            phi[p] += r2_after - r2_before
+            S.append(p)
+            r2_S = r2_after
+
+    return phi / len(perms)
+
+
+class ShapleyBiasCallback(Callback):
+    """
+    Computes Shapley-R^2 attribution for each component of JointBias.
+    Requires JointBias.forward(..., return_components=True).
+    """
+
+    def __init__(self, every_n_epochs=1, nsamples=None):
+        super().__init__()
+        self.every_n_epochs = every_n_epochs
+        self.nsamples = nsamples
+
+    def on_validation_epoch_end(self, trainer, pl_module):
+        epoch = trainer.current_epoch
+        if epoch % self.every_n_epochs != 0:
+            return
+
+        pl_module.eval()
+        device = pl_module.device
+
+        # ---- Get one batch ----
+        X, y = next(iter(trainer.datamodule.val_dataloader()))
+        X, y = X.to(device), y.to(device)
+        if y.ndim == 1:
+            y = y.view(-1, 1)
+
+        # ---- Rebuild flat params ----
+        params = dict(pl_module.predictive_model.named_parameters())
+        flat = torch.cat([p.reshape(-1) for p in params.values()]).detach().clone()
+        flat = flat.requires_grad_(True)
+
+        named_views = {}
+        offset = 0
+        for name, p in params.items():
+            n = p.numel()
+            named_views[name] = flat[offset : offset + n].view_as(p)
+            offset += n
+
+        # ---- True gradient y_vec ----
+        def model_output(p, x):
+            return torch.func.functional_call(pl_module.predictive_model, p, (x,))
+
+        preds, vjp_fn = torch.func.vjp(model_output, params, X)
+        loss_grad_pred = -pl_module.predictive_loss_grad(preds, y)
+        vjp_res = vjp_fn(loss_grad_pred)[0]
+        true_grad = torch.cat([g.reshape(-1) for g in vjp_res.values()]) / X.size(0)
+        y_vec = -true_grad
+
+        # ---- Compute each component's gradient ----
+        total_R, comp_dict = pl_module.bias_model(
+            flat, named_views, return_components=True
+        )
+
+        Xs = []
+        names = list(comp_dict.keys())
+        for name in names:
+            grad_i = torch.autograd.grad(comp_dict[name], flat, retain_graph=True)[
+                0
+            ].detach()
+            Xs.append(grad_i)
+
+        # ---- Shapley R^2 ----
+        phi = shapley_R2(Xs, y_vec, nsamples=self.nsamples)
+
+        # ---- Log ----
+        for k, v in zip(names, phi):
+            trainer.logger.experiment.add_scalar(f"shapley/{k}_R2", float(v), epoch)
+        trainer.logger.experiment.add_scalar(
+            "shapley/total_R2", float(phi.sum()), epoch
+        )
