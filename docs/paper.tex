@@ -1,0 +1,783 @@
+\documentclass[10pt]{article}
+% defer preamble to style file
+\usepackage{custom-style}
+\usepackage{tmlr-style-file-main/tmlr}
+% \usepackage[maxnames=5,minnames=1,maxcitenames=2,mincitenames=1,url=false,isbn=false,natbib=true]{biblatex}
+% \addbibresource{ref.bib}
+
+\title{A Framework for Estimating the Implicit Regularization Effect of Learning Algorithms}
+\author[1]{Joseph H. Rudoler}
+\author[2]{Konrad P. Kording}
+\author[1]{Edgar Dobriban}
+\affil[1]{Department of Statistics and Data Science, The Wharton School}
+\affil[2]{Department of Bioengineering, University of Pennsylvania}
+
+\begin{document}
+
+\maketitle
+% {\linespread{.85} \small \tableofcontents}
+% \bigskip
+
+\begin{abstract}
+    % GAP
+    A common theme in the theoretical study of training dynamics in machine learning is to analytically derive the \emph{implicit regularization} %\ed{use implicit regularization as the main term everywhere} 
+    of an architecture or algorithm -- that is, to characterize how the system exhibits behavior that differs from strictly minimizing the learning objective specified by the practitioner. Often this ``implicit regularization'' takes the form of some regularization over the learned weights. Many theory works, however, stop short of empirically verifying their predictions. Nearly all theory work also characterizes implicit regularization in simplified or unrealistic settings that ease mathematical analysis but may not be sufficiently representative of neural networks ``in the wild''. 
+    
+    % HERE WE
+    Here we propose a framework for using gradient matching to empirically estimate implicit regularization in neural network training given a chosen parameterization, and demonstrate that it can be used to test and compare different theories of implicit regularization. We first verify that our method recovers explicit regularizers like $\ell_2$ normalization (weight decay). Next we show that our method verifies theoretical characterizations of implicit regularization, such as early stopping in gradient descent corresponding to a data-dependent quadratic weight penalty. Finally, we characterize implicit regularization of training techniques like dropout and early stopping in practical settings that typically elude theoretical analysis (deep non-linear networks).  
+\end{abstract}
+
+
+\section{Introduction}
+
+Traditional statistical learning theory teaches us that adding more parameters to our predictive models increases the chances of overfitting to training data at the expense of their ability to generalize to novel examples. One of the great challenges of modern machine learning is to understand how massively over-parametrized neural networks which effectively memorize their training sets still manage to generalize \citep{zhang_understanding_2021, power_grokking_2022, alexander_neural_2025}. In such models, there are many possible configurations of weights that would interpolate the training data but fail to make accurate out-of-sample predictions. 
+
+A commonly held belief is that the techniques we use to train neural networks either \emph{explicitly} or \emph{implicitly} constrain the solution space in a structured way that enables generalization. Any such constraint can be viewed as an \emph{inductive bias} that guides sample-efficient learning. Examples of explicit inductive biases include Bayesian priors, weight decay, and the translation invariance enforced in convolutional neural networks. In addition to explicit constraints, a growing literature studies the \emph{implicit} regularization effects of gradient-based learning and various algorithmic or architectural choices like early-stopping or dropout \citep{santos_equivalence_1996, neyshabur_search_2015, soudry_implicit_2018, arora_implicit_2019, chizat_implicit_2020, nacson_implicit_2022, woodworth_kernel_2020, razin_implicit_2020}. A common theme in the study of implicit regularization is the notion of a simplicity bias -- that successful learning algorithms implicitly prefer simple solutions for overparametrized models \citep{wilson_deep_2025, rahaman_spectral_2019, nakkiran_sgd_2019}. This is intuitively compelling for its alignment with Occam's razor - the philosophical principle to choose the simplest hypothesis among those with equal explanatory power. 
+
+A stark limitation of this theoretical work thus far is that rigorous analysis is typically limited to simple models and tasks, for which the math is tractable. Much existing work focuses on tasks (deep matrix factorization), models (shallow linear networks), and algorithms (vanilla gradient descent) which differ significantly from those that deep learning practitioners care about. The claim, whether explicit or implied, is often that the conclusions drawn in simplified settings probably extend to more complex settings. 
+
+Here we consider the challenge of bridging theory and practice by applying empirical validation to the analytical study of implicit regularization. Specifically, given some a priori model of the implicit regularization, $\mathcal{R}(\cdot, \Lambda)$, we seek to estimate the values of the regularization parameters $\Lambda$. As a running example, consider $\ell_2$ regularization or weight decay, which has been connected to common techniques like early stopping and dropout. This regularizer can be written as $\mathcal{R}(\theta, \lambda) = \lambda \| \theta \|_2^2$ where $\theta$ are the weights of some predictive model we want to fit. Our goal, then, is to estimate $\lambda$ and determine the strength of the regularization induced by early stopping or dropout. 
+
+We achieve accurate estimation by considering the learned weights to be the optimum of a hypothetical learning procedure that minimizes both the empirical loss \emph{and} the implicit regularizer. This implies a stationarity condition involving computable gradients of the loss and the candidate regularizer, giving a system of equations (really a gradient-matching problem) in which the only unknowns are the regularization parameters $\Lambda$.
+
+This framework can be thought of as an exercise in modeling the residual loss of any trained predictive model. Are the training residuals merely accidental, a function of noisy data? Maybe so, but maybe not -- perhaps the residual loss is structured in an important way that hints at the learning principles which enable successful generalization.  
+The benefit of estimating a parametrized model of implicit regularization is that one can test mechanistic models of learning and evaluate how well they are supported by empirical learning dynamics. Specifically, regularization models $\mathcal{R}$ can be specified over somewhat arbitrary features and with flexible parameterizations. One can study implicit regularization over weights, activations, or data. The regularizer can be linear, quadratic, exponential, etc. Importantly, these models can all be compared and contrasted using standard statistical tools (see \ref{sec:model-eval}).
+
+Our contributions are as follows:
+\begin{itemize}
+    \item A novel empirical framework based on gradient-matching, for estimating parametrized models of inductive bias
+    \item A theoretical characterization of the conditions needed to recover the original model exactly using a learned regularizer.
+    \item Empirical recovery of explicit regularization (weight decay) in deep nonlinear neural networks.
+    \item Empirical validation of theoretical predictions for the implicit regularization of gradient descent in OLS.
+    \item TODO: something something deep learning yay
+\end{itemize}
+
+\paragraph{Related work.} There is some existing work on quantifying inductive bias, broadly construed. 
+
+\cite{boopathy_towards_2024} propose a Bayesian framework for quantifying the \emph{amount} of inductive bias needed to achieve generalization on some prediction task. They define inductive bias of a task as the negative log probability that a hypothesis $h$ achieves some test error rate $\varepsilon$ -- intuitively, if a randomly sampled hypothesis $h\sim p_h$ is unlikely (small probability) then a large inductive bias is required to reliably find a generalizing hypothesis (large negative log-probability). 
+
+\cite{immer_probing_2022} propose a method of quantifying inductive bias based on probing intermediate representations. They consider Bayesian evidence as a proxy for inductive bias, formalizing it as the maximum evidence (how likely it is that a particular dataset could have been generated by a given model) for some intermediate representation, over all possible probes in a function class (e.g. linear probes). The intuition is that overly-simple models are unlikely because they don't explain the data well and complex models are unlikely because they are so high-dimensional that many candidate models can also explain the data equally well.
+
+Neither of these approaches involves actually estimating the parameters of the kinds of implicit regularizers suggested in the literature, as we do in the present work. Rather they quantify inductive bias as a scalar quantity and try to judge the amount of inductive bias present in various models or representations. In these settings, any predictive model has a fixed amount of inductive bias on a prediction task -- there is no way to evaluate competing hypotheses for how that bias is produced. By directly estimating the parameters of hypothesized regularizers, our framework enables empirically analyzing and contrasting theoretical predictions about implicit bias in realistic models.
+
+\section{Estimating implicit regularization}
+\subsection{Implicit regularization}
+
+\paragraph{Setup.}
+We study standard supervised learning, in which we receive input data $X \in \X$, and target $Y \in \Y$.
+We consider a hypothesis space  $\mathcal{H}$ 
+such that every $h \in \H$ is a function $h: \X \mapsto \Y$. 
+The hypotheses have some parametrization $h = h_\theta$ via the weights $\theta \in \Theta$ of the model we fit. As such the hypothesis space is defined by the chosen model's architecture. We train on a finite dataset $S = \left\{ (X_i, Y_i), i=1,\ldots,n\right\} \subseteq \X \times \Y$. 
+We implement some learning algorithm 
+$\mathcal{A} : \bigcup_{h=1}^\infty (\X \times \Y)^n \mapsto \H$
+that returns a hypothesis $\hat h(S) \in \mathcal{H}$ associated with the predictive model parameters $\hat \theta(S) \in \Theta$.
+
+Now, the standard empirical risk minimization (ERM) framework considers algorithms for minimizing the empirical risk (also called the loss or objective function) on the training data. Specifically, we find the model weights $\hat{\theta}$ which satisfy:
+
+$$\hat{\theta}(S) = \argmin_{\theta \in \Theta} ~\mathcal{L}(\theta, S) $$
+
+\paragraph{A hypothetical optimum.} In practice, the minimized loss is almost never exactly zero and in fact we often stop training before the loss has fully converged to some minimum. Our key assumption is to view the residual loss as a quantity associated with an additional objective, namely the regularization objective. We want to understand the effect of this learning algorithm by assuming it is an exact solution to some regularized empirical risk minimization (RERM) problem:
+
+$$\hat{\theta}(S) = \argmin_{\theta \in \Theta} {\color{wharton-red}\underbrace{\mathcal{L}(\theta, S)}_{\text{empirical loss}}} + {\color{wharton-blue} \underbrace{\mathcal{R}(\theta,S)}_{\text{regularization term}}} $$
+
+This is a \emph{hypothetical} condition, in that the network is explicitly trained to minimize the empirical loss -- instead we hypothesize that due to some architectural or algorithmic choice, at some point during training the network's weights \emph{actually} represent a solution to the above problem.
+In this framework this last term is the \emph{implicit regularization}. 
+We usually choose $\mathcal{L}$ to be same loss used when running $\mathcal{A}$.
+
+\begin{figure}
+    \centering
+    \includegraphics[width=0.5\textwidth]{figures/tradeoff-vis.png}
+    \caption{\footnotesize Regularization modifies the loss surface of a learning algorithm, leading to different optima.}
+    \label{fig:placeholder}
+\end{figure}
+
+% For a convex loss, this is equivalent to taking the gradient of this combined loss and setting it equal to zero. 
+
+% In a setting where we know $S$ and observe $\hat{y}$ (i.e. the network's behavior), there's an inverse problem of solving for the $R(\theta,S)$ which describes our regularization.
+
+\paragraph{Computing and matching gradients.} If the loss and regularizer are differentiable, then $\hat\theta(S)$ must satisfy
+\begin{equation}\label{eq:stationarity} 
+\nabla_\theta \mathcal{L}({\theta},S)|_{\hat\theta(S)}
++
+\nabla_\theta \mathcal{R}({\theta},S)|_{\hat\theta(S)}
+=0    
+\end{equation}
+
+Equivalently, we can see this as a \emph{gradient-matching condition}:
+\begin{equation}\label{eq:grad-matching} 
+\nabla_\theta \mathcal{R}({\theta},S)|_{\hat\theta(S)}
+= -\nabla_\theta \mathcal{L}({\theta},S)|_{\hat\theta(S)}
+\end{equation}
+
+Having run our learning algorithm, we know $\hat\theta(S)$. 
+We want to recover
+ $\mathcal{R}(\theta,S)$, which describes our regularization.
+
+Often, the loss is of the form $\mathcal{L}(\theta,S) = \mathcal{L}(\hat{Y}(\theta),S)$, where $\hat{Y}(\theta)=\hat{Y}(\theta,S)$ is the output of the model with weights $\theta$.
+In that case, the above equation becomes
+\[ \nabla_\theta \mathcal{R}({\theta},S)|_{\hat\theta(S)} 
+= -\left(\frac{\partial \mathcal{L}(\hat{Y},S)}{\partial\hat{Y}}\right)^\top  
+\nabla_\theta{\hat{Y}}({\theta})|_{\hat\theta(S)},\]
+where $\frac{\partial \mathcal{L}}{\partial\hat{Y}}$ is the partial derivative of the empirical loss with respect to the model output/predictions, and $\nabla_\theta{\hat{Y}}({\theta})$ is the Jacobian of the model output with respect to the model's weights.
+
+For example taking the empirical loss to be mean-squared error:
+$\mathcal{L}(\theta,S)= \frac{1}{2} \|{Y} - {\hat{Y}}({\theta})\|^2$, we obtain
+\begin{align*}
+    \nabla_\theta \mathcal{R}({\theta},S) |_{\hat\theta(S)} = ({Y} - {\hat{Y}}({\hat{\theta}}))^\top  \nabla_\theta{\hat{Y}}({\theta})|_{\hat\theta(S)}
+\end{align*}
+
+This is just the product of the model's residuals (${Y} - {\hat{Y}}$) and its Jacobian evaluated at the learned weights ($\nabla_\theta{\hat{Y}}({\theta})|_{\hat\theta(S)}$), both of which can be readily computed.
+
+
+It is typically easy to derive and compute $\frac{\partial \mathcal{L}}{\partial\hat{ y}}$ for standard loss functions, which means we can compute the vector-Jacobian product $(\frac{\partial \mathcal{L}}{\partial\hat{ y}})^\top  \nabla_\theta{\hat{y}}({\theta})$ instead of calculating and storing the Jacobian itself. This mercifully is a matrix of dimensionality $k \times k$ for a model with size $k$ output, which for large models should be much smaller than the Jacobian which the same dimensionality as the model's weight matrix. Moreover, this computation doesn't depend on the choice of $\mathcal{R}$ at all -- this will be helpful when we iterate over candidate regularizers, as this quantity need not be recomputed. 
+
+
+% \footnote{I find that the JAX documentation actually has a pretty good explanation of VJP and why it's efficient, but probably there's something better out there: 
+% \url{https://docs.jax.dev/en/latest/notebooks/autodiff_cookbook.html#how-it-s-made-two-foundational-autodiff-functions}
+% }
+
+% \jhr{Implementation note: standard MSE loss implementations (including PyTorch) don't have the $\frac{1}{2}$ factor. So VJP will be scaled by a constant factor of 2 after taking the gradient of MSE.}
+
+Note that our stationarity condition implies a system of $p$ equations where $p$ is the dimensionality of $\theta$. To see this, note that $\nabla_\theta \mathcal{R}({\theta},S) \in \R^p$, $\left(\frac{\partial \mathcal{L}(\hat{y},S)}{\partial\hat{ y}}\right)^\top \in \R^k$ where $k$ is the output size of the model, and $\nabla_\theta{\hat{y}}({\theta}) \in \R^{k \times p}$.
+
+\subsection{Learning the regularizer}
+We can learn the regularizer by parametrizing as $\mathcal{R}(\theta,S) = \mathcal{R}(\theta,S,\Lambda)$, and then solving
+for $\Lambda$ in Equation
+\ref{eq:grad-matching}. We may not empirically get strict equality, but essentially we want to find $\Lambda$ that satisfies: 
+
+\begin{equation*}
+\nabla_\theta \mathcal{R}({\theta},S,\lambda)|_{\hat\theta(S)}
+\approx - \nabla_\theta \mathcal{L}({\theta},S)|_{\hat\theta(S)}    
+\end{equation*}
+
+
+So in particular we train a regularization model $R({\theta}, S,\Lambda)$ where the predictive model's weights ${\theta}$ are fixed and the hyperparameter(s) $\Lambda$ is learnable. \
+Since our goal is that the above expression is small, we minimize the mean-squared-error of this gradient matching task:
+\[\hat{\Lambda} = \argmin_\Lambda \{ \E \| 
+\nabla_\theta \mathcal{R}({\theta},S,\Lambda)|_{\hat\theta(S)}
++ 
+\nabla_\theta \mathcal{L}({\theta},S)|_{\hat\theta(S)}  \|_2^2\} \]
+
+As discussed in the previous section, the empirical loss term is easily computable.  
+
+We will refer to these learned hyperparameters $\hat{\Lambda}$ as the \emph{\textbf{best effective regularizer (BER)}} throughout, as they reflect the best explanation for the residual loss given among all regularizers in the same family. 
+
+An important limitation of our approach is that we can only fit regularizers with up to $p$ parameters -- the regularizer cannot have more parameters than the predictive model. 
+
+% \subsubsection{Test loss}
+
+% \begin{align*}
+%     \nabla_\theta \left\{ \frac{1}{2} \E({y} - {\hat{y}}({\theta}))^2 + R({\theta}, \lambda )\right\} &= 0 \\
+%     \E({y} - {\hat{y}}({\theta}))^\top  \nabla_\theta{\hat{y}}({\theta}) + \nabla_\theta R({\theta}, S,\lambda) &= 0
+% \end{align*}
+
+% In particular we'll use plug-in estimation for this expectation on the test set. Means we need some more test data to compute this and fit the hyperparameters.
+
+
+% \jhr{Sunay pointed out that it may be good to check if the implied model weights from a learned implicit bias are the same on a test set. Meaning, learn a $\hat{\Lambda}$ on $S$ and then use it to train on $\tilde{S}$. Are the model weights learned using this substitute/surrogate model similar to those learned by the original algorithm? This is distinct from asking whether or not the predictions of each model trained on $S$ are the same on $\tilde{S}$}
+
+\subsection{Evaluating the estimated regularizer}
+Once we fit the BER, how can we decide if it is "correct" or even a good approximation? How do we define success?
+
+We posit that there are two main modes of success:
+\begin{enumerate}
+    \item \textbf{Recovery of hypothesized $\Lambda$.} In settings where we know the ground truth regularization or have strong theoretical predictions about its exact parametrization, we should recover estimates $\hat{\Lambda}$ that match exactly.
+    \item \textbf{Recovery of original model weights $\hat{\theta}$: validation via explicit regularization.} Say we are interested in the implicit bias of an algorithmic or architectural feature that can be added to, or removed from, the training procedure. If we do not have any ``ground truth'' $\Lambda$ to work with, another way of validating our empirical estimates $\hat{\Lambda}$ is to remove (or ablate) the training feature of interest and retrain the original predictive model $f$ with an explicitly regularized objective, namely $\mathcal{L}(\theta) + \mathcal{R}(\theta, \hat{\Lambda})$. If $R(\theta, \Lambda)$ accurately captures the effective regularization, then this should recover the same solution for the optimal weights $\hat{\theta}$. 
+\end{enumerate}
+
+\section{Example settings for estimating regularization}
+\subsubsection{Warm up: weight penalty in linear models}
+The simplest case we can consider is that of recovering an explicit weight norm penalty in linear models, i.e. $\ell_1$ (lasso) or $\ell_2$ (ridge) regression. This case eases our analysis because we have closed-form solutions for the optimal weights. 
+
+Given input data $X \in \R^{N \times p}$ and target vector $y \in \R^N$, we want to learn $\theta \in \R^p$ such that we generate predictions 
+${\hat{y}}({\theta}) = X {\theta}$ which closely approximate the target vector. 
+
+We fit ridge regression with some $\lambda$:
+\begin{align*}
+    \nabla_\theta \left\{ \frac{1}{2} \|{y} - {\hat{y}}({\theta})\|^2 + \frac{\lambda}{2}  \|\theta \|^2 \right\} &= 0 
+\end{align*}
+
+The analytical solution for optimal weights is: 
+$$\hat \theta_\lambda = (X^\top X+\lambda I)^{-1} X^\top y$$
+
+Now we consider the task of recovering $\lambda$. Formally, given data $X, y$, and weights $\hat \theta_\lambda$ we want to find the solution $\hat{\lambda}$ that satisfies
+\begin{align*}
+    ({y} - X \hat \theta_\lambda)^\top  X \hat \theta_\lambda 
+    + {\color{red}\hat{\lambda}} \hat \theta_\lambda &= 0_p
+\end{align*}
+
+This gives us a p-dimensional system of linear equation for the estimate $\hat{\lambda}$, which holds exactly for the true value $\hat{\lambda} = \lambda$.
+
+\subsection{GD on OLS}
+\label{sec:gd-ols}
+
+A number of works have studied the implicit regularization effects of early-stopping in gradient descent \citep{santos_equivalence_1996, yao_early_2007, ali2019continuous}. \cite{ali2019continuous} characterize the implicit regularization of full-batch GD with early stopping on OLS, and we follow their formulation here.
+
+Consider GD with step size $\eta$ on the OLS objective, starting at $\hat\theta^{(0)} = 0$, and assume $\ep< 1/\|X^\top X\|_{\op}$.
+Let $\hat\theta^{(t)}$ be the $t$-th iterate.
+
+
+\begin{lemma}[Ali et al. 2019]
+Fix $y, X$, and let $\tfrac{1}{n}X^\top X = VSV^\top$ be an eigendecomposition. 
+Assume that we initialize $\hat{\theta}^{(0)} = 0$, and we take the step size in gradient descent to satisfy 
+$\eta < 1/s_{\max}$, with $s_{\max}$ denoting the largest eigenvalue of $X^\top X / n$. 
+Then, for each $t = 1,2,3,\dots$, the iterate $\hat{\theta}^{(t)}$ from step $t$ in gradient descent uniquely solves the optimization problem
+\[
+  \min_{\theta \in \mathbb{R}^p} \; \frac{1}{n}\|y - X\theta\|_2^2 + \theta^\top \Lambda_t \theta,
+\]
+where
+\[
+  \Lambda^{(t)} = V S\big((I - \eta S)^{-t} - I\big)^{-1} V^\top.
+\]
+\end{lemma}
+% We know that the implicit regularizer after $t$
+%  steps is $R_t(\theta,S) = \theta^\top Q_t \theta$
+
+% where $Q_t  = Q_t(X):= V S((I-\ep S)^{-t} - I) V^\top$, $X^\top X= VSV^\top$.
+
+To recover this implicit regularization exactly, we need to learn the matrix $\Lambda^{(t)}$, which has $p(p+1)/2$ free parameters (because it is symmetric and positive semidefinite).
+We only have $p$ equations, so we cannot recover the implicit regularization fully. 
+
+Instead, we force $\hat{\Lambda}^{(t)}$ to be diagonal so that it has only $p$ parameters.
+Using the learned OLS weights $\hat{\theta}^{(t)}$, we fit:
+\begin{align}
+    \nabla_\theta \left\{ \frac{1}{2} \|{y} - {\hat{y}}({\theta})\|^2 + \frac{1}{2} \theta^\top \hat{\Lambda}^{(t)} \theta \right\}\bigg|_{\hat{\theta}^{(t)}} &= 0
+    \label{eq:diag-bias-fit}
+\end{align}
+
+where $\hat{\Lambda}^{(t)}$ is forced to be diagonal. 
+The learned $\hat{\Lambda}^{(t)}$ solves
+\(
+X^\top (X \hat{\theta}^{(t)} - y) + \hat{\Lambda}^{(t)} \hat{\theta}^{(t)} = 0
+\)
+i.e.,
+\(
+(X^\top X + \hat{\Lambda}^{(t)}) \hat{\theta}^{(t)} = X^\top y 
+\)
+
+This has the explicit form
+\(
+\hat{\Lambda} = \mathrm{diag}\left\{[X^\top (y - X \hat{\theta}^{(t)})] \oslash {\hat{\theta}^{(t)}}\right\}
+\)
+where the division is performed elementwise, 
+assuming all coordinates of $\hat{\theta}^{(t)}$ are nonzero.
+
+How can we determine that the estimated implicit regularization parameters are correct? One intuitive approach is to show that the weights learned with early stopping are equivalent the weights learned when early stopping is replaced with the estimated regularizer. This means that the two approaches are functionally equivalent. The following theorem makes this explicit of early stopping of gradient descent for OLS.
+
+\begin{theorem}
+Suppose that 
+$X^\top X + \hat{\Lambda}^{(t)}$ is positive definite.
+Let 
+\[
+\hat{\theta}_{\text{implicit}}^{(t)} = \arg\min_{\theta} \left\{ \|y - X \theta\|^2 + R(\theta, \hat{\Lambda}^{(t)}) \right\}.
+\]
+Then
+\(
+\hat{\theta}_{\text{implicit}}^{(t)} = \hat{\theta}^{(t)}
+\).
+\end{theorem}
+
+\begin{proof}
+     The defined $\hat{\theta}_{\text{implicit}}^{(t)}$ satisfies the equation
+\(
+X^\top (X \hat{\theta}_{\text{implicit}}^{(t)} - y) + \hat{\Lambda}^{(t)} \hat{\theta}_{\text{implicit}}^{(t)} = 0,
+\)
+or
+\(
+(X^\top X + \hat{\Lambda}^{(t)}) \hat{\theta}_{\text{implicit}}^{(t)} = X^\top y.
+\)
+
+Further, the original model weights $\hat{\theta}^{(t)}$ satisfies 
+\(
+(X^\top X + \hat{\Lambda}^{(t)}) \hat{\theta}^{(t)} = X^\top y.
+\)
+Hence, 
+it follows that 
+\(
+(X^\top X + \hat{\Lambda}^{(t)}) (\hat{\theta}_{\text{implicit}}^{(t)} - \hat{\theta}^{(t)}) = 0.
+\)
+Since
+$X^\top X + \hat{\Lambda}^{(t)}$ is positive definite, it follows that \(
+\hat{\theta}_{\text{implicit}}^{(t)} = \hat{\theta}^{(t)}
+\).
+\end{proof}
+
+% \jhr{Wouldn't the same argument work if $\hat{\theta}_{\text{implicit}}^{(t)}$ was some scalar times identity $\lambda I $? (which we know is not true) $\Rightarrow$ No, since the closed form expression for $\hat{\Lambda}$ can't actually give you a scalar matrix unless the model weights are constant (which is not in general true)}
+
+See Appendix \ref{app:unique-weights} for a comment and proof for the more general case.
+
+
+
+
+\subsection{Dropout regularization}
+Dropout \citep{srivastava_dropout_2014}, which randomly zeroes out units during training, is broadly construed as a way to regularize networks by penalizing over-reliance on specific connections in the network. A number of theoretical works have analyzed dropout and concluded that it amounts to a form of \textit{adaptive regularization}.
+
+\cite{wei_implicit_2020}
+
+% \subsection{Gradient step size}
+% \cite{barrett_implicit_2022} describe how the step size ($\eta$) of discrete gradient descent implicitly regularizes models by scaling a penalty on trajectories with large loss gradients. 
+% Specifically, they propose that gradient descent in $\R^p$ minimizing a loss $\mathcal{L}$ deviates from the exact continuous path of gradient flow on $\mathcal{L}$ and is actually closer to the exact continuous path of a modified loss 
+% $\mathcal{L}(\theta) + \mathcal{R}(\theta, \lambda)$ 
+% where $\lambda \equiv \frac{\eta \cdot p}{4}$ 
+% and $$\mathcal{R} (\theta, \lambda) \equiv \frac{\lambda}{p} \sum_{i=1}^p \left( \nabla_{\theta_i} \mathcal{L}(\theta)\right)^2$$ 
+
+% Now this problem is analogous to the one we have studied but not identical. By hypothesizing that GD follows trajectories minimizing the augmented loss, we propose:
+
+% \begin{align*}
+%     \nabla_{\theta} \mathcal{L} + \nabla_{\theta} \mathcal{R}(\theta, \lambda) &= 0 \\
+%     \nabla_{\theta} \mathcal{L} + \frac{2 \lambda }{p} \nabla_{\theta} \mathcal{L} \cdot \nabla_{\theta}^2 \mathcal{L} = 0
+% \end{align*}
+
+
+% % Deriving the correct target:  (η/2) H g
+% % Notation: g(θ) := ∇_θ ��(θ),   H(θ) := ∇_θ^2 ��(θ),   p := #params
+
+% \paragraph{Stationarity of the augmented loss.}
+% Consider the augmented loss
+% \[
+% \tilde{\mathcal L}(\theta)
+% \;=\;
+% \mathcal L(\theta) \;+\; \mathcal R(\theta,\lambda),
+% \qquad
+% \mathcal R(\theta,\lambda)
+% \;=\;
+% \frac{\lambda}{p}\,\|\nabla_\theta \mathcal L(\theta)\|_2^2.
+% \]
+% Let \(g(\theta)=\nabla_\theta \mathcal L(\theta)\) and \(H(\theta)=\nabla_\theta^2 \mathcal L(\theta)\).
+% Using \(\nabla_\theta \|g(\theta)\|^2 = 2H(\theta)g(\theta)\), we have
+% \[
+% \nabla_\theta \mathcal R(\theta,\lambda)
+% \;=\;
+% \frac{2\lambda}{p}\,H(\theta)g(\theta).
+% \]
+% A stationary point \(\theta^\star\) of \(\tilde{\mathcal L}\) satisfies
+% \begin{equation}
+% \label{eq:aug-stationarity}
+% \nabla_\theta \mathcal L(\theta^\star)
+% \;+\;
+% \frac{2\lambda}{p}\,H(\theta^\star)\,\nabla_\theta \mathcal L(\theta^\star)
+% \;=\; 0
+% \quad\Longleftrightarrow\quad
+% g \;+\; \frac{2\lambda}{p}\,H g \;=\; 0.
+% \end{equation}
+
+% \paragraph{What gradient descent (GD) selects.}
+% For GD with step size \(\eta\),
+% \(
+% \theta_{k+1}=\theta_k-\eta\,g(\theta_k),
+% \)
+% backward error analysis (modified equation for explicit Euler) gives the
+% \(O(\eta)\) modified flow
+% \[
+% \dot\theta \;=\; -\,g(\theta) \;+\; \frac{\eta}{2}\,H(\theta)\,g(\theta) \;+\; O(\eta^2),
+% \]
+% which is (to first order) the negative gradient of
+% \(
+% \mathcal L(\theta) + \frac{\eta}{4}\|g(\theta)\|^2.
+% \)
+% Hence the fixed point \(\theta^\star\) selected by GD satisfies the
+% modified \emph{stationarity} condition
+% \begin{equation}
+% \label{eq:gd-stationarity}
+% g \;+\; \frac{\eta}{2}\,H g \;\approx\; 0
+% \qquad\text{(to first order in } \eta\text{)}.
+% \end{equation}
+
+% \paragraph{Identification of \(\lambda\) and the training target.}
+% Comparing \eqref{eq:aug-stationarity} with \eqref{eq:gd-stationarity} gives
+% \[
+% \frac{2\lambda}{p}\,H g \;\approx\; \frac{\eta}{2}\,H g
+% \quad\Longrightarrow\quad
+% \boxed{\;\lambda \;=\; \frac{\eta\,p}{4}\;}\,.
+% \]
+% Thus, if a model predicts the correction direction \((2\lambda/p)\,H g\),
+% the \emph{theoretically correct} target to fit against is the GD-induced
+% first-order correction \((\eta/2)\,H g\). In code, with
+% \(\texttt{hessian\_times\_grad} \equiv H g\) and step size \(\texttt{gd\_step\_size}=\eta\),
+% the target is
+% \[
+% \boxed{\;\texttt{residual\_target} \;=\; \tfrac{1}{2}\,\eta\;\texttt{hessian\_times\_grad}\;}.
+% \]
+
+% \paragraph{Remark on the \(-g\) target.}
+% Fitting \((2\lambda/p)H g \approx -g\) would require \(H g\) to be collinear
+% with \(g\) (i.e., \(g\) an eigenvector of \(H\)), which is not generally true;
+% the modified-stationarity \eqref{eq:gd-stationarity} only requires their
+% \emph{sum} to vanish, not componentwise proportionality.
+
+{\color{red}
+\subsection{Evaluating learned regularization parameters}
+\label{sec:model-eval}
+
+How do we decide if learned regularization matches theory? And what if we have to fit a restricted regularization model because the full model has too many parameters?
+\begin{enumerate}
+    \item Compare parameters directly:
+    \( \| \tilde{\Lambda}-Q\| \)
+    \item Retrain a predictive model with the proposed regularization / implicit regularization as an explicit term and see how similar the learned model weights are.
+    \(\|\hat{\theta}(\tilde{\Lambda}) - \hat{\theta}_\text{orig} \|\)
+    \item Maybe you actually care about the retrained model's predictions rather than its weights.
+    \( \|\hat{y}(\tilde{\Lambda}) - \hat{y}_\text{orig} \| \)
+\end{enumerate}
+
+\subsubsection{Regression perspectives}
+% TODO
+\jhr{Two interpretations below. I'm not sure \#2 makes sense but was how I interpreted "regression in gradient space".}
+\paragraph{The bias parametrization as a regression model}
+Consider that we are essentially fitting 
+a regression model of 
+$\nabla L(\hat{\theta})$
+on 
+$\nabla R (\hat{\theta}, \Lambda)$, for some $\Lambda$. 
+So, we could treat this like a regression and study its residuals.
+\paragraph{Regression on the gradients as a way to compare models}
+In the same way that we compare the residual variance of models to select / study covariates $X$ in standard regression, 
+we can take our target variable to be $\nabla L (\hat{\theta})$ and our input to be $R(\hat{\theta}, \Lambda)$. 
+Then we fit a regression $ \nabla L (\hat{\theta}) \sim R(\hat{\theta}, \hat{\Lambda})$. 
+So basically a good $R$ is one which has a tight relationship with $L$ in gradient space.  
+
+\subsection{What can be modeled?}
+One potential limitation of our approach is that in order to characterize the implicit bias of some module $\mathcal{M}$ like an architecture (dropout layers) or algorithm (gradient descent) you need some notion of training \emph{without} $\mathcal{M}$ that makes sense. 
+
+In other words $\mathcal{M}$ should be something that you can turn on/off -- we might say that it is \emph{ablatable} or amenable to ablation study.
+}
+
+
+\section{Experiments}
+
+To verify that our approach works, we want to see that it can recover both known explicit regularization and theoretically predicted implicit regularization when those problems are underparametrized ($n \geq \| \Lambda \|$).
+
+\subsection{Recovering known elastic net parameters}
+\label{sec:elastic-net}
+In order to sanity-check our approach, we first tasked our framework with recovering the parameters of a neural network explicitly trained with regularization. 
+
+We trained a non-linear neural network with one hidden layer (200 units) and ReLU activation to predict a scalar output from a 10-dimensional input. The model was trained using stochastic gradient descent with a learning rate of $10^{-3}$ for up to 200 epochs, with early stopping (patience = 15) based on training loss.
+
+Synthetic data were generated by sampling inputs $X \in \mathbb{R}^{5000 \times 10}$ from a standard normal distribution, and computing targets as
+\[
+y = X\beta + \varepsilon, \quad \beta \sim 5 \cdot \mathcal{N}(0, I), \quad \varepsilon \sim \mathcal{N}(0, 0.25).
+\]
+Data were split 80/20 into training and test sets, and the network was trained in mini-batches of size 32.
+
+\jhr{Why are the data generated from a linear model? Try multiple function classes (linear, sine function, polynomial), maybe vary the depth and width of the network to see how well this works.}
+
+We first attempted elastic net regularization (combining $\mathcal{L}_1$ and $\ell_2$ penalties), but it failed to recover the true parameters. This is likely due to the non-smoothness of the $\ell_1$ norm, which hinders gradient-based optimization and biases solutions toward zero.
+
+Instead, we applied a smoothed $\ell_1$ penalty, related to the Huber loss (PyTorch implementation \href{https://pytorch.org/docs/stable/generated/torch.nn.SmoothL1Loss.html#torch.nn.SmoothL1Loss}{here}):
+\[
+\mathcal{R}(\theta, \beta) = 
+\begin{cases}
+\frac{1}{2\beta} \theta^2 & \text{if } |\theta| < \beta \\
+|\theta| - \frac{1}{2}\beta & \text{otherwise}
+\end{cases}
+\]
+with smoothing parameter $\beta = 0.01$ and $\ell_1$ penalty weight set to $1.0$.
+
+
+The gradient is
+\[
+\frac{d\mathcal{L}}{d\theta}=
+\begin{cases}
+\dfrac{\theta}{\beta}, & |\theta|<\beta,\\[0.25em]
+\mathrm{sign}(\theta), & |\theta|\ge\beta.
+\end{cases}
+\]
+For \(|\theta|<\beta\), the behavior is purely quadratic—identical to an \(\ell_2\) penalty of strength \(1/\beta\)—whereas for \(|\theta|\ge\beta\) it is linear (\(\ell_1\)). When the coefficient \(\lambda_1\) on this penalty is very large (and \(\beta\) small), nearly all \(\theta\) lie in the quadratic region, so
+\[
+\lambda_1\,\mathcal{R}(\theta)\approx\frac{\lambda_1}{2\beta}\,\theta^2,
+\]
+i.e.\ an effective \(\ell_2\) penalty of strength \(\lambda_1/(2\beta)\), which produces the same severe under-fitting characteristic of heavy \(\ell_2\) regularization. Therefore when the penalty is large and many $\theta$ are close to zero the $\lambda_1, \lambda_2$ are not identifiable.
+
+Figure \ref{fig:elasticnet-heatmap} shows that we can recover the true elastic net parameters with high fidelity for most true parameter values. For very large penalty values, the smoothing of the L1 function near zero makes estimation inaccurate because the true parameters are not identifiable when $\theta$ are small.
+
+\begin{figure}[h!]
+    \centering
+    \includegraphics[width=\linewidth]{figures/sweep_krcszr6z_elasticnet_estimation_heatmap_detailed.pdf}
+    \caption{\footnotesize Log of multiplicative error ($\log \frac{\hat{\lambda}}{\lambda}$) for recovery of elastic net parameters. The bolded number represents the log multiplicative error and matches the color scheme -- this reflects the order of magnitude of the relative error. The numbers in parentheses are the estimated regularization penalty value. }
+    \label{fig:elasticnet-heatmap}
+\end{figure}
+
+\jhr{Figure caption needs to be much more detailed / clearer. Also too much text, maybe don't need the actual values. Do it with just L2 frist. }
+
+\subsection{Recovering the implicit regularization of early stopping in OLS}
+
+It is nice to recover known explicit regularization, but the real goal is to estimate \textit{implicit} regularization that is not in our objective function during training. To that end we study a simple example with well-understood theory: the effect of early stopping in full-batch gradient descent for ordinary least-squares linear regression.
+
+As described in section \ref{sec:gd-ols}, theory predicts that the implicit effect of  early stopping is a form of data-dependent quadratic regularization that decays over training. In particular, at gradient step $t$ the least-squares solution $\hat{\theta}$ satisfies:
+\[\hat{\theta} = \argmin_\theta \tfrac{1}{2}\| y - X \theta \|^2 + \tfrac{1}{2} \theta^\top \Lambda \theta \]
+
+$$Q_t  = Q_t(X):= V S((I-\ep S)^{-t} - I) V^\top, \quad \frac{X^\top X}{n}= VSV^\top$$
+
+
+\subsubsection{Heuristic estimates}\label{subsubsec:heuristic-ests}
+A potential limitation of our framework is that it may often be the case that our expected model of implicit regularization is not identifiable. In such cases, we cannot expect to recover the exact parameters of the full model. We may instead choose to fit some underparametrized version of this model instead, using its estimates as a heuristic. Is this still useful?
+
+To test this, we fit an underparametrized model with a scalar $\ell_2$ regularization parameter, i.e. $Q_t = \lambda_t I$. Our theory of early-stopping in OLS tells us that $\lim_{t\to \infty} \alpha^\top Q_t \alpha \to 0$ because the matrix $\left((I-\eta S)^{-t}-I\right)^{-1}$ vanishes for large $t$ (given that eigenvalues $s_i$ are positive and $\eta s_i < 1$). We should be able to capture this behavior with our heuristic model; that is, if the theory is correct we should see $\hat{\lambda}_t \to 0$.
+
+Table \ref{tab:lambda_results} shows the results from fitting a linear regression to synthetic data generated as follows:
+\[ y = X \beta, \quad \beta_i \iid N(0,3), \quad X_{ij} \iid N(0,1) \]
+Where we sampled $X \in \R^{n \times p}$ and $\beta \in \R^p$ for $n=1000, p=5$. We trained the regression model using full batch gradient descent with learning rate $\eta=\num{5e-3} $.
+
+We take this as an encouraging sign that we can use underparametrized models of implicit regularization to test our theory and intuitions. 
+
+\begin{table}[htbp]
+\centering
+\caption{$\hat{\lambda}$ decreases with gradient descent iterates ($\eta=.005$)}
+\label{tab:lambda_results}
+\begin{tabular}{cc}
+\toprule
+Epochs & $\hat{\lambda}$ \\
+\midrule
+10 & 0.00946 \\
+50 & 0.00153 \\
+150 & 0.00028 \\
+500 & 0.0000068 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+
+% \subsection{Recovering the implicit regularization of early stopping in Kernel Regression}
+
+% \begin{minipage}{0.55\textwidth}
+% \paragraph{Nonlinear dataset}
+% We generated a dataset of \(n=500\) observations in \(p=2\) dimensions by first sampling
+% \[
+% X_i \;\sim\;\mathcal{N}\bigl(0, I_2\bigr)\,,\qquad i=1,\dots,500,
+% \]
+% using a fixed seed (56) for reproducibility.
+
+% The response for each sample was then defined as
+% \[
+% y_i \;=\;\sin\!\bigl(\|X_i\|_{1}\bigr)\,\|X_i\|_{2}
+% \;+\;0.5\,\varepsilon_i,
+% \quad
+% \varepsilon_i\sim\mathcal{N}(0,1)
+% \]
+% where \(\|X_i\|_{1}=\sum_{j=1}^2|X_{ij}|\) is the \(L_1\) norm, \(\|X_i\|_{2}=\sqrt{\sum_{j=1}^2X_{ij}^2}\) the Euclidean norm, and \(\varepsilon_i\) standard Gaussian noise. This construction yields a non-linear dependence on both the \(L_1\) and \(L_2\) norms of the inputs.
+% \end{minipage}
+% \hfill
+% \begin{minipage}{0.44\textwidth}
+% \centering
+% \includegraphics[width=\linewidth]{figures/radial_sine_function_data_2d.pdf}
+% \captionof{figure}{Data suitable \\for RBF kernel}
+% \end{minipage}
+
+% \paragraph{Radial Basis Function (RBF) Kernel.}
+% The Gaussian RBF kernel between inputs \( X \in \mathbb{R}^{n \times d} \) and \( Y \in \mathbb{R}^{m \times d} \) is given by
+% \[
+% K_{ij} = \exp\left( -\gamma \, \| X_i - Y_j \|^2 \right),
+% \]
+% where \( \gamma > 0 \) is an inverse length-scale parameter (our implementation defaults to \( \gamma = 1/d \) if not specified). 
+
+% Here we compute the kernel on \( X \) with itself (i.e., \( Y = X \)). To improve numerical stability and ensure positive semidefiniteness, we optionally:
+% \begin{itemize}
+%   \item symmetrize the matrix: \( K \gets \tfrac{1}{2}(K + K^\top) \),
+%   \item and add a small ridge term to the diagonal: \( K \gets K + \varepsilon I \), with \( \varepsilon > 0 \) (e.g., \( \varepsilon = 10^{-6} \)).
+% \end{itemize}
+% This ensures \( K \) is symmetric and strictly positive semidefinite, which is a necessary condition for our theory to hold true.
+
+% We used full-batch gradient descent to fit a Kernel Ridge Regression as described in Section \ref{sec:KRR}. That is, we learned a set of coefficients $\alpha$ that predict the response variable $y$ as a function of the pairwise inner products of the inputs $X$ in feature space:
+% \[ \hat{y}_i = \sum_{j=1}^n \alpha_j \langle \psi (x_i), \psi(x_j) \rangle \]
+
+% \paragraph{Results} We find that for ($\eta$=\num{1e-2}, $n$=500, $p$=2, $\lambda=0.1$, $\gamma=10.0$, $t=?$) with $\alpha_0 = \vec{0}$, estimating a diagonalized quadratic penalty on the weights allows us to accurately recover the implicit regularization predicted by theory. 
+
+% More precisely, theory predicts the exact full-rank quadratic regularizer $Q_t$ such that early stopping at time $t$ results in learned weights which minimize that regularized loss. We recover a diagonal version of $Q_t$ that poses a minimization problem with the exact same solution. 
+
+
+\jhr{
+Does it get harder / less useful to estimate bias as $t \to \infty$??
+\begin{enumerate}
+    \item Depends on loss function
+    \item Depends on noise level
+\end{enumerate}
+}
+
+\jhr{Yotam's idea: vary the noise of SGD, if you always converge to the same solution (i.e. minimizing the 2-norm) then }
+\jhr{Think about linear regression case, the solution is already a norm-minimizer. This approach suggests that the implicit bias disappears, but in some case we know linear regression has this really strong implicit bias. }
+
+\subsection{Neural nets stuff}
+% \paragraph{Neural Tangent Kernel}
+% Estimate the eNTK of some nonlinear neural network (say 3 layers but pretty wide (>200 hidden nodes per layer). Keep it with 1 dim output so K is a matrix not a tensor.  
+
+% I have the kernel matrix K and now kernel regression is exactly the same as before. 
+
+% We want to see that the theory explaining inductive bias of early stopping for kernel regression holds somewhat accurately for the NKT regression. 
+
+\paragraph{Implicit bias of dropout}
+Dropout has long been studied as an adaptive regularizer that prevents co-adaptation of neurons (i.e. overreliance on particular weights). Roughly speaking this translates to a small-weight bias, because the training procedure learns to preserve stable predictions in the face of dropping some weights. 
+
+\begin{figure}[h]
+    \centering
+    \includegraphics[0.8\linewidth]{figures/dropout_bias_ridge_panel.png}
+    \caption{Estimated ridge / $\ell_2$ penalty of dropout.}
+    \label{fig:dropout-l2}
+\end{figure}
+
+\paragraph{Norms vs rank}
+
+\subsection{Identifying regularization in complex models}
+\jhr{Konrad's idea is to fit very big models (like ViT or a small LLM)}
+\jhr{
+We want to express each regularization's strength in terms of proportion of variance in the bias explained. 
+}
+
+% \newpage
+% \FloatBarrier
+% \section{Miscellanea}
+
+% Measuring smoothness: make $R(\theta,S)$ some expected value over the noise $\eta$
+% $$R(\theta,S) = \mathbb{E}_{\eta} || f_{\theta}(x + \sigma \eta) - f_\theta (x)||_2^2 $$
+% Or maybe use another norm. 
+
+% What about data augmentation?
+% $$R(\theta,S) = \mathbb{E}_{\text{transform}~g \sim Q} || f_{\theta}(g \cdot x) - f_\theta (x)||_2^2 $$
+% How to evaluate different $R$ functions?
+
+
+% What's a good example?
+% - find some small MNIST network (smaller than ResNet)
+% - working hypothesis: Early Stopping
+
+% Better:
+% Linear network WITHOUT early stopping vs linear network WITH early stopping. 
+% With early stopping should have $\lambda>0$ and without should have $\lambda=0$
+
+% Goal is to have a toolbox: some set of about 10 regularizers, model classes of $R$
+% - should recover known regularizers
+% - check against community's heuristic beliefs
+% - predict regularization for new unknown networks / techniques
+
+
+\newpage
+% \printbibliography
+
+\bibliography{ref}
+\bibliographystyle{tmlr-style-file-main/tmlr}
+
+\newpage
+\appendix
+
+\section{Uniqueness and recovery with an estimated explicit regularizer}
+\label{app:unique-weights}
+
+Let $\ell, R \in C^2(\mathbb{R}^p)$ and fix an estimated hyperparameter $\hat\Lambda$.
+Define
+\[
+f(\theta) \coloneqq \ell(\theta) + R(\theta,\hat\Lambda),
+\qquad
+\mathcal{F}(\theta) \coloneqq \nabla f(\theta).
+\]
+Assume unconstrained optimization over $\Theta=\mathbb{R}^p$.
+
+\paragraph{Local uniqueness via local convexity.}
+\begin{proposition}[PD Hessian $\Rightarrow$ isolated stationary point]
+\label{prop:local}
+If $\mathcal{F}(\hat\theta)=0$ and $\nabla^2 f(\hat\theta)\succ0$, then:
+(i) $\hat\theta$ is a strict local minimizer of $f$; 
+(ii) there exists $r>0$ such that $\hat\theta$ is the unique zero of $\mathcal{F}$ in $B_r(\hat\theta)$.
+\end{proposition}
+
+\begin{proof}
+By $C^2$ smoothness and Taylor's theorem,
+$f(\hat\theta+h)=f(\hat\theta)+\tfrac12 h^\top \nabla^2 f(\hat\theta) h + o(\|h\|^2)$.
+Positive definiteness implies $f(\hat\theta+h)>f(\hat\theta)$ for all small $h\ne0$, hence strict local minimality.
+Moreover, $\nabla \mathcal{F}(\hat\theta)=\nabla^2 f(\hat\theta)$ is invertible;
+by the inverse function theorem, $\mathcal{F}$ is a local diffeomorphism at $\hat\theta$,
+so its zero is isolated and unique within a neighborhood.
+\end{proof}
+
+\paragraph{Global uniqueness: two sufficient routes.}
+\begin{proposition}[Strong convexity]
+\label{prop:global-strong}
+If $f$ is $\mu$-strongly convex on $\mathbb{R}^p$ (i.e., $\nabla^2 f(\theta)\succeq \mu I$ for all $\theta$),
+then $f$ has a unique global minimizer $\theta^*$ and $\mathcal{F}(\theta)=0$ has the unique solution $\theta=\theta^*$.
+\end{proposition}
+
+\begin{proof}
+Strong convexity implies the quadratic lower bound
+$f(\theta)\ge f(0)+\langle \nabla f(0),\theta\rangle + \tfrac\mu2\|\theta\|^2$,
+hence $f(\theta)\to\infty$ as $\|\theta\|\to\infty$ (coercivity) and thus existence of a minimizer.
+Strong convexity also yields strict convexity, so the minimizer is unique and must satisfy $\nabla f(\theta^*)=0$.
+\end{proof}
+
+\begin{proposition}[Convexity + PD Hessian at the candidate minimizer]
+\label{prop:global-convex}
+Let $f$ be convex on $\mathbb{R}^p$ and suppose $\mathcal{F}(\hat\theta)=0$ with $\nabla^2 f(\hat\theta)\succ0$.
+Then $\hat\theta$ is the unique global minimizer of $f$.
+\end{proposition}
+
+\begin{proof}
+For convex $f$, every stationary point is a global minimizer.
+Assume, for contradiction, there is $\theta'\neq \hat\theta$ with $f(\theta')=f(\hat\theta)$.
+By convexity, $f$ is constant along the segment $[\hat\theta,\theta']$,
+which implies zero directional second derivative at $\hat\theta$ in the direction $d=\theta'-\hat\theta$.
+But $\nabla^2 f(\hat\theta)\succ0$ gives $d^\top \nabla^2 f(\hat\theta) d>0$ for any $d\neq0$, a contradiction.
+\end{proof}
+
+\paragraph{Exact recovery criterion (explicit vs.\ implicit).}
+Suppose a training procedure (with implicit regularization) produces weights $\hat\theta$.
+If we fit $\hat\Lambda$ so that \emph{stationarity at $\hat\theta$ holds}:
+\[
+\nabla \ell(\hat\theta) + \nabla R(\hat\theta,\hat\Lambda) = 0,
+\]
+then:
+\begin{itemize}
+\item By Proposition~\ref{prop:global-strong}, if $f$ is strongly convex on $\mathbb{R}^p$, retraining on $f$ recovers $\hat\theta$ uniquely.
+\item By Proposition~\ref{prop:global-convex}, the same holds if $f$ is convex and $\nabla^2 f(\hat\theta)\succ0$.
+\item By Proposition~\ref{prop:local}, even without convexity, retraining that stays inside the attraction neighborhood $B_r(\hat\theta)$ recovers $\hat\theta$.
+\end{itemize}
+
+\paragraph{Stability under approximate gradient matching.}
+\begin{proposition}[Perturbation bound under strong convexity]
+\label{prop:stab}
+Assume $f$ is $\mu$-strongly convex and let $\theta^*=\arg\min f$.
+If $\|\mathcal{F}(\hat\theta)\|\le \varepsilon$, then
+\[
+\|\hat\theta-\theta^*\| \le \frac{\varepsilon}{\mu}
+\quad\text{and}\quad
+f(\hat\theta)-f(\theta^*) \le \frac{\varepsilon^2}{2\mu}.
+\]
+\end{proposition}
+
+\begin{proof}
+Strong convexity implies \emph{strong monotonicity} of the gradient:
+$\langle \mathcal{F}(\hat\theta)-\mathcal{F}(\theta^*),\,\hat\theta-\theta^* \rangle \ge \mu \|\hat\theta-\theta^*\|^2$,
+with $\mathcal{F}(\theta^*)=0$. By Cauchy–Schwarz,
+$\mu \|\hat\theta-\theta^*\|^2 \le \|\mathcal{F}(\hat\theta)\|\,\|\hat\theta-\theta^*\|$,
+giving the distance bound.
+For the function gap, strong convexity gives
+$f(\theta^*) \ge f(\hat\theta) + \langle \mathcal{F}(\hat\theta),\theta^*-\hat\theta\rangle + \tfrac{\mu}{2}\|\theta^*-\hat\theta\|^2$.
+Rearrange and apply Young’s inequality
+$\langle a,b\rangle \le \tfrac{1}{2\mu}\|a\|^2 + \tfrac{\mu}{2}\|b\|^2$ with $a=\mathcal{F}(\hat\theta)$, $b=\hat\theta-\theta^*$,
+to obtain $f(\hat\theta)-f(\theta^*) \le \|\mathcal{F}(\hat\theta)\|^2/(2\mu)$.
+\end{proof}
+
+\subsection*{Linear regression with quadratic penalty (specialization)}
+Let
+\[
+f(\theta)=\tfrac12\|y-X\theta\|_2^2 + \tfrac12\,\theta^\top \hat\Lambda \theta,
+\quad
+\mathcal{F}(\theta)=(X^\top X+\hat\Lambda)\theta - X^\top y,
+\]
+with $X\in\mathbb{R}^{n\times p}$, $y\in\mathbb{R}^n$, and assume $\hat\Lambda$ is symmetric
+(only its symmetric part matters in $\nabla f$).
+
+\begin{proposition}[Uniqueness and equality of weights]
+\label{prop:lq}
+If $A:=X^\top X+\hat\Lambda \succ 0$ and $A\hat\theta=X^\top y$, then:
+(i) $f$ is strongly convex with unique minimizer $\theta^*=A^{-1}X^\top y$; 
+(ii) $\theta^*=\hat\theta$ (explicit retraining exactly recovers the original weights).
+\end{proposition}
+
+\begin{proof}
+$A\succ0$ implies $\nabla^2 f(\theta)=A\succ0$, hence strong convexity and uniqueness.
+The normal equations for the minimizer are $A\theta^*=X^\top y$, so $\theta^*=\hat\theta$ by the assumed identity.
+\end{proof}
+
+\paragraph{Remark (singular case).}
+If $A\succeq0$ but singular, the problem is convex but not strongly convex. 
+A minimizer exists iff $X^\top y\in \mathrm{range}(A)$, and the set of minimizers is $A^\dagger X^\top y+\ker(A)$.
+Exact recovery is then generally impossible without further structure (e.g., extra constraints selecting a unique element of the affine set).
+
+
+\end{document}

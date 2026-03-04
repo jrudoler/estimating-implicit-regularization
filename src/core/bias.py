@@ -156,6 +156,463 @@ class NuclearNormBias(Bias):
             return {"scale": self.beta.item()}
 
 
+# =============================================================================
+# Scale-Invariant Bias Regularizers (Orthogonal to L2)
+# =============================================================================
+# These regularizers have gradients orthogonal to W (and thus to L2 gradient = 2W)
+# because they are scale-invariant: f(αW) = f(W) for all α > 0.
+# This property follows from: ⟨∇f(W), W⟩ = d/dα f(αW)|_{α=1} = 0
+
+
+class StableRankBias(ScalarBias):
+    """
+    Stable rank regularizer: srank(W) = ||W||_F² / ||W||_2²
+
+    - Range: [1, min(rows, cols)]
+    - Scale-invariant: gradient is orthogonal to W
+    - Interpretation: Effective number of significant singular values
+    - Literature: Used in matrix concentration inequalities (Vershynin, 2018)
+    """
+
+    bias_name = "stable_rank"
+
+    def __init__(
+        self, enforce_positive: bool = True, init_value: Optional[float] = None
+    ):
+        super().__init__(enforce_positive=enforce_positive, init_value=init_value)
+
+    def forward(self, flattened_params, structured_params, **kwargs):
+        penalty = torch.zeros(
+            (), device=flattened_params.device, dtype=flattened_params.dtype
+        )
+        count = 0
+        for w in structured_params:
+            if w.ndim >= 2:
+                matrix = w if w.ndim == 2 else w.reshape(w.shape[0], -1)
+                fro_sq = torch.sum(matrix**2)
+                spectral_sq = torch.linalg.matrix_norm(matrix, ord=2) ** 2
+                # Stable rank = ||W||_F² / ||W||_2²
+                penalty = penalty + fro_sq / (spectral_sq + 1e-8)
+                count += 1
+        # Average across matrices for consistency
+        if count > 0:
+            penalty = penalty / count
+        scale = torch.exp(self.beta) if self.enforce_positive else self.beta
+        return scale.squeeze() * penalty
+
+
+class SpectralEntropyBias(ScalarBias):
+    """
+    Spectral entropy regularizer: H(W) = -Σ pᵢ log(pᵢ)
+    where pᵢ = σᵢ² / ||W||_F² (normalized squared singular values)
+
+    - Scale-invariant: gradient is orthogonal to W
+    - Range: [0, log(min(rows, cols))]
+    - Interpretation: How spread out is the spectral energy?
+    - Low entropy = energy concentrated in few singular values (low rank)
+    - High entropy = energy spread across many singular values
+    """
+
+    bias_name = "spectral_entropy"
+
+    def __init__(
+        self, enforce_positive: bool = True, init_value: Optional[float] = None
+    ):
+        super().__init__(enforce_positive=enforce_positive, init_value=init_value)
+
+    def forward(self, flattened_params, structured_params, **kwargs):
+        penalty = torch.zeros(
+            (), device=flattened_params.device, dtype=flattened_params.dtype
+        )
+        count = 0
+        for w in structured_params:
+            if w.ndim >= 2:
+                matrix = w if w.ndim == 2 else w.reshape(w.shape[0], -1)
+                # Get singular values (efficient, no full SVD)
+                sigmas = torch.linalg.svdvals(matrix)
+                # Compute normalized squared singular values (probabilities)
+                sigma_sq = sigmas**2
+                total = sigma_sq.sum() + 1e-8
+                probs = sigma_sq / total
+                # Clamp to avoid log(0)
+                probs = torch.clamp(probs, min=1e-10)
+                # Entropy: -Σ pᵢ log(pᵢ)
+                entropy = -torch.sum(probs * torch.log(probs))
+                penalty = penalty + entropy
+                count += 1
+        if count > 0:
+            penalty = penalty / count
+        scale = torch.exp(self.beta) if self.enforce_positive else self.beta
+        return scale.squeeze() * penalty
+
+
+class WeightCoherenceBias(ScalarBias):
+    """
+    Weight coherence regularizer: coh(W) = ||W^T W - diag(W^T W)||_F² / ||W||_F⁴
+
+    - Scale-invariant: gradient is orthogonal to W
+    - Measures correlation between weight columns (off-diagonal of Gram matrix)
+    - Interpretation: Penalizes redundant/correlated features
+    - Literature: Related to coherence in compressed sensing
+    """
+
+    bias_name = "weight_coherence"
+
+    def __init__(
+        self, enforce_positive: bool = True, init_value: Optional[float] = None
+    ):
+        super().__init__(enforce_positive=enforce_positive, init_value=init_value)
+
+    def forward(self, flattened_params, structured_params, **kwargs):
+        penalty = torch.zeros(
+            (), device=flattened_params.device, dtype=flattened_params.dtype
+        )
+        count = 0
+        for w in structured_params:
+            if w.ndim >= 2:
+                matrix = w if w.ndim == 2 else w.reshape(w.shape[0], -1)
+                # Gram matrix: W^T W
+                gram = matrix.T @ matrix
+                # Off-diagonal part: Gram - diag(Gram)
+                diag_gram = torch.diag(torch.diag(gram))
+                off_diag = gram - diag_gram
+                # Normalized coherence
+                fro_sq = torch.sum(matrix**2)
+                coherence = torch.sum(off_diag**2) / (fro_sq**2 + 1e-8)
+                penalty = penalty + coherence
+                count += 1
+        if count > 0:
+            penalty = penalty / count
+        scale = torch.exp(self.beta) if self.enforce_positive else self.beta
+        return scale.squeeze() * penalty
+
+
+class RowNormVarianceBias(ScalarBias):
+    """
+    Row norm variance regularizer: Var(||w_i||² / mean(||w_j||²))
+
+    - Scale-invariant: gradient is orthogonal to W
+    - Interpretation: Prefers balanced weight magnitudes across neurons/rows
+    - Low variance = all rows have similar norms (balanced network)
+    - High variance = some rows dominate (imbalanced)
+    """
+
+    bias_name = "row_norm_variance"
+
+    def __init__(
+        self, enforce_positive: bool = True, init_value: Optional[float] = None
+    ):
+        super().__init__(enforce_positive=enforce_positive, init_value=init_value)
+
+    def forward(self, flattened_params, structured_params, **kwargs):
+        penalty = torch.zeros(
+            (), device=flattened_params.device, dtype=flattened_params.dtype
+        )
+        count = 0
+        for w in structured_params:
+            if w.ndim >= 2:
+                matrix = w if w.ndim == 2 else w.reshape(w.shape[0], -1)
+                # Compute squared row norms
+                row_norms_sq = torch.sum(matrix**2, dim=1)
+                # Normalize by mean to make scale-invariant
+                mean_norm_sq = row_norms_sq.mean() + 1e-8
+                normalized_norms = row_norms_sq / mean_norm_sq
+                # Variance of normalized norms
+                variance = torch.var(normalized_norms)
+                penalty = penalty + variance
+                count += 1
+        if count > 0:
+            penalty = penalty / count
+        scale = torch.exp(self.beta) if self.enforce_positive else self.beta
+        return scale.squeeze() * penalty
+
+
+class SpectralGapBias(ScalarBias):
+    """
+    Spectral gap regularizer: log(σ₁ / σ₂)
+
+    - Scale-invariant: gradient is orthogonal to W
+    - Interpretation: How dominant is the principal component?
+    - Large gap = low effective rank, first singular value dominates
+    - Small gap = more distributed spectrum
+    """
+
+    bias_name = "spectral_gap"
+
+    def __init__(
+        self, enforce_positive: bool = True, init_value: Optional[float] = None
+    ):
+        super().__init__(enforce_positive=enforce_positive, init_value=init_value)
+
+    def forward(self, flattened_params, structured_params, **kwargs):
+        penalty = torch.zeros(
+            (), device=flattened_params.device, dtype=flattened_params.dtype
+        )
+        count = 0
+        for w in structured_params:
+            if w.ndim >= 2:
+                matrix = w if w.ndim == 2 else w.reshape(w.shape[0], -1)
+                # Need at least 2 singular values
+                min_dim = min(matrix.shape)
+                if min_dim < 2:
+                    continue
+                # Get top 2 singular values
+                sigmas = torch.linalg.svdvals(matrix)
+                sigma_1 = sigmas[0]
+                sigma_2 = sigmas[1] + 1e-8  # Avoid log(0)
+                # Log ratio is scale-invariant
+                gap = torch.log(sigma_1 / sigma_2 + 1e-8)
+                penalty = penalty + gap
+                count += 1
+        if count > 0:
+            penalty = penalty / count
+        scale = torch.exp(self.beta) if self.enforce_positive else self.beta
+        return scale.squeeze() * penalty
+
+
+# =============================================================================
+# Gradient-Based Bias Regularizers
+# =============================================================================
+# These regularizers measure properties of the loss gradient or use gradients
+# to capture training dynamics. They require gradient information via kwargs.
+
+
+class GradientEntropyBias(ScalarBias):
+    """
+    Gradient entropy regularizer: H(|∇|) = -Σ pᵢ log(pᵢ)
+    where pᵢ = |∇ᵢ|² / ||∇||²
+
+    - Measures how spread out the gradient energy is across parameters
+    - Low entropy = gradient concentrated in few parameters (sparse updates)
+    - High entropy = gradient spread across many parameters (dense updates)
+    - Scale-invariant w.r.t. gradient magnitude
+
+    Requires: kwargs["grad_vector"] - flattened gradient tensor
+    """
+
+    bias_name = "gradient_entropy"
+
+    def __init__(
+        self, enforce_positive: bool = True, init_value: Optional[float] = None
+    ):
+        super().__init__(enforce_positive=enforce_positive, init_value=init_value)
+
+    def forward(self, flattened_params, structured_params, **kwargs):
+        grad_vector = kwargs.get("grad_vector")
+        if grad_vector is None:
+            # Return zero penalty if no gradient provided
+            return torch.zeros(
+                (), device=flattened_params.device, dtype=flattened_params.dtype
+            )
+
+        # Compute normalized squared gradient magnitudes (probabilities)
+        grad_sq = grad_vector**2
+        total = grad_sq.sum() + 1e-8
+        probs = grad_sq / total
+        # Clamp to avoid log(0)
+        probs = torch.clamp(probs, min=1e-10)
+        # Entropy: -Σ pᵢ log(pᵢ)
+        entropy = -torch.sum(probs * torch.log(probs))
+
+        scale = torch.exp(self.beta) if self.enforce_positive else self.beta
+        return scale.squeeze() * entropy
+
+
+class WeightGradientAlignmentBias(ScalarBias):
+    """
+    Weight-gradient alignment regularizer: cos(W, ∇) = <W, ∇> / (||W|| ||∇||)
+
+    - Measures alignment between weights and their gradients
+    - Positive alignment: weights moving in direction of gradient
+    - Negative alignment: weights moving against gradient
+    - At a minimum, gradient should be ~0, so this captures trajectory info
+    - Scale-invariant (cosine similarity)
+
+    Requires: kwargs["grad_vector"] - flattened gradient tensor
+    """
+
+    bias_name = "weight_gradient_alignment"
+
+    def __init__(
+        self, enforce_positive: bool = True, init_value: Optional[float] = None
+    ):
+        super().__init__(enforce_positive=enforce_positive, init_value=init_value)
+
+    def forward(self, flattened_params, structured_params, **kwargs):
+        grad_vector = kwargs.get("grad_vector")
+        if grad_vector is None:
+            return torch.zeros(
+                (), device=flattened_params.device, dtype=flattened_params.dtype
+            )
+
+        # Cosine similarity between weights and gradients
+        w_norm = torch.norm(flattened_params) + 1e-8
+        g_norm = torch.norm(grad_vector) + 1e-8
+        alignment = torch.dot(flattened_params, grad_vector) / (w_norm * g_norm)
+
+        scale = torch.exp(self.beta) if self.enforce_positive else self.beta
+        return scale.squeeze() * alignment
+
+
+class GradientSparsityBias(ScalarBias):
+    """
+    Gradient sparsity regularizer: ||∇||₁ / ||∇||₂
+
+    - Ratio of L1 to L2 norm of gradients
+    - Range: [1, sqrt(d)] where d is number of parameters
+    - Low value = sparse gradient (few large components)
+    - High value = dense gradient (many similar-magnitude components)
+    - Scale-invariant
+
+    Requires: kwargs["grad_vector"] - flattened gradient tensor
+    """
+
+    bias_name = "gradient_sparsity"
+
+    def __init__(
+        self, enforce_positive: bool = True, init_value: Optional[float] = None
+    ):
+        super().__init__(enforce_positive=enforce_positive, init_value=init_value)
+
+    def forward(self, flattened_params, structured_params, **kwargs):
+        grad_vector = kwargs.get("grad_vector")
+        if grad_vector is None:
+            return torch.zeros(
+                (), device=flattened_params.device, dtype=flattened_params.dtype
+            )
+
+        l1_norm = torch.norm(grad_vector, p=1)
+        l2_norm = torch.norm(grad_vector, p=2) + 1e-8
+        # L1/L2 ratio (scale-invariant)
+        sparsity_ratio = l1_norm / l2_norm
+
+        scale = torch.exp(self.beta) if self.enforce_positive else self.beta
+        return scale.squeeze() * sparsity_ratio
+
+
+# =============================================================================
+# Gradient-Flow Proxy Regularizers (Weight-Based)
+# =============================================================================
+# These measure properties related to gradient flow through the network
+# but only require access to the weight matrices.
+
+
+class LayerNormProductBias(ScalarBias):
+    """
+    Layer norm product regularizer: Π ||Wₗ||₂ (product of spectral norms)
+
+    - Upper bound on the Lipschitz constant of the network
+    - Related to gradient explosion: large product = gradients can explode
+    - Literature: Spectral normalization (Miyato et al., 2018)
+    - NOT scale-invariant (intentionally measures overall magnitude)
+
+    Note: Uses log for numerical stability: log(Π σₘₐₓ) = Σ log(σₘₐₓ)
+    """
+
+    bias_name = "layer_norm_product"
+
+    def __init__(
+        self, enforce_positive: bool = True, init_value: Optional[float] = None
+    ):
+        super().__init__(enforce_positive=enforce_positive, init_value=init_value)
+
+    def forward(self, flattened_params, structured_params, **kwargs):
+        log_product = torch.zeros(
+            (), device=flattened_params.device, dtype=flattened_params.dtype
+        )
+        count = 0
+        for w in structured_params:
+            if w.ndim >= 2:
+                matrix = w if w.ndim == 2 else w.reshape(w.shape[0], -1)
+                spectral_norm = torch.linalg.matrix_norm(matrix, ord=2)
+                log_product = log_product + torch.log(spectral_norm + 1e-8)
+                count += 1
+
+        scale = torch.exp(self.beta) if self.enforce_positive else self.beta
+        return scale.squeeze() * log_product
+
+
+class LayerNormBalanceBias(ScalarBias):
+    """
+    Layer norm balance regularizer: Var(log ||Wₗ||₂)
+
+    - Measures how balanced the layer norms are
+    - Low variance = balanced norms = healthy gradient flow
+    - High variance = imbalanced norms = potential gradient issues
+    - Scale-invariant (variance of log is invariant to global scaling)
+    - Literature: Related to "balanced networks" (Du et al., 2018)
+    """
+
+    bias_name = "layer_norm_balance"
+
+    def __init__(
+        self, enforce_positive: bool = True, init_value: Optional[float] = None
+    ):
+        super().__init__(enforce_positive=enforce_positive, init_value=init_value)
+
+    def forward(self, flattened_params, structured_params, **kwargs):
+        log_norms = []
+        for w in structured_params:
+            if w.ndim >= 2:
+                matrix = w if w.ndim == 2 else w.reshape(w.shape[0], -1)
+                spectral_norm = torch.linalg.matrix_norm(matrix, ord=2)
+                log_norms.append(torch.log(spectral_norm + 1e-8))
+
+        if len(log_norms) < 2:
+            return torch.zeros(
+                (), device=flattened_params.device, dtype=flattened_params.dtype
+            )
+
+        log_norms_tensor = torch.stack(log_norms)
+        variance = torch.var(log_norms_tensor)
+
+        scale = torch.exp(self.beta) if self.enforce_positive else self.beta
+        return scale.squeeze() * variance
+
+
+class EffectiveDepthBias(ScalarBias):
+    """
+    Effective depth regularizer based on gradient flow.
+
+    Measures: mean(σₘᵢₙ(Wₗ)) / mean(σₘₐₓ(Wₗ))
+
+    - Ratio of average minimum to maximum singular values
+    - High ratio = well-conditioned layers = gradients flow through all layers
+    - Low ratio = poorly-conditioned = some layers block gradient flow
+    - Scale-invariant
+    """
+
+    bias_name = "effective_depth"
+
+    def __init__(
+        self, enforce_positive: bool = True, init_value: Optional[float] = None
+    ):
+        super().__init__(enforce_positive=enforce_positive, init_value=init_value)
+
+    def forward(self, flattened_params, structured_params, **kwargs):
+        sigma_mins = []
+        sigma_maxs = []
+        for w in structured_params:
+            if w.ndim >= 2:
+                matrix = w if w.ndim == 2 else w.reshape(w.shape[0], -1)
+                sigmas = torch.linalg.svdvals(matrix)
+                sigma_maxs.append(sigmas[0])
+                # Min singular value (could be 0 for rank-deficient)
+                sigma_mins.append(sigmas[-1])
+
+        if len(sigma_mins) == 0:
+            return torch.zeros(
+                (), device=flattened_params.device, dtype=flattened_params.dtype
+            )
+
+        mean_min = torch.stack(sigma_mins).mean()
+        mean_max = torch.stack(sigma_maxs).mean() + 1e-8
+        ratio = mean_min / mean_max
+
+        scale = torch.exp(self.beta) if self.enforce_positive else self.beta
+        return scale.squeeze() * ratio
+
+
 class LowRankBias(Bias):
     bias_name = "low_rank"
 

@@ -1,0 +1,58 @@
+name: mixed_bias_recovery
+project: inductive-bias-experiments
+method: grid
+
+metric:
+  name: error/ridge_rel
+  goal: minimize
+
+parameters:
+  # Ground truth regularization - test different combinations
+  gt_ridge_lambda:
+    values: [0.0, 0.01, 0.05, 0.1]
+  gt_coherence_lambda:
+    values: [0.0, 0.01, 0.05, 0.1]
+  
+  # Network architecture (small for speed)
+  depth:
+    values: [2, 3]
+  width:
+    value: 128
+  
+  # Dataset
+  dataset:
+    value: mnist
+  
+  # Training hyperparameters
+  batch_size:
+    value: 256
+  lr:
+    value: 0.001
+  max_epochs:
+    value: 200
+  patience:
+    value: 30
+  val_fraction:
+    value: 0.1
+  
+  # Bias estimation hyperparameters
+  bias_lr:
+    value: 0.1
+  bias_weight_decay:
+    value: 0.0
+  bias_max_epochs:
+    value: 2000
+  bias_patience:
+    value: 100
+  
+  # Seeds for reproducibility
+  seed:
+    values: [42, 123, 456]
+
+command:
+  - uv
+  - run
+  - python
+  - ${program}
+program: experiments/mixed_bias_recovery.py
+

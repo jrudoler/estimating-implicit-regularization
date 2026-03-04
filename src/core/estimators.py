@@ -210,6 +210,221 @@ class BiasWithCrossEntropyScheduled(BiasWithCrossEntropy):
         }
 
 
+class BiasWithCrossEntropyNormalized(BiasWithCrossEntropy):
+    """
+    Bias estimator with normalized gradient matching (preconditioned regression).
+    
+    Addresses the gradient magnitude imbalance problem. The key insight is that
+    when we have: target ≈ λ₁∇R₁ + λ₂∇R₂
+    
+    If ||∇R₁|| >> ||∇R₂||, the optimizer focuses on λ₁ (larger gradient contribution).
+    
+    Solution: Normalize the basis gradients (precondition the regression):
+        ĝ₁ = ∇R₁ / ||∇R₁||,  ĝ₂ = ∇R₂ / ||∇R₂||
+        
+    Then fit: target ≈ a·ĝ₁ + b·ĝ₂
+    
+    Recover true λ values: λ₁ = a/||∇R₁||, λ₂ = b/||∇R₂||
+    
+    This ensures all regularizers contribute equally to the loss landscape.
+    We learn 'a' and 'b' directly (not exp(beta)), then recover λ.
+    
+    Requires bias_model to be a JointBias containing multiple bias models.
+    """
+
+    def __init__(
+        self,
+        predictive_model: nn.Module,
+        bias_model: nn.Module,
+        grad_match_loss_fn: Callable[..., torch.Tensor] = F.mse_loss,
+        optimizer_cls: Callable[..., Optimizer] = torch.optim.Adam,
+        lr: float = 1e-3,
+        bias_lr: float = 0.1,
+        monitor_lr: str = "train_bias/loss",
+        patience_lr: int = 10,
+        factor_lr: float = 0.5,
+        eps: float = 1e-8,
+    ):
+        super().__init__(
+            predictive_model=predictive_model,
+            bias_model=bias_model,
+            grad_match_loss_fn=grad_match_loss_fn,
+            optimizer_cls=optimizer_cls,
+            lr=lr,
+        )
+        self.bias_lr = bias_lr
+        self.monitor_lr = monitor_lr
+        self.patience_lr = patience_lr
+        self.factor_lr = factor_lr
+        self.eps = eps
+        
+        # Verify bias_model is a JointBias or has bias_models attribute
+        if not hasattr(bias_model, 'bias_models'):
+            raise ValueError(
+                "BiasWithCrossEntropyNormalized requires a JointBias model "
+                "with multiple bias models. Got: {}".format(type(bias_model))
+            )
+        
+        # Create separate learnable coefficients for normalized space
+        # These are 'a' and 'b' in the formulation above
+        n_biases = len(bias_model.bias_models)
+        # Initialize near zero since we expect small coefficients
+        self.normalized_coefs = nn.Parameter(torch.zeros(n_biases))
+        
+        self.save_hyperparameters(ignore=["predictive_model", "bias_model", "grad_match_loss_fn"])
+
+    def _compute_penalty_gradient(self, bias_model: nn.Module) -> Tuple[torch.Tensor, torch.Tensor]:
+        """
+        Compute the gradient of the raw penalty (without learned coefficient).
+        
+        Returns (gradient, norm).
+        """
+        flat_params = (
+            torch.nn.utils.parameters_to_vector(self.predictive_model.parameters())
+            .detach()
+            .requires_grad_()
+            .to(self.device)
+        )
+        struct_params = vector_to_parameter_views(flat_params, self.predictive_model)
+        
+        # We need the gradient of the penalty BEFORE the coefficient is applied
+        # For ScalarBias types: R = scale * penalty, so ∇R = scale * ∇penalty
+        # We want just ∇penalty
+        
+        # Temporarily set coefficient to 1 to get pure penalty gradient
+        if hasattr(bias_model, 'beta'):
+            original_beta = bias_model.beta.data.clone()
+            # Set beta such that the scale = 1
+            # If enforce_positive: scale = exp(beta), so set beta = 0 -> scale = 1
+            # If not enforce_positive: scale = beta, so set beta = 1 -> scale = 1
+            if hasattr(bias_model, 'enforce_positive') and bias_model.enforce_positive:
+                bias_model.beta.data = torch.zeros_like(bias_model.beta.data)  # exp(0) = 1
+            else:
+                bias_model.beta.data = torch.ones_like(bias_model.beta.data)  # beta = 1
+        elif hasattr(bias_model, 'alpha'):
+            original_alpha = bias_model.alpha.data.clone()
+            bias_model.alpha.data = torch.ones_like(bias_model.alpha.data)
+        
+        R_i = bias_model(flat_params, struct_params)
+        grad_i = torch.autograd.grad(R_i, flat_params, create_graph=True)[0]
+        
+        # Restore original coefficient
+        if hasattr(bias_model, 'beta'):
+            bias_model.beta.data = original_beta
+        elif hasattr(bias_model, 'alpha'):
+            bias_model.alpha.data = original_alpha
+        
+        norm_i = grad_i.norm() + self.eps
+        return grad_i, norm_i
+
+    def training_step(
+        self, batch: Tuple[torch.Tensor, torch.Tensor], batch_idx: int
+    ) -> torch.Tensor:
+        X, y = batch
+        if y.ndim == 1:
+            y = y.view(-1, 1)
+
+        # Compute the target gradient (loss gradient w.r.t. model params)
+        params: Dict[str, torch.Tensor] = dict(self.predictive_model.named_parameters())
+
+        def model_output(p: Dict[str, torch.Tensor], x: torch.Tensor) -> torch.Tensor:
+            return functional_call(self.predictive_model, p, (x,))
+
+        predictions, vjp_func = vjp(model_output, params, X)
+        loss_gradient = -self.predictive_loss_grad(predictions, y)
+        vjp_result = vjp_func(loss_gradient)[0]
+        true_grad = torch.cat([v.view(-1) for v in vjp_result.values()]) / X.size(0)
+
+        # Compute each bias model's penalty gradient and normalize
+        normalized_grads = []
+        penalty_grad_norms = []
+        bias_names = []
+        
+        for bias_model in self.bias_model.bias_models:
+            name = getattr(bias_model, 'bias_name', bias_model.__class__.__name__)
+            bias_names.append(name)
+            
+            grad_i, norm_i = self._compute_penalty_gradient(bias_model)
+            normalized_grads.append(grad_i / norm_i)
+            penalty_grad_norms.append(norm_i)
+
+        # Combine normalized gradients with our learned coefficients
+        # predicted = Σ coef_i * normalized_grad_i
+        # where coef_i = self.normalized_coefs[i]
+        predicted_grad = torch.zeros_like(true_grad)
+        for i, norm_grad in enumerate(normalized_grads):
+            predicted_grad = predicted_grad + self.normalized_coefs[i] * norm_grad
+
+        # Gradient matching loss
+        loss = self.grad_match_loss_fn(predicted_grad, true_grad, reduction="mean")
+
+        # Logging
+        self.log("train_bias/loss", loss, prog_bar=False)
+        
+        # Log cosine similarity
+        cos_sim = F.cosine_similarity(
+            predicted_grad.unsqueeze(0), true_grad.unsqueeze(0)
+        ).item()
+        self.log("train_bias/grad_cosine_sim", cos_sim, prog_bar=False)
+
+        # Log per-regularizer info
+        for i, (name, norm) in enumerate(zip(bias_names, penalty_grad_norms)):
+            coef_val = self.normalized_coefs[i].item()
+            norm_val = norm.item()
+            
+            # Coefficient in normalized space (a, b)
+            self.log(f"train_bias/{name}/coef_normalized", coef_val, prog_bar=False)
+            # Penalty gradient norm
+            self.log(f"train_bias/{name}/penalty_grad_norm", norm_val, prog_bar=False)
+            # True lambda = coef / ||∇penalty||
+            true_lambda = coef_val / norm_val
+            self.log(f"train_bias/{name}/lambda", true_lambda, prog_bar=False)
+
+        return loss
+
+    def get_estimated_lambdas(self) -> Dict[str, float]:
+        """
+        Get the estimated true λ values.
+        
+        λ_i = normalized_coef_i / ||∇penalty_i||
+        
+        Call this after training to get the final estimates.
+        """
+        lambdas = {}
+        
+        for i, bias_model in enumerate(self.bias_model.bias_models):
+            name = getattr(bias_model, 'bias_name', bias_model.__class__.__name__)
+            
+            # Compute penalty gradient norm (without coefficient)
+            _, norm_i = self._compute_penalty_gradient(bias_model)
+            norm_val = norm_i.item()
+            
+            # Get our learned normalized coefficient
+            coef_val = self.normalized_coefs[i].item()
+            
+            # True lambda = coef / norm
+            lambdas[name] = coef_val / norm_val
+        
+        return lambdas
+
+    def configure_optimizers(self):
+        # Optimize ONLY the normalized coefficients, not the bias model params
+        optimizer = torch.optim.Adam([self.normalized_coefs], lr=self.bias_lr)
+        scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
+            optimizer,
+            mode="min",
+            factor=self.factor_lr,
+            patience=self.patience_lr,
+        )
+        return {
+            "optimizer": optimizer,
+            "lr_scheduler": {
+                "scheduler": scheduler,
+                "monitor": self.monitor_lr,
+            },
+        }
+
+
 class BiasWithAutodiffLoss(InductiveBiasEstimator):
     def __init__(
         self,

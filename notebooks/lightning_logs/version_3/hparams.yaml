@@ -1,3 +1,0 @@
-grad_match_loss_fn: !!python/name:torch.nn.functional.mse_loss ''
-lr: 0.1
-optimizer_cls: !!python/name:torch.optim.adam.Adam ''

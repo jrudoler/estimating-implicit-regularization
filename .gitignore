@@ -9,9 +9,9 @@ logs/*
 lightning_logs/*
 
 # results and saved models
-results/*
-saved_models/*
-checkpoints/*
+*results/*
+*saved_models/*
+*checkpoints/*
 notebooks/artifacts/*
 
 # python extras
