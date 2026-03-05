@@ -195,7 +195,6 @@ def make_resample_loader(
 # Identifiability diagnostics
 # ---------------------------------------------------------------------------
 
-@torch.no_grad()
 def compute_identifiability_metrics(
     model: nn.Module,
     ridge_bias: RidgeBias,
