@@ -141,6 +141,14 @@ experiments:
     purpose: "One-off regularizer alignment screening utility."
     last_verified: 2026-03-04
 
+  - id: bootstrap_bias_recovery
+    status: active
+    entrypoint: experiments/bootstrap_bias_recovery.py
+    sweep: sweeps/bootstrap_bias_recovery.yaml
+    launcher: scripts/wandb_sweep.slurm
+    purpose: "Bootstrap/subsampling stability evaluation for bias recovery."
+    last_verified: 2026-03-04
+
 deprecated_assets:
   - path: experiments/implicit_reg_sweep.slurm
     replacement: scripts/wandb_sweep.slurm
