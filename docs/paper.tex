@@ -614,6 +614,11 @@ Dropout has long been studied as an adaptive regularizer that prevents co-adapta
 \end{figure}
 
 \paragraph{Norms vs rank}
+% BEGIN CHANGED: structured ridge-vs-nuclear synthetic setup
+To probe when norm-based regularizers are identifiable, we also run a controlled synthetic regression experiment with a one-hidden-layer ReLU network and scalar output. Inputs are drawn from a Gaussian distribution with configurable covariance rank and eigenvalue spectrum, while the teacher network is constructed so that the singular values of its first-layer weight matrix can be prescribed directly (for example, power-law, spiked, or a scalar multiple of the identity). We then train a student network on this synthetic task with explicit ridge and nuclear-norm regularization and evaluate the cosine similarity between the empirical regularizer gradients computed by automatic differentiation at the learned weights.
+
+This setup isolates a simple but important phenomenon: when the nonzero singular values of a weight matrix are all equal, the ridge gradient $2W$ and the nuclear-norm subgradient $UV^\top$ are parallel, so the two regularizers become difficult to distinguish from gradient information alone. In our implementation we verify this geometrically using empirical gradients from \texttt{torch.autograd.grad} rather than by hard-coding the analytical formula, and we use departures from a flat singular spectrum to create regimes where ridge and nuclear norm should be less collinear.
+% END CHANGED: structured ridge-vs-nuclear synthetic setup
 
 \subsection{Identifying regularization in complex models}
 \jhr{Konrad's idea is to fit very big models (like ViT or a small LLM)}

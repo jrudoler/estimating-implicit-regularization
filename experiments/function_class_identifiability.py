@@ -4,7 +4,9 @@
 from __future__ import annotations
 
 import argparse
+from dataclasses import dataclass
 import logging
+import math
 from pathlib import Path
 import sys
 from typing import Dict, List, Sequence, Tuple
@@ -40,6 +42,25 @@ from core.estimators import BiasWithCrossEntropyNormalized  # noqa: E402
 LOGGER = logging.getLogger(__name__)
 
 
+@dataclass(frozen=True)
+class SyntheticDatasetMetadata:
+    data_mode: str
+    function_class: str
+    input_rank: int
+    input_effective_rank: float
+    input_condition_number: float
+    input_spectrum: str
+    input_spectrum_decay: float
+    teacher_rank: int
+    teacher_effective_rank: float
+    teacher_condition_number: float
+    teacher_spectrum: str
+    teacher_spectrum_decay: float
+    teacher_hidden_dim: int
+    teacher_activation: str
+    target_std: float
+
+
 def set_seed(seed: int) -> None:
     torch.manual_seed(seed)
     torch.cuda.manual_seed_all(seed)
@@ -61,6 +82,109 @@ def parse_bool(raw_value: object) -> bool:
     if isinstance(raw_value, str):
         return raw_value.strip().lower() in {"1", "true", "yes", "y", "on"}
     return bool(raw_value)
+
+
+def participation_ratio(values: Tensor) -> float:
+    safe_values = torch.nan_to_num(values.detach(), nan=0.0, posinf=0.0, neginf=0.0)
+    total = float(safe_values.sum().item())
+    squared_total = float(safe_values.pow(2).sum().item())
+    if total <= 1e-12 or squared_total <= 1e-12:
+        return 0.0
+    return (total * total) / squared_total
+
+
+def positive_condition_number(values: Tensor) -> float:
+    safe_values = torch.nan_to_num(values.detach(), nan=0.0, posinf=0.0, neginf=0.0)
+    positive_values = safe_values[safe_values > 1e-12]
+    if positive_values.numel() <= 1:
+        return 1.0
+    return float((positive_values.max() / positive_values.min()).item())
+
+
+def normalize_spectrum(values: Tensor, target_sum: float) -> Tensor:
+    safe_values = torch.nan_to_num(values, nan=0.0, posinf=0.0, neginf=0.0).clamp(min=0.0)
+    total = safe_values.sum()
+    if float(total.item()) <= 1e-12:
+        return torch.zeros_like(safe_values)
+    return safe_values * (target_sum / total)
+
+
+def build_spectrum_values(
+    size: int,
+    active_rank: int,
+    family: str,
+    decay: float,
+    *,
+    target_sum: float,
+) -> Tensor:
+    if size <= 0:
+        raise ValueError("Spectrum size must be positive.")
+
+    if family == "identity":
+        active_rank = size
+
+    rank = max(1, min(active_rank, size))
+    values = torch.zeros(size, dtype=torch.float32)
+    index = torch.arange(rank, dtype=torch.float32)
+
+    if family in {"identity", "uniform"}:
+        active_values = torch.ones(rank, dtype=torch.float32)
+    elif family == "spiked":
+        active_values = torch.ones(rank, dtype=torch.float32)
+        if rank > 1:
+            active_values[1:] = math.exp(-max(decay, 0.0))
+    elif family == "power_law":
+        active_values = torch.pow(index + 1.0, -max(decay, 1e-3))
+    else:
+        raise ValueError(f"Unknown spectrum family: {family}")
+
+    values[:rank] = normalize_spectrum(active_values, target_sum=target_sum)
+    return values
+
+
+def random_orthogonal_matrix(
+    rows: int, cols: int, generator: torch.Generator
+) -> Tensor:
+    matrix = torch.randn(rows, cols, generator=generator, dtype=torch.float32)
+    q_matrix, _ = torch.linalg.qr(matrix, mode="reduced")
+    return q_matrix
+
+
+def build_teacher_first_layer(
+    input_dim: int,
+    hidden_dim: int,
+    teacher_rank: int,
+    teacher_spectrum: str,
+    teacher_spectrum_decay: float,
+    generator: torch.Generator,
+) -> Tuple[Tensor, Tensor]:
+    max_rank = min(input_dim, hidden_dim)
+    active_rank = max(1, min(teacher_rank, max_rank))
+    singular_values = build_spectrum_values(
+        size=max_rank,
+        active_rank=active_rank,
+        family=teacher_spectrum,
+        decay=teacher_spectrum_decay,
+        target_sum=float(active_rank),
+    )
+    if teacher_spectrum == "identity":
+        weight = torch.zeros(hidden_dim, input_dim, dtype=torch.float32)
+        weight[:active_rank, :active_rank] = torch.diag(singular_values[:active_rank])
+        return weight, singular_values
+    left = random_orthogonal_matrix(hidden_dim, max_rank, generator)
+    right = random_orthogonal_matrix(input_dim, max_rank, generator)
+    weight = left @ torch.diag(singular_values) @ right.T
+    return weight, singular_values
+
+
+def apply_teacher_activation(activation: str, values: Tensor) -> Tensor:
+    if activation == "relu":
+        return F.relu(values)
+    if activation == "tanh":
+        return torch.tanh(values)
+    if activation == "linear":
+        return values
+    raise ValueError(f"Unknown teacher activation: {activation}")
 
 
 def build_bias_module(name: str, trainable: bool) -> nn.Module:
@@ -113,26 +237,124 @@ def generate_dataset(
     function_class: str,
     noise_std: float,
     seed: int,
-) -> TensorDataset:
+    data_mode: str = "legacy",
+    input_rank: int | None = None,
+    input_spectrum: str = "identity",
+    input_spectrum_decay: float = 1.5,
+    teacher_rank: int | None = None,
+    teacher_spectrum: str = "uniform",
+    teacher_spectrum_decay: float = 1.5,
+    teacher_hidden_dim: int = 16,
+    teacher_activation: str = "relu",
+    target_scale: float = 1.0,
+) -> Tuple[TensorDataset, SyntheticDatasetMetadata]:
     generator = torch.Generator().manual_seed(seed)
-    features = torch.randn(n_samples, input_dim, generator=generator)
-    weights = torch.randn(input_dim, 1, generator=generator)
-    linear_response = features @ weights
+    if data_mode == "legacy":
+        features = torch.randn(n_samples, input_dim, generator=generator)
+        weights = torch.randn(input_dim, 1, generator=generator)
+        linear_response = features @ weights
 
-    if function_class == "linear":
-        targets = linear_response
-    elif function_class == "polynomial":
-        targets = 0.5 * linear_response + 0.25 * linear_response.pow(2)
-    elif function_class == "sine":
-        targets = torch.sin(linear_response)
-    else:
-        raise ValueError(f"Unknown function class: {function_class}")
+        if function_class == "linear":
+            targets = linear_response
+        elif function_class == "polynomial":
+            targets = 0.5 * linear_response + 0.25 * linear_response.pow(2)
+        elif function_class == "sine":
+            targets = torch.sin(linear_response)
+        else:
+            raise ValueError(f"Unknown function class: {function_class}")
 
+        if noise_std > 0:
+            targets = targets + noise_std * torch.randn(
+                n_samples, 1, generator=generator
+            )
+        metadata = SyntheticDatasetMetadata(
+            data_mode="legacy",
+            function_class=function_class,
+            input_rank=input_dim,
+            input_effective_rank=float(input_dim),
+            input_condition_number=1.0,
+            input_spectrum="identity",
+            input_spectrum_decay=0.0,
+            teacher_rank=0,
+            teacher_effective_rank=0.0,
+            teacher_condition_number=1.0,
+            teacher_spectrum="none",
+            teacher_spectrum_decay=0.0,
+            teacher_hidden_dim=0,
+            teacher_activation="none",
+            target_std=float(targets.std().item()),
+        )
+        return TensorDataset(features.float(), targets.float()), metadata
+
+    if data_mode != "structured":
+        raise ValueError(f"Unknown data_mode: {data_mode}")
+    if function_class != "teacher_relu":
+        raise ValueError(
+            "Structured data_mode requires function_class='teacher_relu'."
+        )
+
+    resolved_input_rank = max(1, min(input_rank or input_dim, input_dim))
+    input_eigenvalues = build_spectrum_values(
+        size=input_dim,
+        active_rank=resolved_input_rank,
+        family=input_spectrum,
+        decay=input_spectrum_decay,
+        target_sum=float(input_dim),
+    )
+    input_basis = random_orthogonal_matrix(input_dim, input_dim, generator)
+    latent = torch.randn(n_samples, input_dim, generator=generator, dtype=torch.float32)
+    scaled_latent = latent * torch.sqrt(input_eigenvalues).unsqueeze(0)
+    features = scaled_latent @ input_basis.T
+
+    resolved_teacher_hidden_dim = max(1, teacher_hidden_dim)
+    max_teacher_rank = min(input_dim, resolved_teacher_hidden_dim)
+    resolved_teacher_rank = max(1, min(teacher_rank or max_teacher_rank, max_teacher_rank))
+    teacher_first_layer, teacher_singular_values = build_teacher_first_layer(
+        input_dim=input_dim,
+        hidden_dim=resolved_teacher_hidden_dim,
+        teacher_rank=resolved_teacher_rank,
+        teacher_spectrum=teacher_spectrum,
+        teacher_spectrum_decay=teacher_spectrum_decay,
+        generator=generator,
+    )
+    teacher_second_layer = torch.randn(
+        resolved_teacher_hidden_dim,
+        1,
+        generator=generator,
+        dtype=torch.float32,
+    ) / math.sqrt(resolved_teacher_hidden_dim)
+
+    hidden_activations = apply_teacher_activation(
+        teacher_activation,
+        features @ teacher_first_layer.T,
+    )
+    targets = hidden_activations @ teacher_second_layer
+    target_std = float(targets.std().item())
+    if target_std > 1e-8:
+        targets = targets * (target_scale / target_std)
     if noise_std > 0:
         targets = targets + noise_std * torch.randn(
-            n_samples, 1, generator=generator
+            n_samples, 1, generator=generator, dtype=torch.float32
         )
-    return TensorDataset(features, targets.float())
+
+    metadata = SyntheticDatasetMetadata(
+        data_mode="structured",
+        function_class=function_class,
+        input_rank=resolved_input_rank,
+        input_effective_rank=participation_ratio(input_eigenvalues),
+        input_condition_number=positive_condition_number(input_eigenvalues),
+        input_spectrum=input_spectrum,
+        input_spectrum_decay=input_spectrum_decay,
+        teacher_rank=resolved_teacher_rank,
+        teacher_effective_rank=participation_ratio(teacher_singular_values),
+        teacher_condition_number=positive_condition_number(teacher_singular_values),
+        teacher_spectrum=teacher_spectrum,
+        teacher_spectrum_decay=teacher_spectrum_decay,
+        teacher_hidden_dim=resolved_teacher_hidden_dim,
+        teacher_activation=teacher_activation,
+        target_std=float(targets.std().item()),
+    )
+    return TensorDataset(features.float(), targets.float()), metadata
 
 
 class DeepReLURegressor(pl.LightningModule):
@@ -390,7 +612,13 @@ def parse_args() -> argparse.Namespace:
         "--function-class",
         type=str,
         default="linear",
-        choices=["linear", "polynomial", "sine"],
+        choices=["linear", "polynomial", "sine", "teacher_relu"],
+    )
+    parser.add_argument(
+        "--data-mode",
+        type=str,
+        default="legacy",
+        choices=["legacy", "structured"],
     )
     parser.add_argument("--n-samples", type=int, default=4096)
     parser.add_argument("--input-dim", type=int, default=20)
@@ -404,6 +632,30 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--val-fraction", type=float, default=0.1)
     parser.add_argument("--test-fraction", type=float, default=0.1)
     parser.add_argument("--seed", type=int, default=42)
+    parser.add_argument(
+        "--input-spectrum",
+        type=str,
+        default="identity",
+        choices=["identity", "uniform", "spiked", "power_law"],
+    )
+    parser.add_argument("--input-rank", type=int, default=0)
+    parser.add_argument("--input-spectrum-decay", type=float, default=1.5)
+    parser.add_argument(
+        "--teacher-spectrum",
+        type=str,
+        default="uniform",
+        choices=["identity", "uniform", "spiked", "power_law"],
+    )
+    parser.add_argument("--teacher-rank", type=int, default=0)
+    parser.add_argument("--teacher-spectrum-decay", type=float, default=1.5)
+    parser.add_argument("--teacher-hidden-dim", type=int, default=0)
+    parser.add_argument(
+        "--teacher-activation",
+        type=str,
+        default="relu",
+        choices=["relu", "tanh", "linear"],
+    )
+    parser.add_argument("--target-scale", type=float, default=1.0)
 
     parser.add_argument("--gt-bias-types", type=str, default="ridge,nuclear_norm")
     parser.add_argument("--gt-lambdas", type=str, default="0.05,0.05")
@@ -476,6 +728,7 @@ def main() -> None:
     cfg = run.config
 
     function_class = str(cfg.get("function_class", args.function_class))
+    data_mode = str(cfg.get("data_mode", args.data_mode))
     n_samples = int(cfg.get("n_samples", args.n_samples))
     input_dim = int(cfg.get("input_dim", args.input_dim))
     noise_std = float(cfg.get("noise_std", args.noise_std))
@@ -488,6 +741,21 @@ def main() -> None:
     val_fraction = float(cfg.get("val_fraction", args.val_fraction))
     test_fraction = float(cfg.get("test_fraction", args.test_fraction))
     seed = int(cfg.get("seed", args.seed))
+    input_spectrum = str(cfg.get("input_spectrum", args.input_spectrum))
+    input_rank_raw = int(cfg.get("input_rank", args.input_rank))
+    input_spectrum_decay = float(
+        cfg.get("input_spectrum_decay", args.input_spectrum_decay)
+    )
+    teacher_spectrum = str(cfg.get("teacher_spectrum", args.teacher_spectrum))
+    teacher_rank_raw = int(cfg.get("teacher_rank", args.teacher_rank))
+    teacher_spectrum_decay = float(
+        cfg.get("teacher_spectrum_decay", args.teacher_spectrum_decay)
+    )
+    teacher_hidden_dim_raw = int(
+        cfg.get("teacher_hidden_dim", args.teacher_hidden_dim)
+    )
+    teacher_activation = str(cfg.get("teacher_activation", args.teacher_activation))
+    target_scale = float(cfg.get("target_scale", args.target_scale))
 
     gt_bias_types = parse_csv_list(str(cfg.get("gt_bias_types", args.gt_bias_types)))
     gt_lambdas = parse_csv_floats(str(cfg.get("gt_lambdas", args.gt_lambdas)))
@@ -515,12 +783,23 @@ def main() -> None:
 
     set_seed(seed)
 
-    dataset = generate_dataset(
+    teacher_hidden_dim = teacher_hidden_dim_raw if teacher_hidden_dim_raw > 0 else width
+    dataset, dataset_metadata = generate_dataset(
         n_samples=n_samples,
         input_dim=input_dim,
         function_class=function_class,
         noise_std=noise_std,
         seed=seed,
+        data_mode=data_mode,
+        input_rank=input_rank_raw if input_rank_raw > 0 else input_dim,
+        input_spectrum=input_spectrum,
+        input_spectrum_decay=input_spectrum_decay,
+        teacher_rank=teacher_rank_raw if teacher_rank_raw > 0 else min(input_dim, teacher_hidden_dim),
+        teacher_spectrum=teacher_spectrum,
+        teacher_spectrum_decay=teacher_spectrum_decay,
+        teacher_hidden_dim=teacher_hidden_dim,
+        teacher_activation=teacher_activation,
+        target_scale=target_scale,
     )
     test_size = int(len(dataset) * test_fraction)
     val_size = int(len(dataset) * val_fraction)
@@ -582,7 +861,10 @@ def main() -> None:
         log_every_n_steps=25,
     )
     model_trainer.fit(model, train_dataloaders=train_loader, val_dataloaders=val_loader)
-    model_trainer.test(model, dataloaders=test_loader)
+    test_metrics_list = model_trainer.test(model, dataloaders=test_loader, verbose=False)
+    test_metrics = test_metrics_list[0] if test_metrics_list else {}
+    test_mse = float(test_metrics.get("test/mse", float("nan")))
+    test_loss = float(test_metrics.get("test/loss", float("nan")))
 
     screening_loader = DataLoader(
         train_split,
@@ -596,6 +878,14 @@ def main() -> None:
     )
     cosine_matrix = pairwise_cosine_matrix(bias_gradients, candidate_bias_types)
     max_offdiag_all, condition_all = geometry_stats(cosine_matrix)
+    ridge_nuclear_cosine = float("nan")
+    if "ridge" in bias_gradients and "nuclear_norm" in bias_gradients:
+        ridge_nuclear_cosine = abs(
+            cosine_between(
+                bias_gradients["ridge"],
+                bias_gradients["nuclear_norm"],
+            )
+        )
 
     if selection_mode == "auto_noncollinear":
         estimation_bias_types = select_noncollinear_subset(
@@ -731,10 +1021,14 @@ def main() -> None:
         "identifiability/support_precision": precision,
         "identifiability/support_recall": recall,
         "identifiability/support_f1": support_f1,
+        "fit/test_loss": test_loss,
+        "fit/test_mse": test_mse,
         "geometry/all/max_abs_pairwise_cos": max_offdiag_all,
         "geometry/all/condition_number": condition_all,
         "geometry/selected/max_abs_pairwise_cos": max_offdiag_selected,
         "geometry/selected/condition_number": condition_selected,
+        "geometry/ridge_nuclear/cosine": ridge_nuclear_cosine,
+        "config/data_mode": data_mode,
         "config/selection_mode": selection_mode,
         "config/estimator_mode": estimator_mode,
         "config/auto_balance_gt_lambdas": int(auto_balance_gt_lambdas),
@@ -744,6 +1038,23 @@ def main() -> None:
         "config/gt_lambdas": ",".join(f"{value:.8f}" for value in gt_lambdas),
         "config/estimation_bias_types": ",".join(estimation_bias_types),
     }
+    scalar_logs.update(
+        {
+            "data/input_rank": dataset_metadata.input_rank,
+            "data/input_effective_rank": dataset_metadata.input_effective_rank,
+            "data/input_condition_number": dataset_metadata.input_condition_number,
+            "data/input_spectrum_decay": dataset_metadata.input_spectrum_decay,
+            "data/teacher_rank": dataset_metadata.teacher_rank,
+            "data/teacher_effective_rank": dataset_metadata.teacher_effective_rank,
+            "data/teacher_condition_number": dataset_metadata.teacher_condition_number,
+            "data/teacher_spectrum_decay": dataset_metadata.teacher_spectrum_decay,
+            "data/teacher_hidden_dim": dataset_metadata.teacher_hidden_dim,
+            "data/target_std": dataset_metadata.target_std,
+        }
+    )
+    scalar_logs["config/input_spectrum"] = dataset_metadata.input_spectrum
+    scalar_logs["config/teacher_spectrum"] = dataset_metadata.teacher_spectrum
+    scalar_logs["config/teacher_activation"] = dataset_metadata.teacher_activation
     for name, value in target_alignments.items():
         scalar_logs[f"geometry/target_alignment/{name}"] = value
     for i, name_i in enumerate(candidate_bias_types):
@@ -752,6 +1063,21 @@ def main() -> None:
                 cosine_matrix[i, j].item()
             )
 
+    LOGGER.info(
+        "Fit | function_class=%s data_mode=%s test_mse=%.6f test_loss=%.6f",
+        function_class,
+        data_mode,
+        test_mse,
+        test_loss,
+    )
+    LOGGER.info(
+        "Geometry | ridge_nuclear_cosine=%.6f input_spectrum=%s teacher_spectrum=%s input_rank=%d teacher_rank=%d",
+        ridge_nuclear_cosine,
+        dataset_metadata.input_spectrum,
+        dataset_metadata.teacher_spectrum,
+        dataset_metadata.input_rank,
+        dataset_metadata.teacher_rank,
+    )
     LOGGER.info(
         (
             "Result | function_class=%s selection_mode=%s "
