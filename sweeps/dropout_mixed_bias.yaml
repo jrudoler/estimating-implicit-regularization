@@ -1,8 +1,8 @@
-name: mnist_dropout_l2_bias
+name: mnist_dropout_mixed_bias_grid
 project: inductive-bias
 method: grid
 metric:
-  name: val/accuracy
+  name: val/acc
   goal: maximize
 parameters:
   bias_types:
@@ -11,7 +11,7 @@ parameters:
     value: 4096
   lr:
     value: 0.05
-  epochs:
+  max_epochs:
     value: 500
   momentum:
     value: 0.9

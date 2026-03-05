@@ -1,3 +1,4 @@
+name: l2_orthogonal_recovery_grid
 method: grid
 project: inductive-bias
 parameters:

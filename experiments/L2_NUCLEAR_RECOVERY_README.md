@@ -12,8 +12,7 @@ This experiment tests whether L2 and nuclear norm regularization penalties are i
 
 - `sweeps/l2_nuclear_recovery.yaml` - W&B sweep configuration
 - `experiments/l2_nuclear_train_and_recover.py` - Training and recovery script
-- `scripts/l2_nuclear_recovery.slurm` - Slurm job script for GPU clusters
-- `analysis/l2_nuclear_identifiability.py` - Analysis and visualization script
+- `scripts/wandb_sweep.slurm` - Canonical Slurm W&B agent launcher
 
 ## Running the Experiment
 
@@ -31,14 +30,14 @@ This will output a sweep ID like `jhrudoler-penn/inductive-bias/abc123xyz`.
 **On a GPU cluster (recommended):**
 
 ```bash
-sbatch scripts/l2_nuclear_recovery.slurm <SWEEP_ID>
+sbatch scripts/wandb_sweep.slurm <SWEEP_ID>
 ```
 
 You can launch multiple jobs to parallelize:
 
 ```bash
 for i in {1..10}; do
-  sbatch scripts/l2_nuclear_recovery.slurm <SWEEP_ID>
+  sbatch scripts/wandb_sweep.slurm <SWEEP_ID>
 done
 ```
 
@@ -57,17 +56,11 @@ https://wandb.ai/jhrudoler-penn/inductive-bias/sweeps/<SWEEP_ID>
 
 ### 4. Analyze results
 
-Once the sweep completes, run the analysis script:
+Once the sweep completes, inspect metrics directly in W&B:
 
 ```bash
-uv run python analysis/l2_nuclear_identifiability.py <SWEEP_ID>
+https://wandb.ai/jhrudoler-penn/inductive-bias/sweeps/<SWEEP_ID>
 ```
-
-This will generate:
-- `results/figures/recovery_scatter_<SWEEP_ID>.png` - True vs estimated parameters
-- `results/figures/error_heatmap_<SWEEP_ID>.png` - Error rates across parameter combinations
-- `results/figures/correlation_analysis_<SWEEP_ID>.png` - Correlation between estimation errors
-- `results/figures/identifiability_metrics_<SWEEP_ID>.csv` - Summary statistics
 
 ## Key Metrics
 

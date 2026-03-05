@@ -11,3 +11,16 @@ uv sync
 ```
 
 ## Running the Code
+
+### Experiment Workflows
+
+- Canonical experiment inventory: `experiments/REGISTRY.yaml`
+- Canonical sweep launcher: `scripts/wandb_sweep.slurm`
+- Sweep definitions: `sweeps/*.yaml`
+
+Typical workflow:
+
+```bash
+wandb sweep sweeps/<config>.yaml
+sbatch scripts/wandb_sweep.slurm <SWEEP_ID>
+```

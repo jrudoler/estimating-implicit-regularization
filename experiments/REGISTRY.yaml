@@ -1,0 +1,156 @@
+# Canonical inventory for experiment entrypoints and related launch assets.
+# status values: active | legacy | appendix | deprecated
+# Keep this file up to date when adding/removing experiments.
+
+updated_at: 2026-03-04
+
+experiments:
+  - id: dropout_bias_estimation
+    status: active
+    entrypoint: experiments/dropout_bias_estimation.py
+    sweep: sweeps/dropout_l2_bias.yaml
+    launcher: scripts/wandb_sweep.slurm
+    purpose: "Estimate dropout-induced bias with configurable bias basis."
+    last_verified: 2026-03-04
+
+  - id: dropout_mixed_bias_estimation
+    status: active
+    entrypoint: experiments/dropout_bias_estimation.py
+    sweep: sweeps/dropout_mixed_bias.yaml
+    launcher: scripts/wandb_sweep.slurm
+    purpose: "Estimate multiple dropout bias components jointly."
+    last_verified: 2026-03-04
+
+  - id: l2_recovery
+    status: active
+    entrypoint: experiments/l2_train_and_recover.py
+    sweep: sweeps/l2_recovery.yaml
+    launcher: scripts/wandb_sweep.slurm
+    purpose: "Recover explicit L2 strength from trained deep ReLU classifiers."
+    last_verified: 2026-03-04
+
+  - id: l2_nuclear_recovery
+    status: active
+    entrypoint: experiments/l2_nuclear_train_and_recover.py
+    sweep: sweeps/l2_nuclear_recovery.yaml
+    launcher: scripts/wandb_sweep.slurm
+    purpose: "Joint recovery of L2 and nuclear norm penalties."
+    last_verified: 2026-03-04
+
+  - id: l2_orthogonal_recovery
+    status: active
+    entrypoint: experiments/l2_orthogonal_train_and_recover.py
+    sweep: sweeps/l2_orthogonal_recovery.yaml
+    launcher: scripts/wandb_sweep.slurm
+    purpose: "Joint recovery of L2 and orthogonality penalties."
+    last_verified: 2026-03-04
+
+  - id: mixed_bias_recovery
+    status: active
+    entrypoint: experiments/mixed_bias_recovery.py
+    sweep: sweeps/mixed_bias_recovery.yaml
+    launcher: scripts/wandb_sweep.slurm
+    purpose: "Recover multiple regularizers and evaluate identifiability."
+    last_verified: 2026-03-04
+
+  - id: function_class_identifiability
+    status: active
+    entrypoint: experiments/function_class_identifiability.py
+    sweep: sweeps/function_class_identifiability.yaml
+    launcher: scripts/wandb_sweep.slurm
+    purpose: "Evaluate recovery across linear/polynomial/sine function classes with collinearity screening."
+    last_verified: 2026-03-04
+
+  - id: mnist_implicit_reg
+    status: active
+    entrypoint: experiments/mnist_implicit_reg.py
+    sweep: sweeps/mnist_implicit_reg_sweep.yaml
+    launcher: scripts/wandb_sweep.slurm
+    purpose: "Measure implicit gradient regularization in MNIST MLPs."
+    last_verified: 2026-03-04
+
+  - id: mnist_deep_relu_bias
+    status: active
+    entrypoint: experiments/mnist_deep_relu_bias.py
+    sweep: sweeps/mnist_deep_relu_bias.yaml
+    launcher: scripts/wandb_sweep.slurm
+    purpose: "Train deep ReLU MNIST models and report learned bias metrics."
+    last_verified: 2026-03-04
+
+  - id: elasticnet_recovery
+    status: appendix
+    entrypoint: experiments/elasticnet_train_and_recover.py
+    sweep: sweeps/elasticnet_sweep_config.yaml
+    launcher: scripts/wandb_sweep.slurm
+    purpose: "Elastic-net recovery baseline retained for paper context."
+    last_verified: 2026-03-04
+
+  - id: gradient_penalty_evaluation
+    status: appendix
+    entrypoint: experiments/gradient_penalty_evaluation.py
+    sweep: null
+    launcher: null
+    purpose: "Evaluate gradient-penalty estimators with synthetic and MNIST data."
+    last_verified: 2026-03-04
+
+  - id: kernel_regression_rbf
+    status: appendix
+    entrypoint: experiments/kernel-regression-RBF.py
+    sweep: null
+    launcher: null
+    purpose: "Kernel regression experiments tied to earlier theory notes."
+    last_verified: 2026-03-04
+
+  - id: ridge_nuclear_pair_test
+    status: legacy
+    entrypoint: experiments/ridge_nuclear_recovery_test.py
+    sweep: null
+    launcher: null
+    purpose: "Pairwise geometry/prototype recovery script."
+    last_verified: 2026-03-04
+
+  - id: ridge_orthogonal_pair_test
+    status: legacy
+    entrypoint: experiments/ridge_orthogonal_recovery_test.py
+    sweep: null
+    launcher: null
+    purpose: "Pairwise geometry/prototype recovery script."
+    last_verified: 2026-03-04
+
+  - id: ridge_lasso_pair_test
+    status: legacy
+    entrypoint: experiments/ridge_lasso_recovery_test.py
+    sweep: null
+    launcher: null
+    purpose: "Pairwise geometry/prototype recovery script."
+    last_verified: 2026-03-04
+
+  - id: ridge_rnv_pair_test
+    status: legacy
+    entrypoint: experiments/ridge_rnv_recovery_test.py
+    sweep: null
+    launcher: null
+    purpose: "Pairwise geometry/prototype recovery script."
+    last_verified: 2026-03-04
+
+  - id: regularizer_screening
+    status: legacy
+    entrypoint: experiments/regularizer_screening.py
+    sweep: null
+    launcher: null
+    purpose: "One-off regularizer alignment screening utility."
+    last_verified: 2026-03-04
+
+deprecated_assets:
+  - path: experiments/implicit_reg_sweep.slurm
+    replacement: scripts/wandb_sweep.slurm
+    archived_to: archive/experiments_legacy_2026-03/implicit_reg_sweep.slurm
+  - path: experiments/elasticnet_sweep_job.slurm
+    replacement: scripts/wandb_sweep.slurm
+    archived_to: archive/experiments_legacy_2026-03/elasticnet_sweep_job.slurm
+  - path: experiments/kernel-regression-RBG.slurm
+    replacement: scripts/wandb_sweep.slurm
+    archived_to: archive/experiments_legacy_2026-03/kernel-regression-RBG.slurm
+  - path: experiments/ridge_rnv_recovery.slurm
+    replacement: scripts/wandb_sweep.slurm
+    archived_to: archive/experiments_legacy_2026-03/ridge_rnv_recovery.slurm

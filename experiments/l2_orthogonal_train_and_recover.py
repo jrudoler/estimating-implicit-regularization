@@ -416,8 +416,10 @@ def main() -> None:
 
     # Extract estimated parameters
     estimated_params = joint_bias.get_bias_params()
-    estimated_l2 = estimated_params.get("ridge", 0.0)
-    estimated_orthogonal = estimated_params.get("orthogonal", 0.0)
+    estimated_l2 = float(estimated_params.get("ridge/scale", estimated_params.get("ridge", 0.0)))
+    estimated_orthogonal = float(
+        estimated_params.get("orthogonal/scale", estimated_params.get("orthogonal", 0.0))
+    )
 
     # Update run summary
     run.summary.update(

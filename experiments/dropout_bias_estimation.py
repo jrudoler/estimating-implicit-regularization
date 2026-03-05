@@ -341,8 +341,8 @@ def main() -> None:
 
         # Log results
         bias_parameter_metrics = {
-            f"estimated_{name}": float(value)
-            for name, value in joint_bias_model.report_parameters().items()
+            f"estimated_{name.replace('/', '_')}": float(value)
+            for name, value in joint_bias_model.get_bias_params().items()
         }
 
         if not args.disable_wandb and run is not None:

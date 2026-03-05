@@ -359,7 +359,11 @@ def main() -> None:
     bias_trainer.fit(bias_estimator, train_dataloaders=train_loader)
 
     # Log results
-    estimated_l2 = bias_model.get_bias_params()
+    estimated_params = bias_model.get_bias_params()
+    if isinstance(estimated_params, dict):
+        estimated_l2 = float(estimated_params.get("scale", 0.0))
+    else:
+        estimated_l2 = float(estimated_params)
     true_l2 = l2_lambda
     abs_error = abs(estimated_l2 - true_l2)
     rel_error = abs_error / max(true_l2, 1e-12)

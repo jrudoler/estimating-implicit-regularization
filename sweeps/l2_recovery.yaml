@@ -1,4 +1,9 @@
+name: l2_recovery_grid
+project: inductive-bias
 method: grid
+metric:
+  name: l2/rel_error
+  goal: minimize
 parameters:
   dataset:
     values: [mnist]

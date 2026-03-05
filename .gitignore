@@ -12,9 +12,11 @@ lightning_logs/*
 *results/*
 *saved_models/*
 *checkpoints/*
+dummy/
 notebooks/artifacts/*
 
 # python extras
 __pycache__/
 *.pyc
 *.cpython*
+.venv/

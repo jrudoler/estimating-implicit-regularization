@@ -420,9 +420,11 @@ def main() -> None:
     bias_trainer.fit(bias_estimator, train_dataloaders=train_loader)
 
     # Extract estimated parameters
-    estimated_params = joint_bias.report_parameters()
-    estimated_l2 = estimated_params.get("ridge", 0.0)
-    estimated_nuclear = estimated_params.get("nuclear_norm", 0.0)
+    estimated_params = joint_bias.get_bias_params()
+    estimated_l2 = float(estimated_params.get("ridge/scale", estimated_params.get("ridge", 0.0)))
+    estimated_nuclear = float(
+        estimated_params.get("nuclear_norm/scale", estimated_params.get("nuclear_norm", 0.0))
+    )
 
     # Calculate errors
     l2_abs_error = abs(estimated_l2 - l2_lambda)

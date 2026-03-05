@@ -1,10 +1,14 @@
+name: l2_nuclear_recovery_grid
 method: grid
 project: inductive-bias
+metric:
+  name: identifiability/mean_rel_error
+  goal: minimize
 parameters:
   dataset:
     values: [mnist]
   l2_lambda:
-    values: [0., 0.001, 0.01,]
+    values: [0.0, 0.001, 0.01]
   nuclear_lambda:
     values: [0.0, 0.001, 0.01]
   depth:

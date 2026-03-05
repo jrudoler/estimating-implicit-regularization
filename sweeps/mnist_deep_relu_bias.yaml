@@ -26,10 +26,11 @@ parameters:
   seed:
     value: 123
 command:
-  - poetry
+  - uv
   - run
   - python
   - ${program}
+  - ${args}
   - --use-wandb
   - --wandb-log-model
 program: experiments/mnist_deep_relu_bias.py

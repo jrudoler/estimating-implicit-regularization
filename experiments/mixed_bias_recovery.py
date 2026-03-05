@@ -30,7 +30,7 @@ REPO_ROOT = SCRIPT_DIR.parent
 if str(REPO_ROOT) not in sys.path:
     sys.path.append(str(REPO_ROOT))
 
-from core.bias import RidgeBias, WeightCoherenceBias, RowNormVarianceBias, JointBias
+from core.bias import RidgeBias, WeightCoherenceBias, JointBias
 from core.estimators import (
     BiasWithCrossEntropy,
     BiasWithCrossEntropyScheduled,
@@ -373,14 +373,14 @@ def main() -> None:
         )
     else:
         # Use standard gradient matching
-    bias_estimator = BiasWithCrossEntropyScheduled(
-        predictive_model=model,
-        bias_model=joint_bias,
-        grad_match_loss_fn=nn.functional.mse_loss,
-        lr=bias_lr,
-        optimizer_cls=torch.optim.Adam,
-        bias_lr=bias_lr,
-    )
+        bias_estimator = BiasWithCrossEntropyScheduled(
+            predictive_model=model,
+            bias_model=joint_bias,
+            grad_match_loss_fn=nn.functional.mse_loss,
+            lr=bias_lr,
+            optimizer_cls=torch.optim.Adam,
+            bias_lr=bias_lr,
+        )
 
     bias_logger = WandbLogger(
         project="inductive-bias-experiments",
@@ -417,9 +417,13 @@ def main() -> None:
         estimated_coherence = estimated_lambdas.get("weight_coherence", 0.0)
     else:
         # For standard estimator, use the raw bias params
-    estimated_params = joint_bias.get_bias_params()
-    estimated_ridge = estimated_params.get("ridge/scale", estimated_params.get("ridge", 0.0))
-    estimated_coherence = estimated_params.get("weight_coherence/scale", estimated_params.get("weight_coherence", 0.0))
+        estimated_params = joint_bias.get_bias_params()
+        estimated_ridge = estimated_params.get(
+            "ridge/scale", estimated_params.get("ridge", 0.0)
+        )
+        estimated_coherence = estimated_params.get(
+            "weight_coherence/scale", estimated_params.get("weight_coherence", 0.0)
+        )
 
     # Calculate errors
     ridge_abs_error = abs(estimated_ridge - gt_ridge_lambda)

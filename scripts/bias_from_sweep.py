@@ -58,7 +58,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--bias-script",
         type=Path,
-        default=Path("analysis") / "dropout_bias_l2_estimation.py",
+        default=Path("experiments") / "dropout_bias_estimation.py",
         help="Path to the bias estimation script.",
     )
     parser.add_argument(
