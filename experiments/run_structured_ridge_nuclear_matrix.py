@@ -34,6 +34,14 @@ FIT_RE = re.compile(
     r"test_loss=(?P<test_loss>[-+0-9.eE]+)"
 )
 
+GEOMETRY_RE = re.compile(
+    r"Geometry \| ridge_nuclear_cosine=(?P<ridge_nuclear_cosine>[-+0-9.eE]+) "
+    r"input_spectrum=(?P<input_spectrum>[a-z_]+) "
+    r"teacher_spectrum=(?P<teacher_spectrum>[a-z_]+) "
+    r"input_rank=(?P<input_rank>\d+) "
+    r"teacher_rank=(?P<teacher_rank>\d+)"
+)
+
 
 def parse_csv_ints(raw_value: str) -> List[int]:
     return [int(part.strip()) for part in raw_value.split(",") if part.strip()]
@@ -71,13 +79,15 @@ def parse_args() -> argparse.Namespace:
 def parse_run_output(output_text: str) -> Dict[str, str]:
     result_match = RESULT_RE.search(output_text)
     fit_match = FIT_RE.search(output_text)
-    if not result_match or not fit_match:
-        raise RuntimeError("Failed to parse fit/result lines from run output.")
+    geometry_match = GEOMETRY_RE.search(output_text)
+    if not result_match or not fit_match or not geometry_match:
+        raise RuntimeError("Failed to parse fit/geometry/result lines from run output.")
 
     metrics = result_match.groupdict()
     metrics["data_mode"] = fit_match.group("data_mode")
     metrics["test_mse"] = fit_match.group("test_mse")
     metrics["test_loss"] = fit_match.group("test_loss")
+    metrics["ridge_nuclear_cosine"] = geometry_match.group("ridge_nuclear_cosine")
     return metrics
 
 
@@ -106,18 +116,19 @@ def write_summary(rows: Sequence[Dict[str, str]], output_path: Path) -> None:
 
     lines = ["# Structured Ridge/Nuclear Summary", ""]
     lines.append(
-        "| Regime | Expected Geometry | Mean(test_mse) | Mean(gt_mean_rel_error) | Mean(selected_max_abs_cos) | Mean(selected_cond) |"
+        "| Regime | Expected Geometry | Mean(test_mse) | Mean(gt_mean_rel_error) | Mean(ridge_nuclear_cosine) | Mean(selected_max_abs_cos) | Mean(selected_cond) |"
     )
-    lines.append("| --- | --- | ---: | ---: | ---: | ---: |")
+    lines.append("| --- | --- | ---: | ---: | ---: | ---: | ---: |")
     for regime_name in sorted(grouped):
         bucket = grouped[regime_name]
         expected_geometry = bucket[0]["expected_geometry"]
         mean_test_mse = sum(float(item["test_mse"]) for item in bucket) / len(bucket)
         mean_gt_error = sum(float(item["gt_mean_rel_error"]) for item in bucket) / len(bucket)
+        mean_ridge_nuclear_cos = sum(float(item["ridge_nuclear_cosine"]) for item in bucket) / len(bucket)
         mean_max_cos = sum(float(item["selected_max_abs_cos"]) for item in bucket) / len(bucket)
         mean_cond = sum(float(item["selected_cond"]) for item in bucket) / len(bucket)
         lines.append(
-            f"| {regime_name} | {expected_geometry} | {mean_test_mse:.4f} | {mean_gt_error:.4f} | {mean_max_cos:.4f} | {mean_cond:.4f} |"
+            f"| {regime_name} | {expected_geometry} | {mean_test_mse:.4f} | {mean_gt_error:.4f} | {mean_ridge_nuclear_cos:.4f} | {mean_max_cos:.4f} | {mean_cond:.4f} |"
         )
     lines.append("")
     output_path.write_text("\n".join(lines), encoding="utf-8")
@@ -202,6 +213,16 @@ def main() -> None:
     low_rank = max(4, full_rank // 2)
 
     regimes: List[Dict[str, str]] = [
+        {
+            "regime_name": "identity_full_rank",
+            "expected_geometry": "max_collinear",
+            "input_spectrum": "identity",
+            "input_rank": str(args.input_dim),
+            "input_spectrum_decay": "1.0",
+            "teacher_spectrum": "identity",
+            "teacher_rank": str(full_rank),
+            "teacher_spectrum_decay": "1.0",
+        },
         {
             "regime_name": "uniform_full_rank",
             "expected_geometry": "high_collinear",
@@ -293,6 +314,7 @@ def main() -> None:
                 print(
                     "  "
                     + f"test_mse={float(metrics['test_mse']):.4f} "
+                    + f"ridge_nuclear_cosine={float(metrics['ridge_nuclear_cosine']):.4f} "
                     + f"gt_mean_rel_error={float(metrics['gt_mean_rel_error']):.4f} "
                     + f"selected_max_abs_cos={float(metrics['selected_max_abs_cos']):.4f}"
                 )
