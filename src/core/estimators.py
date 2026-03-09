@@ -151,7 +151,10 @@ class BiasWithMSE(InductiveBiasEstimator):
     def predictive_loss_grad(
         self, predictions: torch.Tensor, targets: torch.Tensor
     ) -> torch.Tensor:
-        return -2 * (targets - predictions)
+        if targets.ndim == 1:
+            targets = targets.view(-1, 1)
+        per_example_elements = max(int(predictions[0].numel()), 1)
+        return -2 * (targets - predictions) / per_example_elements
 
 
 class BiasWithBCE(InductiveBiasEstimator):

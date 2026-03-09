@@ -491,7 +491,8 @@ class BiasWithMSENormalized(BiasWithCrossEntropyNormalized):
     ) -> torch.Tensor:
         if targets.ndim == 1:
             targets = targets.view(-1, 1)
-        return -2 * (targets - predictions)
+        per_example_elements = max(int(predictions[0].numel()), 1)
+        return -2 * (targets - predictions) / per_example_elements
 
 
 def cosine_between(vec_a: Tensor, vec_b: Tensor) -> float:

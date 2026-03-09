@@ -138,6 +138,9 @@ def main() -> None:
         ("ridge,stable_rank", "identity", "1.0"),
         ("ridge,stable_rank", "spiked", "2.0"),
         ("ridge,stable_rank", "power_law", "1.5"),
+        ("ridge,spectral_entropy", "identity", "1.0"),
+        ("ridge,spectral_entropy", "spiked", "2.0"),
+        ("ridge,spectral_entropy", "power_law", "1.5"),
     ]
 
     rows: List[Dict[str, str]] = []
