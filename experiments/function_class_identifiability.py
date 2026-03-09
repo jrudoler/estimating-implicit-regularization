@@ -33,6 +33,8 @@ from core.bias import (  # noqa: E402
     OrthogonalBias,
     RidgeBias,
     RowNormVarianceBias,
+    SpectralEntropyBias,
+    StableRankBias,
     WeightCoherenceBias,
 )
 from core.estimators import BiasWithMSE, vector_to_parameter_views  # noqa: E402
@@ -196,6 +198,8 @@ def build_bias_module(name: str, trainable: bool) -> nn.Module:
         "row_norm_variance": RowNormVarianceBias,
         "layer_norm_product": LayerNormProductBias,
         "layer_norm_balance": LayerNormBalanceBias,
+        "stable_rank": StableRankBias,
+        "spectral_entropy": SpectralEntropyBias,
     }
     if name not in bias_map:
         raise ValueError(f"Unknown bias type: {name}")
