@@ -150,10 +150,9 @@ def plot_ridge_nuclear(summary: pd.DataFrame, output_dir: Path) -> None:
 
     fig.suptitle("Ridge vs Nuclear Norm: Higher Collinearity Increases Recovery Error")
 
-    for suffix in ("png", "pdf"):
-        output_path = output_dir / f"ridge_nuclear_collinearity_vs_recovery.{suffix}"
-        fig.savefig(output_path, dpi=300, bbox_inches="tight")
-        LOGGER.info("Wrote %s", output_path)
+    output_path = output_dir / "ridge_nuclear_collinearity_vs_recovery.pdf"
+    fig.savefig(output_path, dpi=300, bbox_inches="tight")
+    LOGGER.info("Wrote %s", output_path)
     plt.close(fig)
 
 
@@ -200,10 +199,9 @@ def plot_pair_comparison(summary: pd.DataFrame, output_dir: Path) -> None:
 
     fig.suptitle("Conditioning Depends on Both Collinearity and Gradient Strength")
 
-    for suffix in ("png", "pdf"):
-        output_path = output_dir / f"matrix_pair_comparison.{suffix}"
-        fig.savefig(output_path, dpi=300, bbox_inches="tight")
-        LOGGER.info("Wrote %s", output_path)
+    output_path = output_dir / "matrix_pair_comparison.pdf"
+    fig.savefig(output_path, dpi=300, bbox_inches="tight")
+    LOGGER.info("Wrote %s", output_path)
     plt.close(fig)
 
 

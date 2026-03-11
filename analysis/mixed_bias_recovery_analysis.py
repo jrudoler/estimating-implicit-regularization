@@ -67,7 +67,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--format",
         type=str,
-        default="png",
+        default="pdf",
         choices=["png", "pdf", "svg"],
         help="Output figure format",
     )
@@ -501,4 +501,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-

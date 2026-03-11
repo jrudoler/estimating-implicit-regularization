@@ -104,3 +104,9 @@ git commit -m "Update paper submodule pointer"
 - For autonomous work, method changes, implementation decisions, and experiment notes should usually be recorded in `docs/` first.
 - [`docs/autonomous_notes.md`](/home/jrudoler/inductive-bias/docs/autonomous_notes.md) is the default running log for those notes when no more specific doc is requested.
 - Only update the manuscript itself when the user explicitly asks for manuscript, paper, or Overleaf changes.
+
+## Analysis Output Convention
+
+- For analysis figures, default to a single vector output format, `PDF`, unless the user explicitly asks for an additional raster export.
+- Do not emit both `.png` and `.pdf` versions of the same analysis figure by default.
+- Save analysis figures under `figures/` with stable filenames so reruns overwrite prior outputs instead of multiplying artifacts.

@@ -198,7 +198,7 @@ def main() -> None:
     ) + 0.5 * torch.randn(N)
     dm_sin = FullBatchDataModule(X, y, num_workers=3)
 
-    scatter_path = output_dir / "radial_sine_function_data_2d.png"
+    scatter_path = output_dir / "radial_sine_function_data_2d.pdf"
     save_scatter_plot(X, y, scatter_path)
 
     eta = 1e-2
@@ -317,7 +317,7 @@ def main() -> None:
     estimated_resid = y - estimated_pred
     true_resid = y - true_pred
 
-    residual_plot_path = output_dir / "residual_comparison.png"
+    residual_plot_path = output_dir / "residual_comparison.pdf"
     save_residual_plot(
         X[:, 0],
         {

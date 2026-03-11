@@ -202,10 +202,9 @@ def plot_sweep(summary: pd.DataFrame, output_dir: Path) -> None:
             fontsize=9,
         )
 
-    for suffix in ("png", "pdf"):
-        output_path = output_dir / f"ridge_nuclear_spikiness_twin_axes.{suffix}"
-        fig.savefig(output_path, dpi=300, bbox_inches="tight")
-        LOGGER.info("Wrote %s", output_path)
+    output_path = output_dir / "ridge_nuclear_spikiness_twin_axes.pdf"
+    fig.savefig(output_path, dpi=300, bbox_inches="tight")
+    LOGGER.info("Wrote %s", output_path)
     plt.close(fig)
 
 
