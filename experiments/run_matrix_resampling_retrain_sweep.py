@@ -66,8 +66,7 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--teacher-spectrum-decays", type=str, default="0.0,0.35,0.5,1.0")
     parser.add_argument("--seeds", type=str, default="42,123,456")
-    parser.add_argument("--resample-modes", type=str, default="subsample,bootstrap")
-    parser.add_argument("--gradient-datasets", type=str, default="train,val")
+    parser.add_argument("--resample-modes", type=str, default="bootstrap")
     parser.add_argument("--n-samples", type=int, default=1024)
     parser.add_argument("--input-dim", type=int, default=8)
     parser.add_argument("--output-dim", type=int, default=4)
@@ -76,7 +75,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--max-epochs", type=int, default=80)
     parser.add_argument("--patience", type=int, default=20)
     parser.add_argument("--n-replicates", type=int, default=6)
-    parser.add_argument("--sample-fraction", type=float, default=0.05)
+    parser.add_argument("--sample-fraction", type=float, default=1.0)
     parser.add_argument(
         "--output-csv",
         type=Path,
@@ -134,98 +133,91 @@ def main() -> None:
     decays = parse_csv_floats(args.teacher_spectrum_decays)
     seeds = parse_csv_ints(args.seeds)
     resample_modes = parse_csv_strings(args.resample_modes)
-    gradient_datasets = parse_csv_strings(args.gradient_datasets)
-
     env = os.environ.copy()
     env["WANDB_MODE"] = "disabled"
     teacher_rank = min(args.input_dim, args.output_dim)
 
     rows: list[dict[str, str]] = []
-    total_runs = len(decays) * len(seeds) * len(resample_modes) * len(gradient_datasets)
+    total_runs = len(decays) * len(seeds) * len(resample_modes)
     run_index = 0
     for decay in decays:
         spectrum_stats = summarize_teacher_spectrum(args.output_dim, args.input_dim, teacher_rank, decay)
         for resample_mode in resample_modes:
-            for gradient_dataset in gradient_datasets:
-                for seed in seeds:
-                    run_index += 1
-                    LOGGER.info(
-                        "[%d/%d] mode=%s grad=%s decay=%.3f spikiness=%.4f seed=%d",
-                        run_index,
-                        total_runs,
-                        resample_mode,
-                        gradient_dataset,
-                        decay,
-                        spectrum_stats["spectral_spikiness"],
-                        seed,
+            for seed in seeds:
+                run_index += 1
+                LOGGER.info(
+                    "[%d/%d] mode=%s grad=train decay=%.3f spikiness=%.4f seed=%d",
+                    run_index,
+                    total_runs,
+                    resample_mode,
+                    decay,
+                    spectrum_stats["spectral_spikiness"],
+                    seed,
+                )
+                command = [
+                    sys.executable,
+                    "experiments/matrix_spectrum_resampling_retrain.py",
+                    "--teacher-spectrum",
+                    "power_law",
+                    "--teacher-spectrum-decay",
+                    str(decay),
+                    "--teacher-rank",
+                    str(teacher_rank),
+                    "--gt-bias-types",
+                    "ridge,nuclear_norm",
+                    "--gt-lambdas",
+                    "0.05,0.05",
+                    "--auto-balance-gt-lambdas",
+                    "--n-samples",
+                    str(args.n_samples),
+                    "--input-dim",
+                    str(args.input_dim),
+                    "--output-dim",
+                    str(args.output_dim),
+                    "--lr",
+                    str(args.lr),
+                    "--optimizer",
+                    args.optimizer,
+                    "--max-epochs",
+                    str(args.max_epochs),
+                    "--patience",
+                    str(args.patience),
+                    "--resample-mode",
+                    resample_mode,
+                    "--n-replicates",
+                    str(args.n_replicates),
+                    "--sample-fraction",
+                    str(args.sample_fraction),
+                    "--seed",
+                    str(seed),
+                ]
+                completed = subprocess.run(
+                    command,
+                    cwd=REPO_ROOT,
+                    env=env,
+                    capture_output=True,
+                    text=True,
+                    check=False,
+                )
+                combined_output = f"{completed.stdout}\n{completed.stderr}"
+                if completed.returncode != 0:
+                    raise RuntimeError(
+                        f"Run failed for mode={resample_mode} decay={decay} seed={seed}.\n{combined_output}"
                     )
-                    command = [
-                        sys.executable,
-                        "experiments/matrix_spectrum_resampling_retrain.py",
-                        "--teacher-spectrum",
-                        "power_law",
-                        "--teacher-spectrum-decay",
-                        str(decay),
-                        "--teacher-rank",
-                        str(teacher_rank),
-                        "--gt-bias-types",
-                        "ridge,nuclear_norm",
-                        "--gt-lambdas",
-                        "0.05,0.05",
-                        "--auto-balance-gt-lambdas",
-                        "--gradient-dataset",
-                        gradient_dataset,
-                        "--n-samples",
-                        str(args.n_samples),
-                        "--input-dim",
-                        str(args.input_dim),
-                        "--output-dim",
-                        str(args.output_dim),
-                        "--lr",
-                        str(args.lr),
-                        "--optimizer",
-                        args.optimizer,
-                        "--max-epochs",
-                        str(args.max_epochs),
-                        "--patience",
-                        str(args.patience),
-                        "--resample-mode",
-                        resample_mode,
-                        "--n-replicates",
-                        str(args.n_replicates),
-                        "--sample-fraction",
-                        str(args.sample_fraction),
-                        "--seed",
-                        str(seed),
-                    ]
-                    completed = subprocess.run(
-                        command,
-                        cwd=REPO_ROOT,
-                        env=env,
-                        capture_output=True,
-                        text=True,
-                        check=False,
-                    )
-                    combined_output = f"{completed.stdout}\n{completed.stderr}"
-                    if completed.returncode != 0:
-                        raise RuntimeError(
-                            f"Run failed for mode={resample_mode} gradient_dataset={gradient_dataset} "
-                            f"decay={decay} seed={seed}.\n{combined_output}"
-                        )
-                    metrics = parse_run_output(combined_output)
-                    row: dict[str, str] = {
-                        "seed": str(seed),
-                        "resample_mode": resample_mode,
-                        "gradient_dataset": gradient_dataset,
-                        "teacher_spectrum": "power_law",
-                        "teacher_spectrum_decay": f"{decay:.6f}",
-                        "teacher_rank": str(teacher_rank),
-                        "n_replicates": str(args.n_replicates),
-                        "sample_fraction": f"{args.sample_fraction:.6f}",
-                    }
-                    row.update({key: f"{value:.6f}" for key, value in spectrum_stats.items()})
-                    row.update(metrics)
-                    rows.append(row)
+                metrics = parse_run_output(combined_output)
+                row: dict[str, str] = {
+                    "seed": str(seed),
+                    "resample_mode": resample_mode,
+                    "gradient_dataset": "train",
+                    "teacher_spectrum": "power_law",
+                    "teacher_spectrum_decay": f"{decay:.6f}",
+                    "teacher_rank": str(teacher_rank),
+                    "n_replicates": str(args.n_replicates),
+                    "sample_fraction": f"{args.sample_fraction:.6f}",
+                }
+                row.update({key: f"{value:.6f}" for key, value in spectrum_stats.items()})
+                row.update(metrics)
+                rows.append(row)
     write_csv(rows, args.output_csv)
     LOGGER.info("Wrote %d rows to %s", len(rows), args.output_csv)
 

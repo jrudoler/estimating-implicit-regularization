@@ -174,7 +174,6 @@ def run_retrain_resampling_study(
     train_dataset: TensorDataset,
     val_dataset: TensorDataset,
     test_dataset: TensorDataset,
-    gradient_dataset_name: str,
     input_dim: int,
     output_dim: int,
     lr: float,
@@ -190,15 +189,6 @@ def run_retrain_resampling_study(
     sample_fraction: float,
     seed: int,
 ) -> RetrainResamplingSummary:
-    eval_datasets = {
-        "train": train_dataset,
-        "val": val_dataset,
-        "test": test_dataset,
-    }
-    if gradient_dataset_name not in eval_datasets:
-        raise ValueError(f"Unsupported gradient dataset: {gradient_dataset_name}")
-    full_gradient_dataset = eval_datasets[gradient_dataset_name]
-
     full_model = train_model(
         train_dataset=train_dataset,
         val_dataset=val_dataset,
@@ -217,7 +207,7 @@ def run_retrain_resampling_study(
     full_test_mse, _ = evaluate_split_metrics(full_model, test_dataset)
     full_target_gradient, full_bias_gradients, _ = compute_target_and_bias_gradients(
         full_model.network.eval(),
-        full_gradient_dataset.tensors,
+        train_dataset.tensors,
         bias_names,
     )
     full_design = build_design_matrix(full_bias_gradients, bias_names)
@@ -266,15 +256,9 @@ def run_retrain_resampling_study(
         test_mse, _ = evaluate_split_metrics(replicate_model, test_dataset)
         replicate_train_mses.append(train_mse)
         replicate_test_mses.append(test_mse)
-        replicate_gradient_dataset = {
-            "train": replicate_train_dataset,
-            "val": val_dataset,
-            "test": test_dataset,
-        }[gradient_dataset_name]
-
         target_gradient, bias_gradients, _ = compute_target_and_bias_gradients(
             replicate_model.network.eval(),
-            replicate_gradient_dataset.tensors,
+            replicate_train_dataset.tensors,
             bias_names,
         )
         design = build_design_matrix(bias_gradients, bias_names)
@@ -355,7 +339,6 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--patience", type=int, default=40)
     parser.add_argument("--val-fraction", type=float, default=0.1)
     parser.add_argument("--test-fraction", type=float, default=0.1)
-    parser.add_argument("--gradient-dataset", type=str, default="train", choices=["train", "val", "test"])
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument(
         "--input-spectrum",
@@ -378,9 +361,9 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--gt-lambdas", type=str, default="0.05,0.05")
     parser.add_argument("--auto-balance-gt-lambdas", action="store_true", default=False)
     parser.add_argument("--gt-lambda-scale", type=float, default=0.05)
-    parser.add_argument("--resample-mode", type=str, default="subsample", choices=["subsample", "bootstrap"])
+    parser.add_argument("--resample-mode", type=str, default="bootstrap", choices=["subsample", "bootstrap"])
     parser.add_argument("--n-replicates", type=int, default=8)
-    parser.add_argument("--sample-fraction", type=float, default=0.1)
+    parser.add_argument("--sample-fraction", type=float, default=1.0)
     parser.add_argument("--wandb-project", type=str, default="inductive-bias-experiments")
     return parser.parse_args()
 
@@ -400,7 +383,6 @@ def main() -> None:
     patience = int(cfg.get("patience", args.patience))
     val_fraction = float(cfg.get("val_fraction", args.val_fraction))
     test_fraction = float(cfg.get("test_fraction", args.test_fraction))
-    gradient_dataset_name = str(cfg.get("gradient_dataset", args.gradient_dataset))
     seed = int(cfg.get("seed", args.seed))
     input_spectrum = str(cfg.get("input_spectrum", args.input_spectrum))
     input_rank_raw = int(cfg.get("input_rank", args.input_rank))
@@ -471,7 +453,6 @@ def main() -> None:
         train_dataset=train_dataset,
         val_dataset=val_dataset,
         test_dataset=test_dataset,
-        gradient_dataset_name=gradient_dataset_name,
         input_dim=input_dim,
         output_dim=output_dim,
         lr=lr,
@@ -518,14 +499,13 @@ def main() -> None:
         "config/n_replicates": n_replicates,
         "config/sample_fraction": sample_fraction,
         "config/pair": pair_key,
-        "config/gradient_dataset": gradient_dataset_name,
+        "config/gradient_dataset": "train",
     }
 
     LOGGER.info(
-        "RetrainResample | pair=%s mode=%s gradient_dataset=%s full_cos=%.6f full_cond=%.6f full_ols_mean_rel_error=%.6f single_mean_rel_error=%.6f aggregate_mean_rel_error=%.6f stacked_mean_rel_error=%.6f replicate_cos_mean=%.6f replicate_cos_std=%.6f replicate_cond_mean=%.6f full_train_mse=%.6f full_test_mse=%.6f replicate_train_mse_mean=%.6f replicate_test_mse_mean=%.6f",
+        "RetrainResample | pair=%s mode=%s gradient_dataset=train full_cos=%.6f full_cond=%.6f full_ols_mean_rel_error=%.6f single_mean_rel_error=%.6f aggregate_mean_rel_error=%.6f stacked_mean_rel_error=%.6f replicate_cos_mean=%.6f replicate_cos_std=%.6f replicate_cond_mean=%.6f full_train_mse=%.6f full_test_mse=%.6f replicate_train_mse_mean=%.6f replicate_test_mse_mean=%.6f",
         pair_key,
         resample_mode,
-        gradient_dataset_name,
         summary.full_pair_cosine,
         summary.full_design_condition,
         summary.full_ols_mean_rel_error,

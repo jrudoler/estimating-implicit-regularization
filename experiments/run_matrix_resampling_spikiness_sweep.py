@@ -67,7 +67,7 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--teacher-spectrum-decays", type=str, default="0.0,0.1,0.2,0.35,0.5,0.75,1.0,1.25,1.5")
     parser.add_argument("--seeds", type=str, default="42,123,456")
-    parser.add_argument("--resample-modes", type=str, default="subsample,bootstrap")
+    parser.add_argument("--resample-modes", type=str, default="bootstrap")
     parser.add_argument("--n-samples", type=int, default=4096)
     parser.add_argument("--input-dim", type=int, default=16)
     parser.add_argument("--output-dim", type=int, default=8)
@@ -76,7 +76,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--max-epochs", type=int, default=400)
     parser.add_argument("--patience", type=int, default=80)
     parser.add_argument("--n-replicates", type=int, default=16)
-    parser.add_argument("--sample-fraction", type=float, default=0.25)
+    parser.add_argument("--sample-fraction", type=float, default=1.0)
     parser.add_argument(
         "--output-csv",
         type=Path,

@@ -267,9 +267,9 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--gt-lambdas", type=str, default="0.05,0.05")
     parser.add_argument("--auto-balance-gt-lambdas", action="store_true", default=False)
     parser.add_argument("--gt-lambda-scale", type=float, default=0.05)
-    parser.add_argument("--resample-mode", type=str, default="subsample", choices=["subsample", "bootstrap"])
+    parser.add_argument("--resample-mode", type=str, default="bootstrap", choices=["subsample", "bootstrap"])
     parser.add_argument("--n-replicates", type=int, default=16)
-    parser.add_argument("--sample-fraction", type=float, default=0.25)
+    parser.add_argument("--sample-fraction", type=float, default=1.0)
     parser.add_argument("--wandb-project", type=str, default="inductive-bias-experiments")
     return parser.parse_args()
 
