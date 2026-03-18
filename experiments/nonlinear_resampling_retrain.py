@@ -15,8 +15,9 @@ from lightning.pytorch.callbacks import EarlyStopping
 import numpy as np
 from scipy.optimize import nnls
 import torch
+from torch.func import functional_call, vjp
 import torch.nn.functional as F
-from torch import Tensor
+from torch import Tensor, nn
 from torch.utils.data import DataLoader, TensorDataset, random_split
 
 SCRIPT_DIR = Path(__file__).resolve().parent
@@ -38,7 +39,7 @@ from function_class_identifiability import (  # noqa: E402
     parse_csv_list,
     set_seed,
 )
-from core.estimators import BiasWithMSE  # noqa: E402
+from core.estimators import BiasWithMSE, vector_to_parameter_views  # noqa: E402
 
 
 LOGGER = logging.getLogger(__name__)
@@ -64,6 +65,188 @@ class RetrainSummary:
     stacked_design_condition: float
     replicate_pair_cosine_mean: float
     replicate_pair_cosine_std: float
+    sampling_ess: float
+    sampling_ess_fraction: float
+
+
+def flatten_grads(grads: Sequence[Tensor]) -> Tensor:
+    return torch.cat([grad.reshape(-1) for grad in grads]).detach()
+
+
+def normalize_columns(design: Tensor, eps: float = 1e-8) -> Tensor:
+    column_norms = design.norm(dim=0).clamp_min(eps)
+    return design / column_norms.unsqueeze(0)
+
+
+def compute_per_example_target_gradients(
+    predictive_model: torch.nn.Module,
+    dataset: TensorDataset,
+) -> Tensor:
+    device = next(predictive_model.parameters()).device
+    params = tuple(predictive_model.parameters())
+    inputs, targets = dataset.tensors[:2]
+    gradients: list[Tensor] = []
+    predictive_model.eval()
+    for idx in range(len(dataset)):
+        input_i = inputs[idx : idx + 1].to(device)
+        target_i = targets[idx : idx + 1].to(device)
+        prediction_i = predictive_model(input_i)
+        loss_i = F.mse_loss(prediction_i, target_i)
+        loss_grads = torch.autograd.grad(loss_i, params, create_graph=False, retain_graph=False)
+        gradients.append(-flatten_grads(loss_grads).cpu())
+    return torch.stack(gradients, dim=0)
+
+
+def compute_selection_direction(
+    bias_gradients: Dict[str, Tensor],
+    bias_names: Sequence[str],
+    target_gradient: Tensor,
+    normalize_bias_gradients: bool,
+) -> Tensor:
+    design = build_design_matrix(bias_gradients, bias_names)
+    if normalize_bias_gradients:
+        design = normalize_columns(design)
+    gram = design.T @ design
+    _, eigvecs = torch.linalg.eigh(gram)
+    coeff_direction = eigvecs[:, 0]
+    param_direction = design @ coeff_direction
+    param_direction = param_direction / param_direction.norm().clamp_min(1e-8)
+    if torch.dot(target_gradient, param_direction).item() > 0.0:
+        param_direction = -param_direction
+    return param_direction
+
+
+def compute_sampling_probabilities(
+    per_example_target_gradients: Tensor,
+    selection_direction: Tensor,
+    score_mode: str,
+    floor: float,
+) -> Tensor:
+    directional_scores = -(per_example_target_gradients @ selection_direction)
+    if score_mode == "positive_part":
+        scores = directional_scores.clamp_min(0.0)
+    elif score_mode == "abs":
+        scores = directional_scores.abs()
+    elif score_mode == "square":
+        scores = directional_scores.pow(2)
+    else:
+        raise ValueError(f"Unsupported sampling score mode: {score_mode}")
+    scores = scores + floor
+    return scores / scores.sum().clamp_min(1e-12)
+
+
+def effective_sample_size(probabilities: Tensor) -> float:
+    return float(1.0 / probabilities.pow(2).sum().item())
+
+
+class WeightedDeepReLURegressor(DeepReLURegressor):
+    def training_step(self, batch: tuple[Tensor, ...], batch_idx: int) -> Tensor:
+        if len(batch) == 3:
+            inputs, targets, weights = batch
+            weights = weights.view(-1, 1)
+        else:
+            inputs, targets = batch
+            weights = None
+        predictions = self(inputs)
+        per_example_mse = F.mse_loss(predictions, targets, reduction="none")
+        if per_example_mse.ndim > 1:
+            per_example_mse = per_example_mse.mean(dim=1, keepdim=True)
+        mse_loss = (
+            (per_example_mse * weights).mean()
+            if weights is not None
+            else per_example_mse.mean()
+        )
+        regularization, components = self._explicit_regularization()
+        loss = mse_loss + regularization
+        self.log("train/loss", loss, on_step=False, on_epoch=True, prog_bar=True)
+        self.log("train/mse", mse_loss, on_step=False, on_epoch=True, prog_bar=False)
+        self.log("train/regularization", regularization, on_step=False, on_epoch=True, prog_bar=False)
+        for name, value in components.items():
+            self.log(f"train/penalty/{name}", value, on_step=False, on_epoch=True, prog_bar=False)
+        return loss
+
+
+class WeightedBiasWithMSE(BiasWithMSE):
+    def training_step(self, batch: tuple[Tensor, ...], batch_idx: int) -> Tensor:
+        if len(batch) == 3:
+            X, y, weights = batch
+            weights = weights.to(X.device).view(-1, 1)
+        else:
+            X, y = batch
+            weights = None
+        if y.ndim == 1:
+            y = y.view(-1, 1)
+        params: Dict[str, Tensor] = dict(self.predictive_model.named_parameters())
+
+        def model_output(p: Dict[str, Tensor], x: Tensor) -> Tensor:
+            return functional_call(self.predictive_model, p, (x,))
+
+        predictions, vjp_func = vjp(model_output, params, X)
+        loss_gradient = -self.predictive_loss_grad(predictions, y)
+        if weights is not None:
+            loss_gradient = loss_gradient * weights
+        vjp_result = vjp_func(loss_gradient)[0]
+        true_grad = torch.cat([v.view(-1) for v in vjp_result.values()]) / X.size(0)
+
+        R_val = self.bias_model(self.flattened_params, self.structured_params)
+        gradients = torch.autograd.grad(R_val, self.flattened_params, create_graph=True)[0]
+        loss = self.grad_match_loss_fn(gradients, true_grad, reduction="mean")
+        self.log("train_bias/loss", loss, prog_bar=False)
+        if hasattr(self.bias_model, "get_bias_params"):
+            bias_params = self.bias_model.get_bias_params()
+            if isinstance(bias_params, dict):
+                for name, value in bias_params.items():
+                    self.log(f"train_bias/{name}", value, prog_bar=False)
+        return loss
+
+
+class WeightedBiasWithMSENormalized(BiasWithMSENormalized):
+    def training_step(self, batch: tuple[Tensor, ...], batch_idx: int) -> Tensor:
+        if len(batch) == 3:
+            X, y, weights = batch
+            weights = weights.to(X.device).view(-1, 1)
+        else:
+            X, y = batch
+            weights = None
+        if y.ndim == 1:
+            y = y.view(-1, 1)
+        params: Dict[str, Tensor] = dict(self.predictive_model.named_parameters())
+
+        def model_output(p: Dict[str, Tensor], x: Tensor) -> Tensor:
+            return functional_call(self.predictive_model, p, (x,))
+
+        predictions, vjp_func = vjp(model_output, params, X)
+        loss_gradient = -self.predictive_loss_grad(predictions, y)
+        if weights is not None:
+            loss_gradient = loss_gradient * weights
+        vjp_result = vjp_func(loss_gradient)[0]
+        true_grad = torch.cat([v.view(-1) for v in vjp_result.values()]) / X.size(0)
+
+        normalized_grads = []
+        penalty_grad_norms = []
+        bias_names = []
+        for bias_model in self.bias_model.bias_models:
+            name = getattr(bias_model, "bias_name", bias_model.__class__.__name__)
+            bias_names.append(name)
+            grad_i, norm_i = self._compute_penalty_gradient(bias_model)
+            normalized_grads.append(grad_i / norm_i)
+            penalty_grad_norms.append(norm_i)
+
+        predicted_grad = torch.zeros_like(true_grad)
+        for i, norm_grad in enumerate(normalized_grads):
+            predicted_grad = predicted_grad + self.normalized_coefs[i] * norm_grad
+
+        loss = self.grad_match_loss_fn(predicted_grad, true_grad, reduction="mean")
+        self.log("train_bias/loss", loss, prog_bar=False)
+        cos_sim = F.cosine_similarity(predicted_grad.unsqueeze(0), true_grad.unsqueeze(0)).item()
+        self.log("train_bias/grad_cosine_sim", cos_sim, prog_bar=False)
+        for i, (name, norm) in enumerate(zip(bias_names, penalty_grad_norms)):
+            coef_val = self.normalized_coefs[i].item()
+            norm_val = norm.item()
+            self.log(f"train_bias/{name}/coef_normalized", coef_val, prog_bar=False)
+            self.log(f"train_bias/{name}/penalty_grad_norm", norm_val, prog_bar=False)
+            self.log(f"train_bias/{name}/lambda", coef_val / norm_val, prog_bar=False)
+        return loss
 
 
 def train_bias_estimator(
@@ -79,7 +262,7 @@ def train_bias_estimator(
     estimators = [build_bias_module(name, trainable=True) for name in bias_types]
     joint_bias = JointBias(estimators)
     if estimator_mode == "normalized":
-        bias_estimator = BiasWithMSENormalized(
+        bias_estimator = WeightedBiasWithMSENormalized(
             predictive_model=predictive_model.eval(),
             bias_model=joint_bias,
             grad_match_loss_fn=F.mse_loss,
@@ -88,7 +271,7 @@ def train_bias_estimator(
             bias_lr=bias_lr,
         )
     elif estimator_mode == "standard":
-        bias_estimator = BiasWithMSE(
+        bias_estimator = WeightedBiasWithMSE(
             predictive_model=predictive_model.eval(),
             bias_model=joint_bias,
             grad_match_loss_fn=F.mse_loss,
@@ -220,8 +403,16 @@ def make_resample_indices(
     mode: str,
     sample_fraction: float,
     generator: torch.Generator,
+    probabilities: Tensor | None = None,
 ) -> Tensor:
     sample_size = max(1, int(round(sample_fraction * n_total)))
+    if probabilities is not None:
+        return torch.multinomial(
+            probabilities,
+            num_samples=sample_size,
+            replacement=(mode == "bootstrap"),
+            generator=generator,
+        )
     if mode == "subsample":
         return torch.randperm(n_total, generator=generator)[:sample_size]
     if mode == "bootstrap":
@@ -229,9 +420,22 @@ def make_resample_indices(
     raise ValueError(f"Unsupported resample mode: {mode}")
 
 
-def dataset_from_indices(dataset: TensorDataset, indices: Tensor) -> TensorDataset:
-    inputs, targets = dataset.tensors
-    return TensorDataset(inputs[indices], targets[indices])
+def dataset_from_indices(
+    dataset: TensorDataset,
+    indices: Tensor,
+    sampling_probabilities: Tensor | None = None,
+    importance_correct: bool = False,
+) -> TensorDataset:
+    inputs, targets = dataset.tensors[:2]
+    sampled_inputs = inputs[indices]
+    sampled_targets = targets[indices]
+    if not importance_correct or sampling_probabilities is None:
+        weights = torch.ones(len(indices), dtype=sampled_inputs.dtype)
+    else:
+        n_total = len(dataset)
+        weights = 1.0 / (n_total * sampling_probabilities[indices]).clamp_min(1e-12)
+        weights = weights.to(dtype=sampled_inputs.dtype)
+    return TensorDataset(sampled_inputs, sampled_targets, weights)
 
 
 def average_lambda_dicts(
@@ -255,7 +459,7 @@ def evaluate_split_metrics(model: DeepReLURegressor, dataset: TensorDataset) -> 
     device = next(model.parameters()).device
     model.eval()
     with torch.no_grad():
-        inputs, targets = dataset.tensors
+        inputs, targets = dataset.tensors[:2]
         predictions = model(inputs.to(device))
         mse_loss = F.mse_loss(predictions, targets.to(device))
         regularization, _ = model._explicit_regularization()
@@ -281,7 +485,7 @@ def train_model(
     batch_size = min(len(train_dataset), 256)
     train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True, num_workers=0)
     val_loader = DataLoader(val_dataset, batch_size=min(len(val_dataset), 256), shuffle=False, num_workers=0)
-    model = DeepReLURegressor(
+    model = WeightedDeepReLURegressor(
         input_dim=input_dim,
         depth=depth,
         width=width,
@@ -325,6 +529,11 @@ def run_retrain_study(
     bias_lr: float,
     bias_max_epochs: int,
     bias_patience: int,
+    sampling_policy: str,
+    sampling_score_mode: str,
+    sampling_floor: float,
+    importance_correct: bool,
+    normalize_selection_gradients: bool,
     seed: int,
 ) -> RetrainSummary:
     full_model = train_model(
@@ -345,9 +554,25 @@ def run_retrain_study(
     full_test_mse, _ = evaluate_split_metrics(full_model, test_dataset)
     full_target_gradient, full_bias_gradients, _ = compute_target_and_bias_gradients(
         full_model.network.eval(),
-        train_dataset.tensors,
+        train_dataset.tensors[:2],
         explicit_bias_types,
     )
+    if sampling_policy == "weak_direction":
+        per_example_target_gradients = compute_per_example_target_gradients(full_model.network.eval(), train_dataset)
+        selection_direction = compute_selection_direction(
+            full_bias_gradients,
+            explicit_bias_types,
+            full_target_gradient,
+            normalize_bias_gradients=normalize_selection_gradients,
+        )
+        sampling_probabilities = compute_sampling_probabilities(
+            per_example_target_gradients,
+            selection_direction.cpu(),
+            score_mode=sampling_score_mode,
+            floor=sampling_floor,
+        )
+    else:
+        sampling_probabilities = torch.full((len(train_dataset),), 1.0 / len(train_dataset), dtype=torch.float32)
     full_estimated = train_bias_estimator(
         predictive_model=full_model.network,
         train_dataset=train_dataset,
@@ -380,8 +605,14 @@ def run_retrain_study(
             mode=resample_mode,
             sample_fraction=sample_fraction,
             generator=torch.Generator().manual_seed(replicate_seed),
+            probabilities=sampling_probabilities if sampling_policy == "weak_direction" else None,
         )
-        replicate_train_dataset = dataset_from_indices(train_dataset, indices)
+        replicate_train_dataset = dataset_from_indices(
+            train_dataset,
+            indices,
+            sampling_probabilities=sampling_probabilities,
+            importance_correct=importance_correct,
+        )
         replicate_model = train_model(
             train_dataset=replicate_train_dataset,
             val_dataset=val_dataset,
@@ -402,7 +633,7 @@ def run_retrain_study(
         replicate_test_mses.append(test_mse)
         target_gradient, bias_gradients, _ = compute_target_and_bias_gradients(
             replicate_model.network.eval(),
-            replicate_train_dataset.tensors,
+            replicate_train_dataset.tensors[:2],
             explicit_bias_types,
         )
         estimated = train_bias_estimator(
@@ -454,6 +685,8 @@ def run_retrain_study(
         stacked_design_condition=design_condition_number(stacked_design),
         replicate_pair_cosine_mean=float(sum(replicate_pair_cosines) / len(replicate_pair_cosines)),
         replicate_pair_cosine_std=std(replicate_pair_cosines),
+        sampling_ess=effective_sample_size(sampling_probabilities),
+        sampling_ess_fraction=effective_sample_size(sampling_probabilities) / len(train_dataset),
     )
 
 
@@ -486,7 +719,12 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--resample-mode", type=str, default="bootstrap", choices=["subsample", "bootstrap"])
     parser.add_argument("--n-replicates", type=int, default=6)
     parser.add_argument("--sample-fraction", type=float, default=1.0)
-    parser.add_argument("--estimator-mode", type=str, default="normalized", choices=["standard", "normalized"])
+    parser.add_argument("--sampling-policy", type=str, default="weak_direction", choices=["uniform", "weak_direction"])
+    parser.add_argument("--sampling-score-mode", type=str, default="abs", choices=["positive_part", "abs", "square"])
+    parser.add_argument("--sampling-floor", type=float, default=1e-8)
+    parser.add_argument("--importance-correct", action=argparse.BooleanOptionalAction, default=True)
+    parser.add_argument("--normalize-selection-gradients", action=argparse.BooleanOptionalAction, default=False)
+    parser.add_argument("--estimator-mode", type=str, default="standard", choices=["standard", "normalized"])
     parser.add_argument("--bias-lr", type=float, default=0.05)
     parser.add_argument("--bias-max-epochs", type=int, default=2000)
     parser.add_argument("--bias-patience", type=int, default=100)
@@ -564,16 +802,24 @@ def main() -> None:
         bias_lr=args.bias_lr,
         bias_max_epochs=args.bias_max_epochs,
         bias_patience=args.bias_patience,
+        sampling_policy=args.sampling_policy,
+        sampling_score_mode=args.sampling_score_mode,
+        sampling_floor=args.sampling_floor,
+        importance_correct=args.importance_correct,
+        normalize_selection_gradients=args.normalize_selection_gradients,
         seed=args.seed,
     )
 
     LOGGER.info(
-        "NonlinearRetrain | teacher_activation=%s depth=%d width=%d teacher_spectrum=%s gradient_dataset=train resample_mode=%s estimator_mode=%s full_cos=%.6f full_cond=%.6f full_ols_mean_rel_error=%.6f single_mean_rel_error=%.6f aggregate_mean_rel_error=%.6f stacked_mean_rel_error=%.6f stacked_relative_residual=%.6f replicate_cos_mean=%.6f replicate_cos_std=%.6f full_train_mse=%.6f full_test_mse=%.6f replicate_train_mse_mean=%.6f replicate_test_mse_mean=%.6f",
+        "NonlinearRetrain | teacher_activation=%s depth=%d width=%d teacher_spectrum=%s resample_mode=%s sampling_policy=%s sampling_score_mode=%s importance_correct=%s estimator_mode=%s full_cos=%.6f full_cond=%.6f full_ols_mean_rel_error=%.6f single_mean_rel_error=%.6f aggregate_mean_rel_error=%.6f stacked_mean_rel_error=%.6f stacked_relative_residual=%.6f replicate_cos_mean=%.6f replicate_cos_std=%.6f sampling_ess=%.3f sampling_ess_fraction=%.6f full_train_mse=%.6f full_test_mse=%.6f replicate_train_mse_mean=%.6f replicate_test_mse_mean=%.6f",
         args.teacher_activation,
         args.depth,
         args.width,
         args.teacher_spectrum,
         args.resample_mode,
+        args.sampling_policy,
+        args.sampling_score_mode,
+        args.importance_correct,
         args.estimator_mode,
         summary.full_pair_cosine,
         summary.full_design_condition,
@@ -584,6 +830,8 @@ def main() -> None:
         summary.stacked_relative_residual,
         summary.replicate_pair_cosine_mean,
         summary.replicate_pair_cosine_std,
+        summary.sampling_ess,
+        summary.sampling_ess_fraction,
         summary.full_train_mse,
         summary.full_test_mse,
         summary.replicate_train_mse_mean,
