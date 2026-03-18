@@ -62,6 +62,11 @@ def build_design_matrix(
     return torch.stack([bias_gradients[name] for name in bias_names], dim=1)
 
 
+def normalize_columns(design: Tensor, eps: float = 1e-8) -> Tensor:
+    column_norms = design.norm(dim=0).clamp_min(eps)
+    return design / column_norms.unsqueeze(0)
+
+
 def design_condition_number(design: Tensor) -> float:
     gram = design.T @ design
     eye = torch.eye(gram.shape[0], device=gram.device, dtype=gram.dtype)
@@ -101,13 +106,98 @@ def solve_least_squares_lambdas(
     )
 
 
+def flatten_grads(grads: Sequence[Tensor]) -> Tensor:
+    return torch.cat([grad.reshape(-1) for grad in grads]).detach()
+
+
+def compute_per_example_target_gradients(
+    predictive_model: torch.nn.Module,
+    dataset: TensorDataset,
+) -> Tensor:
+    device = next(predictive_model.parameters()).device
+    params = tuple(predictive_model.parameters())
+    inputs, targets = dataset.tensors
+    gradients: list[Tensor] = []
+    predictive_model.eval()
+    for idx in range(len(dataset)):
+        input_i = inputs[idx : idx + 1].to(device)
+        target_i = targets[idx : idx + 1].to(device)
+        prediction_i = predictive_model(input_i)
+        loss_i = F.mse_loss(prediction_i, target_i)
+        loss_grads = torch.autograd.grad(loss_i, params, create_graph=False, retain_graph=False)
+        gradients.append(-flatten_grads(loss_grads).cpu())
+    return torch.stack(gradients, dim=0)
+
+
+def compute_selection_direction(
+    bias_gradients: Dict[str, Tensor],
+    bias_names: Sequence[str],
+    target_gradient: Tensor,
+    normalize_bias_gradients: bool,
+) -> Tensor:
+    design = build_design_matrix(bias_gradients, bias_names)
+    if normalize_bias_gradients:
+        design = normalize_columns(design)
+    gram = design.T @ design
+    eigvals, eigvecs = torch.linalg.eigh(gram)
+    del eigvals
+    coeff_direction = eigvecs[:, 0]
+    param_direction = design @ coeff_direction
+    direction_norm = param_direction.norm().clamp_min(1e-8)
+    param_direction = param_direction / direction_norm
+    if torch.dot(target_gradient, param_direction).item() > 0.0:
+        param_direction = -param_direction
+    return param_direction
+
+
+def compute_sampling_probabilities(
+    per_example_target_gradients: Tensor,
+    selection_direction: Tensor,
+    score_mode: str,
+    floor: float,
+) -> Tensor:
+    directional_scores = -(per_example_target_gradients @ selection_direction)
+    if score_mode == "positive_part":
+        scores = directional_scores.clamp_min(0.0)
+    elif score_mode == "abs":
+        scores = directional_scores.abs()
+    elif score_mode == "square":
+        scores = directional_scores.pow(2)
+    else:
+        raise ValueError(f"Unsupported sampling score mode: {score_mode}")
+    scores = scores + floor
+    return scores / scores.sum().clamp_min(1e-12)
+
+
+def target_gradient_from_indices(
+    per_example_target_gradients: Tensor,
+    indices: Tensor,
+    sampling_probabilities: Tensor,
+    importance_correct: bool,
+) -> Tensor:
+    sampled = per_example_target_gradients[indices]
+    if not importance_correct:
+        return sampled.mean(dim=0)
+    n_total = per_example_target_gradients.shape[0]
+    correction = 1.0 / (n_total * sampling_probabilities[indices]).clamp_min(1e-12)
+    return (sampled * correction.unsqueeze(1)).mean(dim=0)
+
+
 def make_resample_indices(
     n_total: int,
     mode: str,
     sample_fraction: float,
     generator: torch.Generator,
+    probabilities: Tensor | None = None,
 ) -> Tensor:
     sample_size = max(1, int(round(sample_fraction * n_total)))
+    if probabilities is not None:
+        return torch.multinomial(
+            probabilities,
+            num_samples=sample_size,
+            replacement=(mode == "bootstrap"),
+            generator=generator,
+        )
     if mode == "subsample":
         return torch.randperm(n_total, generator=generator)[:sample_size]
     if mode == "bootstrap":
@@ -172,6 +262,21 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--resample-mode", type=str, default="bootstrap", choices=["subsample", "bootstrap"])
     parser.add_argument("--n-replicates", type=int, default=16)
     parser.add_argument("--sample-fraction", type=float, default=1.0)
+    parser.add_argument(
+        "--sampling-policy",
+        type=str,
+        default="weak_direction",
+        choices=["uniform", "weak_direction"],
+    )
+    parser.add_argument(
+        "--sampling-score-mode",
+        type=str,
+        default="positive_part",
+        choices=["positive_part", "abs", "square"],
+    )
+    parser.add_argument("--sampling-floor", type=float, default=1e-8)
+    parser.add_argument("--importance-correct-target", action="store_true", default=False)
+    parser.add_argument("--normalize-selection-gradients", action="store_true", default=False)
     return parser.parse_args()
 
 
@@ -249,9 +354,31 @@ def main() -> None:
         train_dataset.tensors,
         gt_bias_types,
     )
+    per_example_target_gradients = compute_per_example_target_gradients(model.network.eval(), train_dataset)
+    if args.sampling_policy == "weak_direction":
+        selection_direction = compute_selection_direction(
+            full_bias_gradients,
+            gt_bias_types,
+            full_target_gradient,
+            normalize_bias_gradients=args.normalize_selection_gradients,
+        )
+        sampling_probabilities = compute_sampling_probabilities(
+            per_example_target_gradients,
+            selection_direction.cpu(),
+            score_mode=args.sampling_score_mode,
+            floor=args.sampling_floor,
+        )
+    else:
+        selection_direction = None
+        sampling_probabilities = torch.full(
+            (len(train_dataset),),
+            1.0 / max(len(train_dataset), 1),
+            dtype=per_example_target_gradients.dtype,
+        )
     full_pair_cosine = abs(cosine_between(full_bias_gradients[gt_bias_types[0]], full_bias_gradients[gt_bias_types[1]]))
     full_estimated, _ = solve_least_squares_lambdas(full_target_gradient, full_bias_gradients, gt_bias_types)
     full_ols_mean_rel_error, full_ols_max_rel_error = mean_relative_error(full_estimated, gt_map, gt_bias_types)
+    full_design = build_design_matrix(full_bias_gradients, gt_bias_types)
 
     per_replicate_estimated: list[Dict[str, float]] = []
     stacked_targets: list[Tensor] = []
@@ -265,18 +392,18 @@ def main() -> None:
             mode=args.resample_mode,
             sample_fraction=args.sample_fraction,
             generator=torch.Generator().manual_seed(replicate_seed),
+            probabilities=sampling_probabilities if args.sampling_policy == "weak_direction" else None,
         )
-        batch = dataset_from_indices(train_dataset, indices)
-        target_gradient, bias_gradients, _ = compute_target_and_bias_gradients(
-            model.network.eval(),
-            batch,
-            gt_bias_types,
+        target_gradient = target_gradient_from_indices(
+            per_example_target_gradients,
+            indices,
+            sampling_probabilities,
+            importance_correct=args.importance_correct_target,
         )
-        design = build_design_matrix(bias_gradients, gt_bias_types)
-        estimated, _ = solve_least_squares_lambdas(target_gradient, bias_gradients, gt_bias_types)
+        estimated, _ = solve_least_squares_lambdas(target_gradient, full_bias_gradients, gt_bias_types)
         per_replicate_estimated.append(estimated)
         stacked_targets.append(target_gradient)
-        stacked_designs.append(design)
+        stacked_designs.append(full_design)
 
     single_errors = [mean_relative_error(estimated, gt_map, gt_bias_types) for estimated in per_replicate_estimated]
     single_mean_rel_error = float(sum(item[0] for item in single_errors) / len(single_errors))
@@ -306,7 +433,7 @@ def main() -> None:
         args.resample_mode,
         test_mse,
         full_pair_cosine,
-        design_condition_number(build_design_matrix(full_bias_gradients, gt_bias_types)),
+        design_condition_number(full_design),
         full_ols_mean_rel_error,
         single_mean_rel_error,
         aggregate_mean_rel_error,

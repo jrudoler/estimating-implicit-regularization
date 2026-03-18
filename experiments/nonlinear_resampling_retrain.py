@@ -25,15 +25,20 @@ if str(REPO_ROOT) not in sys.path:
     sys.path.append(str(REPO_ROOT))
 
 from function_class_identifiability import (  # noqa: E402
+    BiasWithMSENormalized,
     DeepReLURegressor,
+    build_bias_module,
     calibrate_explicit_lambdas,
     compute_target_and_bias_gradients,
     cosine_between,
     generate_dataset,
+    get_scale_params,
+    JointBias,
     parse_csv_floats,
     parse_csv_list,
     set_seed,
 )
+from core.estimators import BiasWithMSE  # noqa: E402
 
 
 LOGGER = logging.getLogger(__name__)
@@ -59,6 +64,57 @@ class RetrainSummary:
     stacked_design_condition: float
     replicate_pair_cosine_mean: float
     replicate_pair_cosine_std: float
+
+
+def train_bias_estimator(
+    predictive_model: torch.nn.Module,
+    train_dataset: TensorDataset,
+    bias_types: Sequence[str],
+    estimator_mode: str,
+    bias_lr: float,
+    bias_max_epochs: int,
+    bias_patience: int,
+    accelerator: str,
+) -> Dict[str, float]:
+    estimators = [build_bias_module(name, trainable=True) for name in bias_types]
+    joint_bias = JointBias(estimators)
+    if estimator_mode == "normalized":
+        bias_estimator = BiasWithMSENormalized(
+            predictive_model=predictive_model.eval(),
+            bias_model=joint_bias,
+            grad_match_loss_fn=F.mse_loss,
+            optimizer_cls=torch.optim.Adam,
+            lr=bias_lr,
+            bias_lr=bias_lr,
+        )
+    elif estimator_mode == "standard":
+        bias_estimator = BiasWithMSE(
+            predictive_model=predictive_model.eval(),
+            bias_model=joint_bias,
+            grad_match_loss_fn=F.mse_loss,
+            optimizer_cls=torch.optim.Adam,
+            lr=bias_lr,
+        )
+    else:
+        raise ValueError(f"Unsupported estimator mode: {estimator_mode}")
+
+    batch_size = min(len(train_dataset), 256)
+    train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True, num_workers=0)
+    bias_trainer = pl.Trainer(
+        max_epochs=bias_max_epochs,
+        logger=False,
+        accelerator=accelerator,
+        devices=1,
+        enable_progress_bar=False,
+        enable_model_summary=False,
+        enable_checkpointing=False,
+        callbacks=[EarlyStopping(monitor="train_bias/loss", mode="min", patience=bias_patience)],
+        log_every_n_steps=25,
+    )
+    bias_trainer.fit(bias_estimator, train_dataloaders=train_loader)
+    if estimator_mode == "normalized":
+        return {name: float(value) for name, value in bias_estimator.get_estimated_lambdas().items()}
+    return get_scale_params(joint_bias, bias_types)
 
 
 def build_design_matrix(
@@ -127,6 +183,34 @@ def solve_nonnegative_lambdas(
     )
     return (
         {name: float(solution[idx].item()) for idx, name in enumerate(bias_names)},
+        residual,
+    )
+
+
+def solve_normalized_nonnegative_lambdas(
+    target_gradient: Tensor,
+    bias_gradients: Dict[str, Tensor],
+    bias_names: Sequence[str],
+    eps: float = 1e-8,
+) -> tuple[Dict[str, float], float]:
+    design = build_design_matrix(bias_gradients, bias_names)
+    column_norms = design.norm(dim=0).clamp_min(eps)
+    normalized_design = design / column_norms.unsqueeze(0)
+    solution_np, _ = nnls(
+        normalized_design.detach().cpu().numpy(),
+        target_gradient.detach().cpu().numpy(),
+    )
+    normalized_solution = torch.from_numpy(np.asarray(solution_np)).to(
+        device=target_gradient.device,
+        dtype=target_gradient.dtype,
+    )
+    raw_solution = normalized_solution / column_norms
+    reconstructed = design @ raw_solution
+    residual = float(
+        (target_gradient - reconstructed).norm().item() / max(target_gradient.norm().item(), 1e-8)
+    )
+    return (
+        {name: float(raw_solution[idx].item()) for idx, name in enumerate(bias_names)},
         residual,
     )
 
@@ -237,7 +321,10 @@ def run_retrain_study(
     resample_mode: str,
     n_replicates: int,
     sample_fraction: float,
-    solver_name: str,
+    estimator_mode: str,
+    bias_lr: float,
+    bias_max_epochs: int,
+    bias_patience: int,
     seed: int,
 ) -> RetrainSummary:
     full_model = train_model(
@@ -261,8 +348,16 @@ def run_retrain_study(
         train_dataset.tensors,
         explicit_bias_types,
     )
-    solver_fn = solve_nonnegative_lambdas if solver_name == "nnls" else solve_least_squares_lambdas
-    full_estimated, _ = solver_fn(full_target_gradient, full_bias_gradients, explicit_bias_types)
+    full_estimated = train_bias_estimator(
+        predictive_model=full_model.network,
+        train_dataset=train_dataset,
+        bias_types=explicit_bias_types,
+        estimator_mode=estimator_mode,
+        bias_lr=bias_lr,
+        bias_max_epochs=bias_max_epochs,
+        bias_patience=bias_patience,
+        accelerator=accelerator,
+    )
     full_ols_mean_rel_error, full_ols_max_rel_error = mean_relative_error(
         full_estimated,
         ground_truth,
@@ -310,7 +405,16 @@ def run_retrain_study(
             replicate_train_dataset.tensors,
             explicit_bias_types,
         )
-        estimated, _ = solver_fn(target_gradient, bias_gradients, explicit_bias_types)
+        estimated = train_bias_estimator(
+            predictive_model=replicate_model.network,
+            train_dataset=replicate_train_dataset,
+            bias_types=explicit_bias_types,
+            estimator_mode=estimator_mode,
+            bias_lr=bias_lr,
+            bias_max_epochs=bias_max_epochs,
+            bias_patience=bias_patience,
+            accelerator=accelerator,
+        )
         per_replicate_estimated.append(estimated)
         stacked_targets.append(target_gradient)
         stacked_designs.append(build_design_matrix(bias_gradients, explicit_bias_types))
@@ -325,25 +429,11 @@ def run_retrain_study(
         ground_truth,
         explicit_bias_types,
     )
-    stacked_target = torch.cat(stacked_targets, dim=0)
     stacked_design = torch.cat(stacked_designs, dim=0)
-    if solver_name == "nnls":
-        stacked_solution_np, _ = nnls(
-            stacked_design.detach().cpu().numpy(),
-            stacked_target.detach().cpu().numpy(),
-        )
-        stacked_solution = torch.from_numpy(np.asarray(stacked_solution_np)).to(
-            device=stacked_target.device,
-            dtype=stacked_target.dtype,
-        )
-    else:
-        stacked_solution = torch.linalg.lstsq(stacked_design, stacked_target).solution
-    stacked_reconstructed = stacked_design @ stacked_solution
-    stacked_relative_residual = float(
-        (stacked_target - stacked_reconstructed).norm().item() / max(stacked_target.norm().item(), 1e-8)
-    )
-    stacked_estimated = {name: float(stacked_solution[idx].item()) for idx, name in enumerate(explicit_bias_types)}
-    stacked_mean_rel_error, stacked_max_rel_error = mean_relative_error(stacked_estimated, ground_truth, explicit_bias_types)
+    stacked_target = torch.cat(stacked_targets, dim=0)
+    stacked_relative_residual = float("nan")
+    stacked_mean_rel_error = float("nan")
+    stacked_max_rel_error = float("nan")
 
     return RetrainSummary(
         full_pair_cosine=abs(cosine_between(full_bias_gradients[explicit_bias_types[0]], full_bias_gradients[explicit_bias_types[1]])),
@@ -396,7 +486,10 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--resample-mode", type=str, default="bootstrap", choices=["subsample", "bootstrap"])
     parser.add_argument("--n-replicates", type=int, default=6)
     parser.add_argument("--sample-fraction", type=float, default=1.0)
-    parser.add_argument("--solver", type=str, default="nnls", choices=["ols", "nnls"])
+    parser.add_argument("--estimator-mode", type=str, default="normalized", choices=["standard", "normalized"])
+    parser.add_argument("--bias-lr", type=float, default=0.05)
+    parser.add_argument("--bias-max-epochs", type=int, default=2000)
+    parser.add_argument("--bias-patience", type=int, default=100)
     return parser.parse_args()
 
 
@@ -467,18 +560,21 @@ def main() -> None:
         resample_mode=args.resample_mode,
         n_replicates=args.n_replicates,
         sample_fraction=args.sample_fraction,
-        solver_name=args.solver,
+        estimator_mode=args.estimator_mode,
+        bias_lr=args.bias_lr,
+        bias_max_epochs=args.bias_max_epochs,
+        bias_patience=args.bias_patience,
         seed=args.seed,
     )
 
     LOGGER.info(
-        "NonlinearRetrain | teacher_activation=%s depth=%d width=%d teacher_spectrum=%s gradient_dataset=train resample_mode=%s solver=%s full_cos=%.6f full_cond=%.6f full_ols_mean_rel_error=%.6f single_mean_rel_error=%.6f aggregate_mean_rel_error=%.6f stacked_mean_rel_error=%.6f stacked_relative_residual=%.6f replicate_cos_mean=%.6f replicate_cos_std=%.6f full_train_mse=%.6f full_test_mse=%.6f replicate_train_mse_mean=%.6f replicate_test_mse_mean=%.6f",
+        "NonlinearRetrain | teacher_activation=%s depth=%d width=%d teacher_spectrum=%s gradient_dataset=train resample_mode=%s estimator_mode=%s full_cos=%.6f full_cond=%.6f full_ols_mean_rel_error=%.6f single_mean_rel_error=%.6f aggregate_mean_rel_error=%.6f stacked_mean_rel_error=%.6f stacked_relative_residual=%.6f replicate_cos_mean=%.6f replicate_cos_std=%.6f full_train_mse=%.6f full_test_mse=%.6f replicate_train_mse_mean=%.6f replicate_test_mse_mean=%.6f",
         args.teacher_activation,
         args.depth,
         args.width,
         args.teacher_spectrum,
         args.resample_mode,
-        args.solver,
+        args.estimator_mode,
         summary.full_pair_cosine,
         summary.full_design_condition,
         summary.full_ols_mean_rel_error,
