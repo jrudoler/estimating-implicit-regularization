@@ -69,6 +69,38 @@ class RetrainSummary:
     sampling_ess_fraction: float
 
 
+class StackedSharedLambdaEstimator(nn.Module):
+    def __init__(
+        self,
+        stacked_design: Tensor,
+        estimator_mode: str,
+    ) -> None:
+        super().__init__()
+        self.register_buffer("stacked_design", stacked_design)
+        self.estimator_mode = estimator_mode
+        n_biases = stacked_design.shape[1]
+        if estimator_mode == "standard":
+            self.log_coefs = nn.Parameter(torch.full((n_biases,), -5.0, dtype=stacked_design.dtype))
+        elif estimator_mode == "normalized":
+            self.normalized_coefs = nn.Parameter(torch.zeros(n_biases, dtype=stacked_design.dtype))
+            self.register_buffer(
+                "column_norms",
+                stacked_design.norm(dim=0).clamp_min(1e-8),
+            )
+        else:
+            raise ValueError(f"Unsupported estimator mode: {estimator_mode}")
+
+    def predicted_gradient(self) -> Tensor:
+        if self.estimator_mode == "standard":
+            return self.stacked_design @ torch.exp(self.log_coefs)
+        return (self.stacked_design / self.column_norms.unsqueeze(0)) @ self.normalized_coefs
+
+    def get_estimated_lambdas(self) -> Tensor:
+        if self.estimator_mode == "standard":
+            return torch.exp(self.log_coefs).detach()
+        return (self.normalized_coefs / self.column_norms).detach()
+
+
 def flatten_grads(grads: Sequence[Tensor]) -> Tensor:
     return torch.cat([grad.reshape(-1) for grad in grads]).detach()
 
@@ -121,6 +153,7 @@ def compute_sampling_probabilities(
     selection_direction: Tensor,
     score_mode: str,
     floor: float,
+    mixture_alpha: float,
 ) -> Tensor:
     directional_scores = -(per_example_target_gradients @ selection_direction)
     if score_mode == "positive_part":
@@ -132,11 +165,37 @@ def compute_sampling_probabilities(
     else:
         raise ValueError(f"Unsupported sampling score mode: {score_mode}")
     scores = scores + floor
-    return scores / scores.sum().clamp_min(1e-12)
+    targeted = scores / scores.sum().clamp_min(1e-12)
+    alpha = float(min(max(mixture_alpha, 0.0), 1.0))
+    uniform = torch.full_like(targeted, 1.0 / max(int(targeted.numel()), 1))
+    return alpha * uniform + (1.0 - alpha) * targeted
 
 
 def effective_sample_size(probabilities: Tensor) -> float:
     return float(1.0 / probabilities.pow(2).sum().item())
+
+
+def compute_weighted_target_gradient(
+    predictive_model: torch.nn.Module,
+    dataset: TensorDataset,
+) -> Tensor:
+    device = next(predictive_model.parameters()).device
+    params: Dict[str, Tensor] = dict(predictive_model.named_parameters())
+    tensors = dataset.tensors
+    inputs = tensors[0].to(device)
+    targets = tensors[1].to(device)
+    weights = tensors[2].to(device).view(-1, 1) if len(tensors) >= 3 else None
+
+    def model_output(p: Dict[str, Tensor], x: Tensor) -> Tensor:
+        return functional_call(predictive_model, p, (x,))
+
+    predictions, vjp_func = vjp(model_output, params, inputs)
+    per_example_elements = max(int(predictions[0].numel()), 1)
+    loss_gradient = -2 * (targets - predictions) / per_example_elements
+    if weights is not None:
+        loss_gradient = loss_gradient * weights
+    vjp_result = vjp_func(loss_gradient)[0]
+    return torch.cat([value.view(-1) for value in vjp_result.values()]).detach() / inputs.size(0)
 
 
 class WeightedDeepReLURegressor(DeepReLURegressor):
@@ -298,6 +357,47 @@ def train_bias_estimator(
     if estimator_mode == "normalized":
         return {name: float(value) for name, value in bias_estimator.get_estimated_lambdas().items()}
     return get_scale_params(joint_bias, bias_types)
+
+
+def train_stacked_bias_estimator(
+    stacked_design: Tensor,
+    stacked_target: Tensor,
+    bias_names: Sequence[str],
+    estimator_mode: str,
+    lr: float,
+    max_epochs: int,
+    patience: int,
+) -> tuple[Dict[str, float], float]:
+    estimator = StackedSharedLambdaEstimator(stacked_design=stacked_design, estimator_mode=estimator_mode)
+    optimizer = torch.optim.Adam(estimator.parameters(), lr=lr)
+    best_loss = float("inf")
+    best_state: Dict[str, Tensor] | None = None
+    epochs_without_improvement = 0
+    for _ in range(max_epochs):
+        optimizer.zero_grad(set_to_none=True)
+        predicted = estimator.predicted_gradient()
+        loss = F.mse_loss(predicted, stacked_target, reduction="mean")
+        loss.backward()
+        optimizer.step()
+        loss_value = float(loss.item())
+        if loss_value + 1e-12 < best_loss:
+            best_loss = loss_value
+            best_state = {name: tensor.detach().clone() for name, tensor in estimator.state_dict().items()}
+            epochs_without_improvement = 0
+        else:
+            epochs_without_improvement += 1
+            if epochs_without_improvement >= patience:
+                break
+    if best_state is not None:
+        estimator.load_state_dict(best_state)
+    lambdas = estimator.get_estimated_lambdas().cpu()
+    estimated = {name: float(lambdas[idx].item()) for idx, name in enumerate(bias_names)}
+    with torch.no_grad():
+        predicted = estimator.predicted_gradient()
+        relative_residual = float(
+            (stacked_target - predicted).norm().item() / max(stacked_target.norm().item(), 1e-8)
+        )
+    return estimated, relative_residual
 
 
 def build_design_matrix(
@@ -532,6 +632,7 @@ def run_retrain_study(
     sampling_policy: str,
     sampling_score_mode: str,
     sampling_floor: float,
+    sampling_mixture_alpha: float,
     importance_correct: bool,
     normalize_selection_gradients: bool,
     seed: int,
@@ -570,6 +671,7 @@ def run_retrain_study(
             selection_direction.cpu(),
             score_mode=sampling_score_mode,
             floor=sampling_floor,
+            mixture_alpha=sampling_mixture_alpha,
         )
     else:
         sampling_probabilities = torch.full((len(train_dataset),), 1.0 / len(train_dataset), dtype=torch.float32)
@@ -631,10 +733,14 @@ def run_retrain_study(
         test_mse, _ = evaluate_split_metrics(replicate_model, test_dataset)
         replicate_train_mses.append(train_mse)
         replicate_test_mses.append(test_mse)
-        target_gradient, bias_gradients, _ = compute_target_and_bias_gradients(
+        _, bias_gradients, _ = compute_target_and_bias_gradients(
             replicate_model.network.eval(),
             replicate_train_dataset.tensors[:2],
             explicit_bias_types,
+        )
+        target_gradient = compute_weighted_target_gradient(
+            replicate_model.network.eval(),
+            replicate_train_dataset,
         )
         estimated = train_bias_estimator(
             predictive_model=replicate_model.network,
@@ -662,9 +768,20 @@ def run_retrain_study(
     )
     stacked_design = torch.cat(stacked_designs, dim=0)
     stacked_target = torch.cat(stacked_targets, dim=0)
-    stacked_relative_residual = float("nan")
-    stacked_mean_rel_error = float("nan")
-    stacked_max_rel_error = float("nan")
+    stacked_estimated, stacked_relative_residual = train_stacked_bias_estimator(
+        stacked_design=stacked_design,
+        stacked_target=stacked_target,
+        bias_names=explicit_bias_types,
+        estimator_mode=estimator_mode,
+        lr=bias_lr,
+        max_epochs=bias_max_epochs,
+        patience=bias_patience,
+    )
+    stacked_mean_rel_error, stacked_max_rel_error = mean_relative_error(
+        stacked_estimated,
+        ground_truth,
+        explicit_bias_types,
+    )
 
     return RetrainSummary(
         full_pair_cosine=abs(cosine_between(full_bias_gradients[explicit_bias_types[0]], full_bias_gradients[explicit_bias_types[1]])),
@@ -722,6 +839,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--sampling-policy", type=str, default="weak_direction", choices=["uniform", "weak_direction"])
     parser.add_argument("--sampling-score-mode", type=str, default="abs", choices=["positive_part", "abs", "square"])
     parser.add_argument("--sampling-floor", type=float, default=1e-8)
+    parser.add_argument("--sampling-mixture-alpha", type=float, default=0.5)
     parser.add_argument("--importance-correct", action=argparse.BooleanOptionalAction, default=True)
     parser.add_argument("--normalize-selection-gradients", action=argparse.BooleanOptionalAction, default=False)
     parser.add_argument("--estimator-mode", type=str, default="standard", choices=["standard", "normalized"])
@@ -805,13 +923,14 @@ def main() -> None:
         sampling_policy=args.sampling_policy,
         sampling_score_mode=args.sampling_score_mode,
         sampling_floor=args.sampling_floor,
+        sampling_mixture_alpha=args.sampling_mixture_alpha,
         importance_correct=args.importance_correct,
         normalize_selection_gradients=args.normalize_selection_gradients,
         seed=args.seed,
     )
 
     LOGGER.info(
-        "NonlinearRetrain | teacher_activation=%s depth=%d width=%d teacher_spectrum=%s resample_mode=%s sampling_policy=%s sampling_score_mode=%s importance_correct=%s estimator_mode=%s full_cos=%.6f full_cond=%.6f full_ols_mean_rel_error=%.6f single_mean_rel_error=%.6f aggregate_mean_rel_error=%.6f stacked_mean_rel_error=%.6f stacked_relative_residual=%.6f replicate_cos_mean=%.6f replicate_cos_std=%.6f sampling_ess=%.3f sampling_ess_fraction=%.6f full_train_mse=%.6f full_test_mse=%.6f replicate_train_mse_mean=%.6f replicate_test_mse_mean=%.6f",
+        "NonlinearRetrain | teacher_activation=%s depth=%d width=%d teacher_spectrum=%s resample_mode=%s sampling_policy=%s sampling_score_mode=%s sampling_mixture_alpha=%.3f importance_correct=%s estimator_mode=%s full_cos=%.6f full_cond=%.6f full_ols_mean_rel_error=%.6f single_mean_rel_error=%.6f aggregate_mean_rel_error=%.6f stacked_mean_rel_error=%.6f stacked_relative_residual=%.6f replicate_cos_mean=%.6f replicate_cos_std=%.6f sampling_ess=%.3f sampling_ess_fraction=%.6f full_train_mse=%.6f full_test_mse=%.6f replicate_train_mse_mean=%.6f replicate_test_mse_mean=%.6f",
         args.teacher_activation,
         args.depth,
         args.width,
@@ -819,6 +938,7 @@ def main() -> None:
         args.resample_mode,
         args.sampling_policy,
         args.sampling_score_mode,
+        args.sampling_mixture_alpha,
         args.importance_correct,
         args.estimator_mode,
         summary.full_pair_cosine,
