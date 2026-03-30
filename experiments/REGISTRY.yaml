@@ -2,7 +2,7 @@
 # status values: active | legacy | appendix | deprecated
 # Keep this file up to date when adding/removing experiments.
 
-updated_at: 2026-03-04
+updated_at: 2026-03-27
 
 experiments:
   - id: dropout_bias_estimation
@@ -148,6 +148,14 @@ experiments:
     launcher: scripts/wandb_sweep.slurm
     purpose: "Bootstrap/subsampling stability evaluation for bias recovery."
     last_verified: 2026-03-04
+
+  - id: nonlinear_power_retrain_geometry
+    status: active
+    entrypoint: experiments/nonlinear_power_retrain_geometry.py
+    sweep: null
+    launcher: null
+    purpose: "Estimate a global smoothed-power geometry (lambda, p) from retrained nonlinear solutions."
+    last_verified: 2026-03-27
 
 deprecated_assets:
   - path: experiments/implicit_reg_sweep.slurm
