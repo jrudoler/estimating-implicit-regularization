@@ -181,6 +181,134 @@ class SmoothedPowerBias(Bias):
         }
 
 
+class SmoothedSchattenBias(Bias):
+    """
+    Smoothed Schatten power-family regularizer over weight matrices:
+
+        R_p(W) = λ Σ_layers Σ_i (σ_i(W)^2 + ε)^(p / 2)
+
+    where σ_i(W) are the singular values of each matrix-shaped parameter tensor.
+    """
+
+    bias_name = "smoothed_schatten"
+
+    def __init__(
+        self,
+        scale_init: float = 1.0,
+        exponent_init: float = 1.0,
+        epsilon: float = 1e-8,
+        *,
+        trainable_scale: bool = True,
+        trainable_exponent: bool = False,
+        p_min: float = 0.25,
+        p_max: float = 4.0,
+    ) -> None:
+        super().__init__()
+        if scale_init <= 0:
+            raise ValueError("scale_init must be positive.")
+        if exponent_init <= 0:
+            raise ValueError("exponent_init must be positive.")
+        if epsilon < 0:
+            raise ValueError("epsilon must be non-negative.")
+        if p_min <= 0 or p_max <= 0 or p_min >= p_max:
+            raise ValueError("Require 0 < p_min < p_max for trainable exponents.")
+
+        self.epsilon = float(epsilon)
+        self.trainable_scale = bool(trainable_scale)
+        self.trainable_exponent = bool(trainable_exponent)
+        self.p_min = float(p_min)
+        self.p_max = float(p_max)
+
+        scale_tensor = torch.tensor(float(scale_init), dtype=torch.float32)
+        if self.trainable_scale:
+            self.log_scale = nn.Parameter(torch.log(scale_tensor))
+        else:
+            self.register_buffer("fixed_scale", scale_tensor)
+
+        exponent_tensor = torch.tensor(float(exponent_init), dtype=torch.float32)
+        if self.trainable_exponent:
+            clipped = exponent_tensor.clamp(min=self.p_min + 1e-6, max=self.p_max - 1e-6)
+            normalized = (clipped - self.p_min) / (self.p_max - self.p_min)
+            self.raw_exponent = nn.Parameter(torch.logit(normalized))
+        else:
+            self.register_buffer("fixed_exponent", exponent_tensor)
+
+    @property
+    def scale(self) -> Tensor:
+        if self.trainable_scale:
+            return torch.exp(self.log_scale)
+        return self.fixed_scale
+
+    @property
+    def exponent(self) -> Tensor:
+        if self.trainable_exponent:
+            return self.p_min + (self.p_max - self.p_min) * torch.sigmoid(self.raw_exponent)
+        return self.fixed_exponent
+
+    def singular_value_penalty_terms(self, singular_values: Tensor) -> Tensor:
+        exponent = self.exponent.to(device=singular_values.device, dtype=singular_values.dtype)
+        epsilon = torch.tensor(self.epsilon, device=singular_values.device, dtype=singular_values.dtype)
+        return (singular_values.pow(2) + epsilon).pow(exponent / 2.0)
+
+    def transformed_singular_values(self, singular_values: Tensor) -> Tensor:
+        exponent = self.exponent.to(device=singular_values.device, dtype=singular_values.dtype)
+        epsilon = torch.tensor(self.epsilon, device=singular_values.device, dtype=singular_values.dtype)
+        return (singular_values.pow(2) + epsilon).pow(exponent / 4.0)
+
+    def matrix_penalty(self, matrix: Tensor) -> Tensor:
+        singular_values = torch.linalg.svdvals(matrix)
+        return self.singular_value_penalty_terms(singular_values).sum()
+
+    def forward(
+        self,
+        flattened_params: Tensor,
+        structured_params: List[Tensor],
+        **kwargs,
+    ) -> Tensor:
+        penalty = torch.zeros(
+            (), device=flattened_params.device, dtype=flattened_params.dtype
+        )
+        for parameter in structured_params:
+            if parameter.ndim < 2:
+                continue
+            matrix = parameter if parameter.ndim == 2 else parameter.reshape(parameter.shape[0], -1)
+            penalty = penalty + self.matrix_penalty(matrix)
+        scale = self.scale.to(device=flattened_params.device, dtype=flattened_params.dtype)
+        return scale * penalty
+
+    def penalty_gradient(
+        self,
+        flattened_params: Tensor,
+        structured_params: List[Tensor],
+    ) -> Tensor:
+        exponent = self.exponent.to(device=flattened_params.device, dtype=flattened_params.dtype)
+        scale = self.scale.to(device=flattened_params.device, dtype=flattened_params.dtype)
+        epsilon = torch.tensor(self.epsilon, device=flattened_params.device, dtype=flattened_params.dtype)
+
+        gradients: List[Tensor] = []
+        for parameter in structured_params:
+            if parameter.ndim < 2:
+                gradients.append(torch.zeros_like(parameter).reshape(-1))
+                continue
+
+            matrix = parameter if parameter.ndim == 2 else parameter.reshape(parameter.shape[0], -1)
+            left, singular_values, right_t = torch.linalg.svd(matrix, full_matrices=False)
+            weights = exponent * singular_values * (singular_values.pow(2) + epsilon).pow(exponent / 2.0 - 1.0)
+            grad_matrix = scale * ((left * weights.unsqueeze(0)) @ right_t)
+            if parameter.ndim == 2:
+                gradients.append(grad_matrix.reshape(-1))
+            else:
+                gradients.append(grad_matrix.reshape_as(parameter).reshape(-1))
+
+        return torch.cat(gradients)
+
+    def get_bias_params(self) -> Dict[str, float]:
+        return {
+            "scale": float(self.scale.detach().item()),
+            "exponent": float(self.exponent.detach().item()),
+        }
+
+
 class OrthogonalBias(ScalarBias):
     bias_name = "orthogonal"
 

@@ -14,3 +14,10 @@ Use this file as the default non-manuscript log for autonomous method, implement
 - Added [`SmoothedPowerBias`](/home/jrudoler/inductive-bias/src/core/bias.py) for the family `R_p(theta) = lambda * sum_j (theta_j^2 + epsilon)^(p/2)` with optional trainable `lambda` and trainable global exponent `p`.
 - Added [`experiments/nonlinear_power_retrain_geometry.py`](/home/jrudoler/inductive-bias/experiments/nonlinear_power_retrain_geometry.py) to train nonlinear models under a fixed smoothed-power regularizer, retrain on resamples, and then fit one shared `(lambda, p)` to the stacked collection of solutions and task gradients.
 - Registered the new experiment in [`experiments/REGISTRY.yaml`](/home/jrudoler/inductive-bias/experiments/REGISTRY.yaml).
+
+## 2026-03-30
+
+- Added [`SmoothedSchattenBias`](/home/jrudoler/inductive-bias/src/core/bias.py) so the same trainable `(lambda, p)` parameterization now covers spectral penalties over singular values, including the smoothed nuclear norm at `p = 1`.
+- Added [`experiments/nonlinear_multi_geometry_suite.py`](/home/jrudoler/inductive-bias/experiments/nonlinear_multi_geometry_suite.py) to run a nonlinear retrain suite over single-component (`L2`, `L1`, nuclear) and multi-component (`L1 + L2`, `L2 + nuclear`, `L1 + L2 + nuclear`) geometries, saving JSON/CSV summaries plus per-case and summary PDF figures.
+- Added [`scripts/nonlinear_multi_geometry_suite.slurm`](/home/jrudoler/inductive-bias/scripts/nonlinear_multi_geometry_suite.slurm) as a reproducible Slurm launcher for the larger GPU-backed version of the suite.
+- Added exact sanity outputs under [`logs/phase2/nonlinear_multi_geometry_exact_sanity_scale03`](/home/jrudoler/inductive-bias/logs/phase2/nonlinear_multi_geometry_exact_sanity_scale03), a local nonlinear baseline under [`logs/phase2/nonlinear_multi_geometry_suite_scale03`](/home/jrudoler/inductive-bias/logs/phase2/nonlinear_multi_geometry_suite_scale03), and a larger GPU-backed suite under [`logs/phase2/nonlinear_multi_geometry_suite_gpu_scale03`](/home/jrudoler/inductive-bias/logs/phase2/nonlinear_multi_geometry_suite_gpu_scale03).

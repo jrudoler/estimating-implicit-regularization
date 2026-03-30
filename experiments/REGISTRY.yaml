@@ -157,6 +157,14 @@ experiments:
     purpose: "Estimate a global smoothed-power geometry (lambda, p) from retrained nonlinear solutions."
     last_verified: 2026-03-27
 
+  - id: nonlinear_multi_geometry_suite
+    status: active
+    entrypoint: experiments/nonlinear_multi_geometry_suite.py
+    sweep: null
+    launcher: scripts/nonlinear_multi_geometry_suite.slurm
+    purpose: "Run single- and multi-component nonlinear power-geometry recovery experiments with PDF figure outputs."
+    last_verified: 2026-03-30
+
 deprecated_assets:
   - path: experiments/implicit_reg_sweep.slurm
     replacement: scripts/wandb_sweep.slurm
