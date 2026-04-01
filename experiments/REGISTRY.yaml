@@ -165,6 +165,14 @@ experiments:
     purpose: "Run single- and multi-component nonlinear power-geometry recovery experiments with PDF figure outputs."
     last_verified: 2026-03-30
 
+  - id: nonlinear_multi_geometry_replicate_ablation
+    status: active
+    entrypoint: experiments/nonlinear_multi_geometry_replicate_ablation.py
+    sweep: null
+    launcher: scripts/nonlinear_multi_geometry_replicate_ablation.slurm
+    purpose: "Measure geometry recovery as the number of bootstrap retrains increases, reusing one large replicate pool per case."
+    last_verified: 2026-03-30
+
 deprecated_assets:
   - path: experiments/implicit_reg_sweep.slurm
     replacement: scripts/wandb_sweep.slurm

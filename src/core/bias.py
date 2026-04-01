@@ -188,6 +188,14 @@ class SmoothedSchattenBias(Bias):
         R_p(W) = λ Σ_layers Σ_i (σ_i(W)^2 + ε)^(p / 2)
 
     where σ_i(W) are the singular values of each matrix-shaped parameter tensor.
+
+    This is the matrix analogue of ``SmoothedPowerBias``:
+    - ``p = 2`` recovers a smoothed Frobenius / matrix-ridge penalty
+    - ``p = 1`` recovers a smoothed nuclear norm
+
+    The key point is that the "coordinates" of this regularizer are not the raw
+    entries of W. They are the singular values of W, so the transformed Euclidean
+    geometry lives in spectral space rather than entrywise parameter space.
     """
 
     bias_name = "smoothed_schatten"
@@ -246,16 +254,23 @@ class SmoothedSchattenBias(Bias):
         return self.fixed_exponent
 
     def singular_value_penalty_terms(self, singular_values: Tensor) -> Tensor:
+        # Work directly on singular values: the Schatten-p penalty is just an
+        # elementwise power penalty on sigma(W).
         exponent = self.exponent.to(device=singular_values.device, dtype=singular_values.dtype)
         epsilon = torch.tensor(self.epsilon, device=singular_values.device, dtype=singular_values.dtype)
         return (singular_values.pow(2) + epsilon).pow(exponent / 2.0)
 
     def transformed_singular_values(self, singular_values: Tensor) -> Tensor:
+        # This is the spectral analogue of the transformed coordinates phi(theta)
+        # used in the entrywise family. Squaring these transformed singular values
+        # gives the penalty terms above.
         exponent = self.exponent.to(device=singular_values.device, dtype=singular_values.dtype)
         epsilon = torch.tensor(self.epsilon, device=singular_values.device, dtype=singular_values.dtype)
         return (singular_values.pow(2) + epsilon).pow(exponent / 4.0)
 
     def matrix_penalty(self, matrix: Tensor) -> Tensor:
+        # Compute the penalty by pulling the matrix into singular-value space and
+        # summing the per-singular-value penalty terms.
         singular_values = torch.linalg.svdvals(matrix)
         return self.singular_value_penalty_terms(singular_values).sum()
 
@@ -270,7 +285,10 @@ class SmoothedSchattenBias(Bias):
         )
         for parameter in structured_params:
             if parameter.ndim < 2:
+                # Bias vectors / 1d parameters are not part of the spectral family.
                 continue
+            # Treat every matrix-shaped parameter as one spectral block. Higher-rank
+            # tensors are flattened along their trailing dimensions before the SVD.
             matrix = parameter if parameter.ndim == 2 else parameter.reshape(parameter.shape[0], -1)
             penalty = penalty + self.matrix_penalty(matrix)
         scale = self.scale.to(device=flattened_params.device, dtype=flattened_params.dtype)
@@ -288,16 +306,27 @@ class SmoothedSchattenBias(Bias):
         gradients: List[Tensor] = []
         for parameter in structured_params:
             if parameter.ndim < 2:
+                # Non-matrix parameters have zero spectral penalty gradient.
                 gradients.append(torch.zeros_like(parameter).reshape(-1))
                 continue
 
             matrix = parameter if parameter.ndim == 2 else parameter.reshape(parameter.shape[0], -1)
+            # Use an SVD so we can apply the scalar derivative with respect to each
+            # singular value, then map that derivative back to the original matrix.
+            #
+            # If W = U diag(sigma) V^T and
+            #   f(W) = lambda * sum_i (sigma_i^2 + eps)^(p/2),
+            # then
+            #   grad_W f = lambda * U diag(df/dsigma_i) V^T
+            # with
+            #   df/dsigma_i = p * sigma_i * (sigma_i^2 + eps)^(p/2 - 1).
             left, singular_values, right_t = torch.linalg.svd(matrix, full_matrices=False)
             weights = exponent * singular_values * (singular_values.pow(2) + epsilon).pow(exponent / 2.0 - 1.0)
             grad_matrix = scale * ((left * weights.unsqueeze(0)) @ right_t)
             if parameter.ndim == 2:
                 gradients.append(grad_matrix.reshape(-1))
             else:
+                # Reshape the matrix gradient back to the original parameter tensor.
                 gradients.append(grad_matrix.reshape_as(parameter).reshape(-1))
 
         return torch.cat(gradients)

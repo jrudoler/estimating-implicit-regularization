@@ -94,7 +94,22 @@ class CaseRecovery:
     full_test_mse: float
     replicate_train_mse_mean: float
     replicate_test_mse_mean: float
+    stationarity_residual_mean: float
     components: list[ComponentRecovery]
+
+
+@dataclass(frozen=True)
+class CaseReplicatePool:
+    case: GeometryCase
+    truth_components: list[dict[str, float | str]]
+    parameter_shapes: list[torch.Size]
+    full_train_mse: float
+    full_test_mse: float
+    replicate_train_mses: list[float]
+    replicate_test_mses: list[float]
+    solutions: Tensor
+    target_gradients: Tensor
+    stationarity_residuals: list[float]
 
 
 PowerGeometryModule = SmoothedPowerBias | SmoothedSchattenBias
@@ -357,6 +372,28 @@ def compute_target_gradient(model: nn.Module, dataset: TensorDataset) -> Tensor:
     return torch.nan_to_num(target_gradient, nan=0.0, posinf=0.0, neginf=0.0)
 
 
+def compute_stationarity_residual(
+    target_gradient: Tensor,
+    solution: Tensor,
+    parameter_shapes: Sequence[torch.Size],
+    component_configs: Sequence[GeometryComponentConfig],
+    true_lambdas: Sequence[float],
+) -> float:
+    """Measure ||(-∇L) - ∇R|| / ||∇L||.  Returns 0.0 at a perfect stationary point."""
+    gt_geometry = build_ground_truth_geometry(component_configs, true_lambdas)
+    structured = []
+    pointer = 0
+    for shape in parameter_shapes:
+        numel = int(math.prod(shape))
+        structured.append(solution[pointer : pointer + numel].view(shape))
+        pointer += numel
+    gt_reg_gradient = gt_geometry.penalty_gradient(solution, structured)
+    target_norm = float(target_gradient.norm().item())
+    if target_norm < 1e-12:
+        return 0.0
+    return float((target_gradient - gt_reg_gradient).norm().item() / target_norm)
+
+
 def build_ground_truth_geometry(
     component_configs: Sequence[GeometryComponentConfig],
     true_lambdas: Sequence[float],
@@ -503,6 +540,79 @@ def fit_composite_geometry(
     return estimator.get_component_estimates(), residual, cosine
 
 
+def fit_composite_geometry_closed_form(
+    *,
+    parameter_shapes: Sequence[torch.Size],
+    component_configs: Sequence[GeometryComponentConfig],
+    solutions: Tensor,
+    target_gradients: Tensor,
+) -> tuple[list[dict[str, float | str]], float, float]:
+    """Closed-form λ solver for the known-p case.
+
+    When the exponent p is known for each component, the gradient-matching
+    problem ``target ≈ Σ_i λ_i ∇R_i(θ; p_i)`` is linear in λ and can be
+    solved via least-squares instead of iterative optimization.
+    """
+    n_components = len(component_configs)
+
+    # Build component modules at the true (known) exponent with unit scale.
+    modules = [
+        build_component_module(
+            config,
+            scale_init=1.0,
+            exponent_init=config.true_p,
+            trainable_scale=False,
+            trainable_exponent=False,
+            p_min=0.25,
+            p_max=4.0,
+        )
+        for config in component_configs
+    ]
+
+    # Compute the design matrix: each column is a component's gradient
+    # stacked across all solutions.
+    def _vector_to_views(vector: Tensor) -> list[Tensor]:
+        views: list[Tensor] = []
+        pointer = 0
+        for shape in parameter_shapes:
+            numel = int(math.prod(shape))
+            views.append(vector[pointer : pointer + numel].view(shape))
+            pointer += numel
+        return views
+
+    columns: list[Tensor] = []
+    for module in modules:
+        col_parts: list[Tensor] = []
+        for solution in solutions:
+            structured = _vector_to_views(solution)
+            col_parts.append(component_penalty_gradient(module, solution, structured))
+        columns.append(torch.cat(col_parts, dim=0))
+
+    # G: (n_solutions * n_params, n_components)
+    G = torch.stack(columns, dim=1).detach()
+    y = target_gradients.reshape(-1).detach()
+
+    # Solve via least-squares: λ = argmin ||y - G λ||²
+    result = torch.linalg.lstsq(G, y.unsqueeze(1))
+    lambdas = result.solution.squeeze(1)
+
+    # Compute metrics
+    predicted = (G @ lambdas.unsqueeze(1)).squeeze(1)
+    residual = float((y - predicted).norm().item() / max(y.norm().item(), 1e-8))
+    cosine_val = cosine_between(predicted, y)
+
+    estimates = [
+        {
+            "label": config.label,
+            "family": config.family,
+            "scale": float(lambdas[i].item()),
+            "exponent": config.true_p,
+        }
+        for i, config in enumerate(component_configs)
+    ]
+    return estimates, residual, cosine_val
+
+
 def align_estimates(
     truth_components: Sequence[dict[str, float | str]],
     estimated_components: Sequence[dict[str, float | str]],
@@ -538,6 +648,12 @@ def align_estimates(
 
 def per_component_target_scale(base_scale: float, n_components: int) -> float:
     return base_scale / math.sqrt(max(n_components, 1))
+
+
+def mean_or_nan(values: Sequence[float]) -> float:
+    if not values:
+        return float("nan")
+    return float(sum(values) / len(values))
 
 
 def build_cases(base_scale: float, epsilon: float) -> list[GeometryCase]:
@@ -602,7 +718,7 @@ def build_cases(base_scale: float, epsilon: float) -> list[GeometryCase]:
     ]
 
 
-def run_case(
+def collect_case_replicate_pool(
     case: GeometryCase,
     *,
     train_dataset: TensorDataset,
@@ -618,13 +734,8 @@ def run_case(
     resample_mode: str,
     n_replicates: int,
     sample_fraction: float,
-    estimation_lr: float,
-    estimation_max_epochs: int,
-    estimation_patience: int,
-    p_min: float,
-    p_max: float,
     seed: int,
-) -> CaseRecovery:
+) -> CaseReplicatePool:
     set_seed(seed)
     reference_model = DeepReLURegressor(
         input_dim=input_dim,
@@ -663,11 +774,18 @@ def run_case(
     full_test_mse, _ = evaluate_split_metrics(full_model, test_dataset)
     full_solution = flatten_model_parameters(full_model.network)
     full_target_gradient = compute_target_gradient(full_model.network, train_dataset)
+    param_shapes = [p.shape for p in full_model.network.parameters()]
+
+    full_stationarity = compute_stationarity_residual(
+        full_target_gradient, full_solution, param_shapes, case.components, true_lambdas,
+    )
+    LOGGER.info("Full-model stationarity residual: %.4f", full_stationarity)
 
     replicate_solutions: list[Tensor] = [full_solution]
     replicate_targets: list[Tensor] = [full_target_gradient]
     replicate_train_mses: list[float] = []
     replicate_test_mses: list[float] = []
+    stationarity_residuals: list[float] = [full_stationarity]
 
     n_total = len(train_dataset)
     base_generator = torch.Generator().manual_seed(seed + 100_000)
@@ -698,23 +816,72 @@ def run_case(
         test_mse, _ = evaluate_split_metrics(replicate_model, test_dataset)
         replicate_train_mses.append(train_mse)
         replicate_test_mses.append(test_mse)
-        replicate_solutions.append(flatten_model_parameters(replicate_model.network))
-        replicate_targets.append(compute_target_gradient(replicate_model.network, replicate_train_dataset))
+        rep_solution = flatten_model_parameters(replicate_model.network)
+        rep_target = compute_target_gradient(replicate_model.network, replicate_train_dataset)
+        replicate_solutions.append(rep_solution)
+        replicate_targets.append(rep_target)
+        stationarity_residuals.append(
+            compute_stationarity_residual(
+                rep_target, rep_solution, param_shapes, case.components, true_lambdas,
+            )
+        )
 
     solution_stack = torch.stack(replicate_solutions, dim=0)
     target_stack = torch.stack(replicate_targets, dim=0)
-    estimated_components, residual, cosine = fit_composite_geometry(
-        parameter_shapes=[parameter.shape for parameter in full_model.network.parameters()],
-        component_configs=case.components,
+    return CaseReplicatePool(
+        case=case,
+        truth_components=truth_components,
+        parameter_shapes=param_shapes,
+        full_train_mse=full_train_mse,
+        full_test_mse=full_test_mse,
+        replicate_train_mses=replicate_train_mses,
+        replicate_test_mses=replicate_test_mses,
         solutions=solution_stack,
         target_gradients=target_stack,
-        p_min=p_min,
-        p_max=p_max,
-        lr=estimation_lr,
-        max_epochs=estimation_max_epochs,
-        patience=estimation_patience,
+        stationarity_residuals=stationarity_residuals,
     )
-    aligned_estimates = align_estimates(truth_components, estimated_components)
+
+
+def recover_case_from_pool(
+    pool: CaseReplicatePool,
+    *,
+    n_replicates: int,
+    estimation_lr: float,
+    estimation_max_epochs: int,
+    estimation_patience: int,
+    p_min: float,
+    p_max: float,
+    use_closed_form: bool = False,
+) -> CaseRecovery:
+    if n_replicates < 0:
+        raise ValueError("n_replicates must be non-negative.")
+    if n_replicates > len(pool.replicate_train_mses):
+        raise ValueError(
+            "Requested more replicates than were collected in the case pool: "
+            f"{n_replicates} > {len(pool.replicate_train_mses)}."
+        )
+    solution_stack = pool.solutions[: n_replicates + 1]
+    target_stack = pool.target_gradients[: n_replicates + 1]
+    if use_closed_form:
+        estimated_components, residual, cosine = fit_composite_geometry_closed_form(
+            parameter_shapes=pool.parameter_shapes,
+            component_configs=pool.case.components,
+            solutions=solution_stack,
+            target_gradients=target_stack,
+        )
+    else:
+        estimated_components, residual, cosine = fit_composite_geometry(
+            parameter_shapes=pool.parameter_shapes,
+            component_configs=pool.case.components,
+            solutions=solution_stack,
+            target_gradients=target_stack,
+            p_min=p_min,
+            p_max=p_max,
+            lr=estimation_lr,
+            max_epochs=estimation_max_epochs,
+            patience=estimation_patience,
+        )
+    aligned_estimates = align_estimates(pool.truth_components, estimated_components)
 
     component_results = [
         ComponentRecovery(
@@ -728,19 +895,71 @@ def run_case(
             / max(abs(float(truth["true_lambda"])), 1e-8),
             p_abs_error=abs(float(estimate["exponent"]) - float(truth["true_p"])),
         )
-        for truth, estimate in zip(truth_components, aligned_estimates)
+        for truth, estimate in zip(pool.truth_components, aligned_estimates)
     ]
     return CaseRecovery(
-        case_name=case.name,
-        case_title=case.title,
-        n_components=len(case.components),
+        case_name=pool.case.name,
+        case_title=pool.case.title,
+        n_components=len(pool.case.components),
         gradient_cosine=cosine,
         relative_residual=residual,
-        full_train_mse=full_train_mse,
-        full_test_mse=full_test_mse,
-        replicate_train_mse_mean=float(sum(replicate_train_mses) / len(replicate_train_mses)),
-        replicate_test_mse_mean=float(sum(replicate_test_mses) / len(replicate_test_mses)),
+        full_train_mse=pool.full_train_mse,
+        full_test_mse=pool.full_test_mse,
+        replicate_train_mse_mean=mean_or_nan(pool.replicate_train_mses[:n_replicates]),
+        replicate_test_mse_mean=mean_or_nan(pool.replicate_test_mses[:n_replicates]),
+        stationarity_residual_mean=mean_or_nan(pool.stationarity_residuals[: n_replicates + 1]),
         components=component_results,
+    )
+
+
+def run_case(
+    case: GeometryCase,
+    *,
+    train_dataset: TensorDataset,
+    val_dataset: TensorDataset,
+    test_dataset: TensorDataset,
+    input_dim: int,
+    depth: int,
+    width: int,
+    lr: float,
+    max_epochs: int,
+    patience: int,
+    accelerator: str,
+    resample_mode: str,
+    n_replicates: int,
+    sample_fraction: float,
+    estimation_lr: float,
+    estimation_max_epochs: int,
+    estimation_patience: int,
+    p_min: float,
+    p_max: float,
+    seed: int,
+) -> CaseRecovery:
+    pool = collect_case_replicate_pool(
+        case,
+        train_dataset=train_dataset,
+        val_dataset=val_dataset,
+        test_dataset=test_dataset,
+        input_dim=input_dim,
+        depth=depth,
+        width=width,
+        lr=lr,
+        max_epochs=max_epochs,
+        patience=patience,
+        accelerator=accelerator,
+        resample_mode=resample_mode,
+        n_replicates=n_replicates,
+        sample_fraction=sample_fraction,
+        seed=seed,
+    )
+    return recover_case_from_pool(
+        pool,
+        n_replicates=n_replicates,
+        estimation_lr=estimation_lr,
+        estimation_max_epochs=estimation_max_epochs,
+        estimation_patience=estimation_patience,
+        p_min=p_min,
+        p_max=p_max,
     )
 
 
@@ -871,6 +1090,7 @@ def write_component_csv(results: Sequence[CaseRecovery], output_path: Path) -> N
             "full_test_mse": result.full_test_mse,
             "replicate_train_mse_mean": result.replicate_train_mse_mean,
             "replicate_test_mse_mean": result.replicate_test_mse_mean,
+            "stationarity_residual_mean": result.stationarity_residual_mean,
             "label": component.label,
             "family": component.family,
             "true_lambda": component.true_lambda,
