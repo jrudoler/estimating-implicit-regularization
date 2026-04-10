@@ -5,10 +5,10 @@ import lightning.pytorch as pl
 from abc import abstractmethod
 from torch.func import functional_call, grad, vjp
 from torch.optim import Optimizer
-from typing import Dict, Callable, Tuple, Any, Set
+from typing import Dict, Callable, Tuple, Any
 from collections import OrderedDict
 
-from .bias import GradientSquaredPenaltyScale
+from .bias import GradientSquaredPenaltyScale, DiagMatrixRidgeBias
 
 
 class InductiveBiasEstimator(pl.LightningModule):
@@ -155,6 +155,83 @@ class BiasWithMSE(InductiveBiasEstimator):
             targets = targets.view(-1, 1)
         per_example_elements = max(int(predictions[0].numel()), 1)
         return -2 * (targets - predictions) / per_example_elements
+
+
+class BiasWithMSETrajectory(BiasWithMSE):
+    """
+    MSE-based bias estimator for precomputed trajectory observations.
+
+    Expects each training batch to be:
+      - theta_batch: trajectory parameter vectors, shape (m, p)
+      - target_batch: target gradients, shape (m, p)
+
+    For DiagMatrixRidgeBias with diagonal q, predicted gradients are:
+      grad_factor * (q * theta_batch)
+    """
+
+    def __init__(
+        self,
+        bias_model: DiagMatrixRidgeBias,
+        *,
+        grad_factor: float = 2.0,
+        grad_match_loss_fn: Callable[..., torch.Tensor] = F.mse_loss,
+        optimizer_cls: Callable[..., Optimizer] = torch.optim.Adam,
+        lr: float = 1e-2,
+    ) -> None:
+        if grad_factor == 0:
+            raise ValueError("grad_factor must be non-zero.")
+        if not isinstance(bias_model, DiagMatrixRidgeBias):
+            raise TypeError(
+                "BiasWithMSETrajectory expects a DiagMatrixRidgeBias, "
+                f"got {type(bias_model)}."
+            )
+        if bias_model.Q.ndim != 1:
+            raise ValueError(
+                "BiasWithMSETrajectory expects bias_model.Q to be 1D; "
+                f"got shape {tuple(bias_model.Q.shape)}."
+            )
+
+        super().__init__(
+            predictive_model=nn.Identity(),
+            bias_model=bias_model,
+            grad_match_loss_fn=grad_match_loss_fn,
+            optimizer_cls=optimizer_cls,
+            lr=lr,
+        )
+        # Avoid Lightning warnings about modules left in eval mode.
+        self.predictive_model.train()
+        self.grad_factor = float(grad_factor)
+
+    def setup(self, stage: str) -> None:
+        # Trajectory fitting does not depend on predictive-model parameters.
+        return
+
+    def training_step(
+        self, batch: Tuple[torch.Tensor, torch.Tensor], batch_idx: int
+    ) -> torch.Tensor:
+        theta_batch, target_batch = batch
+        if theta_batch.ndim == 1:
+            theta_batch = theta_batch.unsqueeze(0)
+        if target_batch.ndim == 1:
+            target_batch = target_batch.unsqueeze(0)
+        if theta_batch.shape != target_batch.shape:
+            raise ValueError(
+                "theta_batch and target_batch must have matching shapes; "
+                f"got {tuple(theta_batch.shape)} vs {tuple(target_batch.shape)}."
+            )
+        if theta_batch.shape[-1] != self.bias_model.Q.numel():
+            raise ValueError(
+                "Feature dimension must match DiagMatrixRidgeBias dimension; "
+                f"got {theta_batch.shape[-1]} vs {self.bias_model.Q.numel()}."
+            )
+
+        q = self.bias_model.Q.view(1, -1)
+        predicted_grad = self.grad_factor * q * theta_batch
+        loss = self.grad_match_loss_fn(predicted_grad, target_batch, reduction="mean")
+
+        self.log("train_bias/loss", loss, prog_bar=False)
+        self.log("train_bias/q_norm", self.bias_model.Q.detach().norm(), prog_bar=False)
+        return loss
 
 
 class BiasWithBCE(InductiveBiasEstimator):
