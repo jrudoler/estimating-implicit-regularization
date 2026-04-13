@@ -1,11 +1,22 @@
 #!/usr/bin/env python3
 """
-Plot estimated scalar ridge λ̂ vs. GD epochs for linear regression,
-replacing Table 1 in the manuscript.
+Plot estimated scalar ridge λ̂ vs. GD epochs for the linear-regression
+implicit-bias experiment. Replaces Table 1 in the manuscript.
 
-Reproduces the notebook experiment (seed=56, n=1000, p=5, η=0.005)
-at a finer grid of epoch checkpoints and overlays the theoretical
-scalar λ derived from the Q_t matrix.
+Reproduces the notebook setup (seed=56, n=1000, p=5, η=0.005) at a
+finer grid of epoch checkpoints, and shows three quantities:
+
+  1. λ̂_iter      : the empirical gradient-matching estimator obtained
+                   by running BiasWithMSE to convergence
+  2. λ̂_closed   : the same gradient-matching estimator solved
+                   analytically (closed-form OLS — only possible
+                   because RidgeBias has one parameter)
+  3. λ_theory   : tr(Q_t) / p, the theoretical scalar summary of the
+                   implicit-bias matrix Q_t
+
+(1) and (2) optimise the same objective; agreement between them shows
+the iterative estimator converges to the right thing. Agreement with
+(3) shows the empirical estimator recovers the theory it should.
 """
 
 from __future__ import annotations
@@ -20,100 +31,152 @@ import lightning.pytorch as pl
 from lightning.pytorch import Trainer
 from lightning.pytorch.callbacks import EarlyStopping
 
-# ensure src is importable
+# make src importable
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
+from core.utils import compute_Q_matrix          # noqa: E402
+from core.models import LinearRegression          # noqa: E402
+from core.data import FullBatchDataModule         # noqa: E402
+from core.bias import RidgeBias                   # noqa: E402
+from core.estimators import BiasWithMSE           # noqa: E402
 
-from core.models import LinearRegression
-from core.data import FullBatchDataModule
-from core.bias import RidgeBias
-from core.estimators import BiasWithAutodiffLoss
-from core.utils import compute_Q_matrix
 
-
-# ── experiment parameters (match the notebook / paper) ──────────────────
+# ── experiment parameters (match the notebook / paper) ─────────────────
 SEED = 56
 N = 1000
 P = 5
-EPS = 1e-2          # notebook eps
-LR = EPS / 2        # 0.005, the η used by SGD (accounts for factor-of-2 in MSELoss)
-EPOCH_GRID = [5, 10, 20, 50, 100, 150, 200, 300, 500]
+EPS = 1e-2          # notebook eps; effective per-step coefficient on (1/n)X^TX
+LR = EPS / 2        # SGD lr accounts for factor-of-2 in nn.MSELoss
+EPOCH_GRID = [1, 2, 5, 10, 20, 50, 100, 150, 200, 300, 500, 1000]
 
-# ── data generation ─────────────────────────────────────────────────────
-torch.manual_seed(SEED)
-X = torch.randn(N, P)
-betas = 3.0 * torch.randn(P)
-y = X @ betas
-dm = FullBatchDataModule(X, y, num_workers=0)
+# bias-fit hyper-parameters (tuned to converge across the full λ range)
+BIAS_MAX_EPOCHS = 30_000
+BIAS_PATIENCE = 2_000
+BIAS_LR = 0.05      # learning rate on β (log λ)
+BIAS_INIT_BETA = 0.0  # init λ = e^0 = 1; lets log-domain SGD reach
+                      # both ~e^5 (≈150) and ~e^-21 (≈1e-9) ends
 
-# ── theoretical λ from Q_t ──────────────────────────────────────────────
-# The theory: θ_{t+1} = θ_t - (lr) * ∇MSE, where ∇MSE = (2/n)X^T(Xθ-y).
-# So the effective step on (1/n)X^TX is 2*lr = eps.
-# compute_Q_matrix expects eps such that the update rule is θ -= eps*(X^TX/n)*θ + ...
-# so pass eps = 2*LR = EPS.
-theoretical_lambdas = []
-for k in EPOCH_GRID:
-    Q = compute_Q_matrix(X, k=k, eps=EPS)
-    # scalar λ that best summarises Q: λ = tr(Q) / p
-    lam = Q.trace().item() / P
-    theoretical_lambdas.append(lam)
-    print(f"  theory k={k}: tr(Q)/p = {lam:.6g}")
 
-# ── estimated λ̂ at each checkpoint ─────────────────────────────────────
-estimated_lambdas = []
+def fit_lambda_iterative(theta_star: torch.Tensor,
+                          X: torch.Tensor,
+                          y: torch.Tensor,
+                          device: torch.device) -> float:
+    """
+    Run the empirical gradient-matching estimator (BiasWithMSE) on a
+    fixed predictive model whose weight is theta_star, and return the
+    learned scalar λ.
+    """
+    # build a LinearRegression Lightning model and stick theta_star into it
+    model = LinearRegression(input_dim=P, output_dim=1, lr=LR,
+                             fit_intercept=False, init_zeros=True).to(device)
+    with torch.no_grad():
+        model.linear.weight.copy_(theta_star.view(1, -1).to(model.linear.weight))
+    model = model.float()  # Lightning + lightning DM expect float32 by default
 
-for max_ep in EPOCH_GRID:
-    # fresh model each time (init at zero, same as notebook)
-    torch.manual_seed(SEED)
-    lm = LinearRegression(input_dim=P, output_dim=1, lr=LR,
-                          fit_intercept=False, init_zeros=True)
-    trainer = Trainer(
-        max_epochs=max_ep,
-        enable_progress_bar=False,
-        enable_model_summary=False,
-        logger=False,
-        accelerator="auto",
-    )
-    trainer.fit(lm, dm)
+    bias_model = RidgeBias(enforce_positive=True,
+                            init_value=BIAS_INIT_BETA).to(device).float()
 
-    # estimate scalar λ
-    torch.manual_seed(SEED)
-    bias_model = RidgeBias()
-    estimator = BiasWithAutodiffLoss(
-        predictive_model=lm,
+    estimator = BiasWithMSE(
+        predictive_model=model,
         bias_model=bias_model,
-        predictive_loss_fn=nn.functional.mse_loss,
         grad_match_loss_fn=nn.functional.mse_loss,
-        lr=1e-2,
+        lr=BIAS_LR,
         optimizer_cls=torch.optim.Adam,
     )
-    est_trainer = Trainer(
-        max_epochs=5000,
+
+    dm = FullBatchDataModule(X.float().cpu(), y.float().cpu(), num_workers=0)
+
+    trainer = Trainer(
+        max_epochs=BIAS_MAX_EPOCHS,
         enable_progress_bar=False,
         enable_model_summary=False,
         logger=False,
-        callbacks=[EarlyStopping(monitor="train_bias/loss", patience=150, mode="min")],
+        callbacks=[EarlyStopping(monitor="train_bias/loss",
+                                  patience=BIAS_PATIENCE,
+                                  mode="min",
+                                  min_delta=0.0)],
         accelerator="auto",
     )
-    est_trainer.fit(estimator, dm)
+    trainer.fit(estimator, dm)
+    return bias_model.get_bias_params()["scale"]
 
-    lam_hat = estimator.bias_model.get_bias_params()["scale"]
-    estimated_lambdas.append(lam_hat)
-    print(f"epochs={max_ep:>4d}  λ̂={lam_hat:.6g}  λ_theory={theoretical_lambdas[EPOCH_GRID.index(max_ep)]:.6g}")
 
-# ── plot ────────────────────────────────────────────────────────────────
-plt.style.use(str(Path(__file__).resolve().parents[1] / "clean_fig.mplstyle"))
+def main() -> None:
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    torch.set_default_dtype(torch.float64)
+    torch.set_float32_matmul_precision("high")
+    print(f"Running on {device}")
 
-fig, ax = plt.subplots(figsize=(4.5, 3.2))
+    # ── data generation ───────────────────────────────────────────────
+    torch.manual_seed(SEED)
+    X = torch.randn(N, P, dtype=torch.float64)
+    betas = 3.0 * torch.randn(P, dtype=torch.float64)
+    y = X @ betas
+    X_d, y_d = X.to(device), y.to(device)
 
-ax.semilogy(EPOCH_GRID, estimated_lambdas, "o-", color="C0", label=r"Estimated $\hat{\lambda}$")
-ax.semilogy(EPOCH_GRID, theoretical_lambdas, "s--", color="C3", label=r"Theoretical $\mathrm{tr}(Q_t)/p$")
+    # OLS sanity check
+    theta_ols = torch.linalg.lstsq(X_d, y_d.unsqueeze(1)).solution.squeeze()
+    print(f"||θ_OLS - β|| = {(theta_ols - betas.to(device)).norm():.3e}")
 
-ax.set_xlabel("Gradient descent epochs")
-ax.set_ylabel(r"$\hat{\lambda}$")
-ax.legend(frameon=False)
+    # ── replay full-batch GD; cache θ_t at each checkpoint ────────────
+    theta = torch.zeros(P, dtype=torch.float64, device=device)
+    XtX_over_n = X_d.T @ X_d / N
+    Xty_over_n = X_d.T @ y_d / N
 
-out_dir = Path(__file__).resolve().parents[1] / "figures"
-out_dir.mkdir(exist_ok=True)
-fig.savefig(out_dir / "lambda_vs_epochs.pdf")
-print(f"\nSaved → {out_dir / 'lambda_vs_epochs.pdf'}")
-plt.close(fig)
+    thetas, grads = {}, {}
+    for t in range(1, max(EPOCH_GRID) + 1):
+        grad_mse = 2.0 * (XtX_over_n @ theta - Xty_over_n)
+        theta = theta - LR * grad_mse
+        if t in EPOCH_GRID:
+            thetas[t] = theta.clone()
+            grads[t] = grad_mse.clone()
+
+    # ── (2) closed-form λ̂ (exact OLS argmin of grad-match objective) ─
+    closed_lambdas = []
+    for k in EPOCH_GRID:
+        th, g = thetas[k], grads[k]
+        closed_lambdas.append((-th @ g / (2.0 * (th @ th))).item())
+
+    # ── (3) theoretical λ from Q_t ────────────────────────────────────
+    theoretical_lambdas = []
+    for k in EPOCH_GRID:
+        Q = compute_Q_matrix(X_d, k=k, eps=EPS)
+        theoretical_lambdas.append((Q.trace() / P).item())
+
+    # ── (1) iterative λ̂ via BiasWithMSE, run to convergence ──────────
+    iter_lambdas = []
+    for k in EPOCH_GRID:
+        lam_iter = fit_lambda_iterative(thetas[k], X_d, y_d, device)
+        iter_lambdas.append(lam_iter)
+        print(f"  k={k:>4}  λ_iter={lam_iter:.6g}  "
+              f"λ_closed={closed_lambdas[EPOCH_GRID.index(k)]:.6g}  "
+              f"λ_theory={theoretical_lambdas[EPOCH_GRID.index(k)]:.6g}")
+
+    # ── plot ───────────────────────────────────────────────────────────
+    plt.style.use(str(Path(__file__).resolve().parents[1] / "clean_fig.mplstyle"))
+    fig, ax = plt.subplots(figsize=(5.0, 3.4))
+
+    ax.loglog(EPOCH_GRID, iter_lambdas, "o-", color="C0",
+              label=r"Iterative $\hat{\lambda}_t$ (gradient matching)",
+              markersize=6)
+    ax.loglog(EPOCH_GRID, closed_lambdas, "x", color="C2",
+              label=r"Closed-form $\hat{\lambda}_t$",
+              markersize=8, markeredgewidth=1.8)
+    ax.loglog(EPOCH_GRID, theoretical_lambdas, "--", color="C3",
+              label=r"Theoretical $\mathrm{tr}(Q_t)/p$",
+              linewidth=1.5)
+
+    ax.set_xlabel("Gradient descent epochs $t$")
+    ax.set_ylabel(r"Scalar ridge penalty $\hat{\lambda}_t$")
+    ax.legend(frameon=False, loc="lower left", fontsize=10)
+    ax.grid(True, which="both", alpha=0.3)
+
+    out_dir = Path(__file__).resolve().parents[1] / "figures"
+    out_dir.mkdir(exist_ok=True)
+    out_path = out_dir / "lambda_vs_epochs.pdf"
+    fig.savefig(out_path)
+    print(f"\nSaved → {out_path}")
+    plt.close(fig)
+
+
+if __name__ == "__main__":
+    main()
