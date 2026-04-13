@@ -14,6 +14,7 @@ lightning_logs/*
 *checkpoints/*
 dummy/
 notebooks/artifacts/*
+artifacts/
 
 # python extras
 __pycache__/

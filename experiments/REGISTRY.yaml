@@ -83,7 +83,7 @@ experiments:
     sweep: sweeps/elasticnet_sweep_config.yaml
     launcher: scripts/wandb_sweep.slurm
     purpose: "Elastic-net recovery baseline retained for paper context."
-    last_verified: 2026-03-04
+    last_verified: 2026-04-12
 
   - id: gradient_penalty_evaluation
     status: appendix

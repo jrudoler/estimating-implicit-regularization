@@ -15,6 +15,10 @@ Use this file as the default non-manuscript log for autonomous method, implement
 - Added [`experiments/nonlinear_power_retrain_geometry.py`](/home/jrudoler/inductive-bias/experiments/nonlinear_power_retrain_geometry.py) to train nonlinear models under a fixed smoothed-power regularizer, retrain on resamples, and then fit one shared `(lambda, p)` to the stacked collection of solutions and task gradients.
 - Registered the new experiment in [`experiments/REGISTRY.yaml`](/home/jrudoler/inductive-bias/experiments/REGISTRY.yaml).
 
+## 2026-04-12
+
+- Elastic-net recovery: refactored [`experiments/elasticnet_train_and_recover.py`](/home/jrudoler/inductive-bias/experiments/elasticnet_train_and_recover.py) into `run_elasticnet_recovery()` with per-run `seed`, `recovery/log_mult_*` metrics logged to W\&B, and EarlyStopping on `train_bias/loss`. [`sweeps/elasticnet_sweep_config.yaml`](/home/jrudoler/inductive-bias/sweeps/elasticnet_sweep_config.yaml) now includes ten seeds per $(\lambda_1,\lambda_2,\beta)$. Added [`scripts/run_elasticnet_figure_batch.py`](/home/jrudoler/inductive-bias/scripts/run_elasticnet_figure_batch.py) (local CSV) and [`scripts/plot_elasticnet_recovery.py`](/home/jrudoler/inductive-bias/scripts/plot_elasticnet_recovery.py) (2$\times$2 mean/SE PDF). Optional env: `ELASTICNET_FAST`, `ELASTICNET_ULTRA` for shorter epochs.
+
 ## 2026-03-30
 
 - Added [`SmoothedSchattenBias`](/home/jrudoler/inductive-bias/src/core/bias.py) so the same trainable `(lambda, p)` parameterization now covers spectral penalties over singular values, including the smoothed nuclear norm at `p = 1`.

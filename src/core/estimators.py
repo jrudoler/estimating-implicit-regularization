@@ -445,7 +445,6 @@ class BiasWithAutodiffLoss(InductiveBiasEstimator):
             grad_match_loss_fn,
             optimizer_cls,
             lr,
-            bias_model_kwargs,
         )
         self.loss_fn = predictive_loss_fn
 
