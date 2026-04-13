@@ -9,12 +9,15 @@ from __future__ import annotations
 
 import argparse
 import csv
+import math
 from collections import defaultdict
 from pathlib import Path
 
 import matplotlib.pyplot as plt
 import numpy as np
 import seaborn as sns
+
+_LN10 = math.log(10.0)
 
 
 def _load_csv(path: Path) -> list[dict[str, str]]:
@@ -65,7 +68,16 @@ def _load_from_wandb(sweep_id: str, entity_project: str) -> list[dict[str, str]]
 
 def _aggregate(
     rows: list[dict[str, str]], smooth: float
-) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, list[float], list[float]]:
+) -> tuple[
+    np.ndarray,
+    np.ndarray,
+    np.ndarray,
+    np.ndarray,
+    np.ndarray,
+    np.ndarray,
+    list[float],
+    list[float],
+]:
     sub = [
         r
         for r in rows
@@ -83,48 +95,98 @@ def _aggregate(
     li = {v: i for i, v in enumerate(idx)}
     lj = {v: j for j, v in enumerate(cols)}
 
-    buckets: dict[tuple[float, float], list[tuple[float, float]]] = defaultdict(list)
+    buckets: dict[tuple[float, float], list[tuple[float, float, float, float]]] = (
+        defaultdict(list)
+    )
     for r in sub:
         a, b = float(r["true_l1"]), float(r["true_l2"])
-        buckets[(a, b)].append(
-            (float(r["recovery/log_mult_l1"]), float(r["recovery/log_mult_l2"]))
-        )
+        ln1 = float(r["recovery/log_mult_l1"])
+        ln2 = float(r["recovery/log_mult_l2"])
+        h1 = a * math.exp(ln1)
+        h2 = b * math.exp(ln2)
+        buckets[(a, b)].append((ln1, ln2, h1, h2))
 
     mean_l1_mat = np.full((len(idx), len(cols)), np.nan)
     se_l1_mat = np.full((len(idx), len(cols)), np.nan)
     mean_l2_mat = np.full((len(idx), len(cols)), np.nan)
     se_l2_mat = np.full((len(idx), len(cols)), np.nan)
+    mean_hat_l1 = np.full((len(idx), len(cols)), np.nan)
+    mean_hat_l2 = np.full((len(idx), len(cols)), np.nan)
 
     for (a, b), pairs in buckets.items():
         i, j = li[a], lj[b]
-        v1 = np.array([p[0] for p in pairs], dtype=float)
-        v2 = np.array([p[1] for p in pairs], dtype=float)
-        mean_l1_mat[i, j] = float(np.mean(v1))
-        mean_l2_mat[i, j] = float(np.mean(v2))
-        if len(v1) > 1:
-            se_l1_mat[i, j] = float(np.std(v1, ddof=1) / np.sqrt(len(v1)))
-            se_l2_mat[i, j] = float(np.std(v2, ddof=1) / np.sqrt(len(v2)))
+        v1_ln = np.array([p[0] for p in pairs], dtype=float)
+        v2_ln = np.array([p[1] for p in pairs], dtype=float)
+        v1_l10 = v1_ln / _LN10
+        v2_l10 = v2_ln / _LN10
+        mean_l1_mat[i, j] = float(np.mean(v1_l10))
+        mean_l2_mat[i, j] = float(np.mean(v2_l10))
+        mean_hat_l1[i, j] = float(np.mean([p[2] for p in pairs]))
+        mean_hat_l2[i, j] = float(np.mean([p[3] for p in pairs]))
+        if len(v1_ln) > 1:
+            se_l1_mat[i, j] = float(np.std(v1_l10, ddof=1) / np.sqrt(len(v1_l10)))
+            se_l2_mat[i, j] = float(np.std(v2_l10, ddof=1) / np.sqrt(len(v2_l10)))
         else:
             se_l1_mat[i, j] = 0.0
             se_l2_mat[i, j] = 0.0
 
-    return mean_l1_mat, se_l1_mat, mean_l2_mat, se_l2_mat, idx, cols
+    return (
+        mean_l1_mat,
+        se_l1_mat,
+        mean_l2_mat,
+        se_l2_mat,
+        mean_hat_l1,
+        mean_hat_l2,
+        idx,
+        cols,
+    )
 
 
-def _annotate_heatmap(ax: plt.Axes, mat: np.ndarray, fmt: str) -> None:
+def _annotate_mean_panel(
+    ax: plt.Axes, log10_mat: np.ndarray, mean_hat: np.ndarray
+) -> None:
+    n_rows, n_cols = log10_mat.shape
+    for i in range(n_rows):
+        for j in range(n_cols):
+            val = log10_mat[i, j]
+            est = mean_hat[i, j]
+            if not np.isfinite(val) or not np.isfinite(est):
+                continue
+            ax.text(
+                j + 0.5,
+                i + 0.35,
+                f"{val:.1f}",
+                ha="center",
+                va="center",
+                fontsize=11,
+                fontweight="bold",
+                color="black",
+            )
+            ax.text(
+                j + 0.5,
+                i + 0.70,
+                f"({est:.2g})",
+                ha="center",
+                va="center",
+                fontsize=8,
+                color="black",
+            )
+
+
+def _annotate_se_panel(ax: plt.Axes, mat: np.ndarray) -> None:
     n_rows, n_cols = mat.shape
     for i in range(n_rows):
         for j in range(n_cols):
             val = mat[i, j]
-            if np.isnan(val):
+            if not np.isfinite(val):
                 continue
             ax.text(
                 j + 0.5,
                 i + 0.5,
-                format(val, fmt),
+                f"{val:.2f}",
                 ha="center",
                 va="center",
-                fontsize=9,
+                fontsize=10,
                 fontweight="bold",
                 color="black",
             )
@@ -135,6 +197,8 @@ def plot_four_panels(
     se_l1: np.ndarray,
     mean_l2: np.ndarray,
     se_l2: np.ndarray,
+    mean_hat_l1: np.ndarray,
+    mean_hat_l2: np.ndarray,
     idx: list[float],
     cols: list[float],
     out_path: Path,
@@ -142,84 +206,117 @@ def plot_four_panels(
 ) -> None:
     style_path = Path(__file__).resolve().parents[1] / "clean_fig.mplstyle"
     plt.style.use(str(style_path))
-    # Avoid clipped ytick labels on the left panels by managing margins manually.
-    fig, axes = plt.subplots(2, 2, figsize=(11, 8), constrained_layout=False)
+    fig, axes = plt.subplots(2, 2, figsize=(12.5, 9.0), constrained_layout=False)
 
-    vmin = float(np.nanmin([mean_l1, mean_l2]))
-    vmax = float(np.nanmax([mean_l1, mean_l2]))
-    smin = max(float(np.nanmin([se_l1, se_l2])), 0.0)
-    smax = max(float(np.nanmax([se_l1, se_l2])), 1e-9)
+    # Rows: smallest true λ₁ at the top, largest at the bottom (standard heatmap order).
+    mean_l1_d = mean_l1
+    mean_l2_d = mean_l2
+    se_l1_d = se_l1
+    se_l2_d = se_l2
+    mean_hat_l1_d = mean_hat_l1
+    mean_hat_l2_d = mean_hat_l2
+
+    abs_max = float(
+        np.nanmax(
+            np.abs(np.r_[mean_l1_d.ravel(), mean_l2_d.ravel()].astype(float))
+        )
+    )
+    if not np.isfinite(abs_max) or abs_max == 0:
+        abs_max = 1.0
+    mmin, mmax = -abs_max, abs_max
+
+    smin = max(float(np.nanmin([se_l1_d, se_l2_d])), 0.0)
+    smax = max(float(np.nanmax([se_l1_d, se_l2_d])), 1e-9)
 
     xlabels = [f"{c:g}" for c in cols]
     ylabels = [f"{r:g}" for r in idx]
 
-    for ax, data, ttl, cmap, v0, v1, afmt in [
+    x_lab = r"True $\lambda_2$"
+    y_lab = r"True $\lambda_1$"
+
+    # Top row: mean log10 error + dual annotations (notebook style).
+    for ax, data, hat, ttl in [
         (
             axes[0, 0],
-            mean_l1,
-            r"Mean $\log(\hat\lambda_1/\lambda_1)$",
-            "bwr",
-            vmin,
-            vmax,
-            ".1f",
+            mean_l1_d,
+            mean_hat_l1_d,
+            r"Mean $\log_{10}(\hat\lambda_1/\lambda_1)$",
         ),
         (
             axes[0, 1],
-            mean_l2,
-            r"Mean $\log(\hat\lambda_2/\lambda_2)$",
-            "bwr",
-            vmin,
-            vmax,
-            ".1f",
-        ),
-        (
-            axes[1, 0],
-            se_l1,
-            r"SE of $\log(\hat\lambda_1/\lambda_1)$",
-            "viridis",
-            smin,
-            smax,
-            ".2f",
-        ),
-        (
-            axes[1, 1],
-            se_l2,
-            r"SE of $\log(\hat\lambda_2/\lambda_2)$",
-            "viridis",
-            smin,
-            smax,
-            ".2f",
+            mean_l2_d,
+            mean_hat_l2_d,
+            r"Mean $\log_{10}(\hat\lambda_2/\lambda_2)$",
         ),
     ]:
-        center = 0.0 if cmap == "bwr" else None
         hm = sns.heatmap(
             data,
             ax=ax,
-            cmap=cmap,
-            vmin=v0,
-            vmax=v1,
-            center=center,
+            cmap="bwr",
+            vmin=mmin,
+            vmax=mmax,
+            center=0.0,
             cbar=True,
-            cbar_kws={"shrink": 0.9},
+            cbar_kws={"shrink": 0.82, "label": r"$\log_{10}(\hat\lambda/\lambda)$"},
             xticklabels=xlabels,
             yticklabels=ylabels,
             linewidths=0.5,
             linecolor="white",
+            annot=False,
         )
-        _annotate_heatmap(ax, data, afmt)
+        _annotate_mean_panel(ax, data, hat)
         hm.collections[0].colorbar.ax.tick_params(labelsize=10)
-        ax.set_xlabel(r"true $\lambda_2$")
-        ax.set_ylabel(r"true $\lambda_1$")
+        ax.set_xlabel(x_lab)
+        ax.set_ylabel(y_lab)
         ax.set_title(ttl + title_suffix)
         ax.tick_params(axis="x", rotation=45)
         ax.tick_params(axis="y", rotation=0)
-        for tick in ax.get_yticklabels():
-            tick.set_horizontalalignment("right")
-            tick.set_x(-0.02)
+
+    # Bottom row: SE of log10(mean is per-replicate log10 error).
+    for ax, data, ttl in [
+        (
+            axes[1, 0],
+            se_l1_d,
+            r"SE of $\log_{10}(\hat\lambda_1/\lambda_1)$",
+        ),
+        (
+            axes[1, 1],
+            se_l2_d,
+            r"SE of $\log_{10}(\hat\lambda_2/\lambda_2)$",
+        ),
+    ]:
+        hm = sns.heatmap(
+            data,
+            ax=ax,
+            cmap="viridis",
+            vmin=smin,
+            vmax=smax,
+            cbar=True,
+            cbar_kws={"shrink": 0.82},
+            xticklabels=xlabels,
+            yticklabels=ylabels,
+            linewidths=0.5,
+            linecolor="white",
+            annot=False,
+        )
+        _annotate_se_panel(ax, data)
+        hm.collections[0].colorbar.ax.tick_params(labelsize=10)
+        ax.set_xlabel(x_lab)
+        ax.set_ylabel(y_lab)
+        ax.set_title(ttl + title_suffix)
+        ax.tick_params(axis="x", rotation=45)
+        ax.tick_params(axis="y", rotation=0)
 
     out_path.parent.mkdir(parents=True, exist_ok=True)
-    fig.subplots_adjust(left=0.14, right=0.97, bottom=0.10, top=0.93, wspace=0.28, hspace=0.30)
-    fig.savefig(out_path, format="pdf", bbox_inches="tight", pad_inches=0.1)
+    fig.subplots_adjust(
+        left=0.11,
+        right=0.98,
+        bottom=0.12,
+        top=0.90,
+        wspace=0.38,
+        hspace=0.45,
+    )
+    fig.savefig(out_path, format="pdf", bbox_inches="tight", pad_inches=0.15)
     plt.close(fig)
 
 
@@ -248,8 +345,20 @@ def main() -> None:
     else:
         raise SystemExit("Provide --csv or --sweep-id")
 
-    mean_l1, se_l1, mean_l2, se_l2, idx, cols = _aggregate(rows, args.smooth)
-    plot_four_panels(mean_l1, se_l1, mean_l2, se_l2, idx, cols, args.output)
+    mean_l1, se_l1, mean_l2, se_l2, mean_hat_l1, mean_hat_l2, idx, cols = _aggregate(
+        rows, args.smooth
+    )
+    plot_four_panels(
+        mean_l1,
+        se_l1,
+        mean_l2,
+        se_l2,
+        mean_hat_l1,
+        mean_hat_l2,
+        idx,
+        cols,
+        args.output,
+    )
 
 
 if __name__ == "__main__":
