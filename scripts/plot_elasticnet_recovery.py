@@ -142,7 +142,8 @@ def plot_four_panels(
 ) -> None:
     style_path = Path(__file__).resolve().parents[1] / "clean_fig.mplstyle"
     plt.style.use(str(style_path))
-    fig, axes = plt.subplots(2, 2, figsize=(11, 8), constrained_layout=True)
+    # Avoid clipped ytick labels on the left panels by managing margins manually.
+    fig, axes = plt.subplots(2, 2, figsize=(11, 8), constrained_layout=False)
 
     vmin = float(np.nanmin([mean_l1, mean_l2]))
     vmax = float(np.nanmax([mean_l1, mean_l2]))
@@ -212,9 +213,13 @@ def plot_four_panels(
         ax.set_title(ttl + title_suffix)
         ax.tick_params(axis="x", rotation=45)
         ax.tick_params(axis="y", rotation=0)
+        for tick in ax.get_yticklabels():
+            tick.set_horizontalalignment("right")
+            tick.set_x(-0.02)
 
     out_path.parent.mkdir(parents=True, exist_ok=True)
-    fig.savefig(out_path, format="pdf")
+    fig.subplots_adjust(left=0.14, right=0.97, bottom=0.10, top=0.93, wspace=0.28, hspace=0.30)
+    fig.savefig(out_path, format="pdf", bbox_inches="tight", pad_inches=0.1)
     plt.close(fig)
 
 
