@@ -208,13 +208,14 @@ def plot_four_panels(
     plt.style.use(str(style_path))
     fig, axes = plt.subplots(2, 2, figsize=(12.5, 9.0), constrained_layout=False)
 
-    # Rows: smallest true λ₁ at the top, largest at the bottom (standard heatmap order).
-    mean_l1_d = mean_l1
-    mean_l2_d = mean_l2
-    se_l1_d = se_l1
-    se_l2_d = se_l2
-    mean_hat_l1_d = mean_hat_l1
-    mean_hat_l2_d = mean_hat_l2
+    # Rows: smallest true λ₁ at the bottom, largest at the top, so moving up and right
+    # increases both λ₁ and λ₂ (columns are already smallest → largest left to right).
+    mean_l1_d = np.flipud(mean_l1)
+    mean_l2_d = np.flipud(mean_l2)
+    se_l1_d = np.flipud(se_l1)
+    se_l2_d = np.flipud(se_l2)
+    mean_hat_l1_d = np.flipud(mean_hat_l1)
+    mean_hat_l2_d = np.flipud(mean_hat_l2)
 
     abs_max = float(
         np.nanmax(
@@ -229,7 +230,7 @@ def plot_four_panels(
     smax = max(float(np.nanmax([se_l1_d, se_l2_d])), 1e-9)
 
     xlabels = [f"{c:g}" for c in cols]
-    ylabels = [f"{r:g}" for r in idx]
+    ylabels = [f"{r:g}" for r in reversed(idx)]
 
     x_lab = r"True $\lambda_2$"
     y_lab = r"True $\lambda_1$"
