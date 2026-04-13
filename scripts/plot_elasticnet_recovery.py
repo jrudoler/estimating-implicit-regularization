@@ -313,10 +313,28 @@ def plot_four_panels(
         left=0.11,
         right=0.98,
         bottom=0.12,
-        top=0.90,
+        top=0.88,
         wspace=0.38,
         hspace=0.45,
     )
+    # Column headers: λ₁ recovery (left), λ₂ recovery (right), above both rows.
+    for j, col_title in enumerate(
+        (r"$\lambda_1$ recovery", r"$\lambda_2$ recovery")
+    ):
+        ax_top = axes[0, j]
+        pos = ax_top.get_position()
+        x_c = 0.5 * (pos.x0 + pos.x1)
+        y = min(pos.y1 + 0.05, 0.99)
+        fig.text(
+            x_c,
+            y,
+            col_title,
+            ha="center",
+            va="bottom",
+            fontsize=13,
+            fontweight="semibold",
+            transform=fig.transFigure,
+        )
     fig.savefig(out_path, format="pdf", bbox_inches="tight", pad_inches=0.15)
     plt.close(fig)
 
