@@ -14,6 +14,7 @@ from pathlib import Path
 
 import matplotlib.pyplot as plt
 import numpy as np
+import seaborn as sns
 
 
 def _load_csv(path: Path) -> list[dict[str, str]]:
@@ -46,9 +47,18 @@ def _load_from_wandb(sweep_id: str, entity_project: str) -> list[dict[str, str]]
             "recovery/log_mult_l2",
             "recovery/lambda_1_hat",
             "recovery/lambda_2_hat",
+            "bias/theta_1",
+            "bias/theta_2",
         ):
             if k in s:
                 row[k] = str(s[k])
+        # Backward compatibility for older sweeps that only logged theta_1/theta_2.
+        if "recovery/log_mult_l1" not in row and "bias/theta_1" in row and "true_l1" in row:
+            l1_hat = float(np.exp(float(row["bias/theta_1"])))
+            row["recovery/log_mult_l1"] = str(np.log(l1_hat / float(row["true_l1"])))
+        if "recovery/log_mult_l2" not in row and "bias/theta_2" in row and "true_l2" in row:
+            l2_hat = float(np.exp(float(row["bias/theta_2"])))
+            row["recovery/log_mult_l2"] = str(np.log(l2_hat / float(row["true_l2"])))
         rows.append(row)
     return rows
 
@@ -101,6 +111,25 @@ def _aggregate(
     return mean_l1_mat, se_l1_mat, mean_l2_mat, se_l2_mat, idx, cols
 
 
+def _annotate_heatmap(ax: plt.Axes, mat: np.ndarray, fmt: str) -> None:
+    n_rows, n_cols = mat.shape
+    for i in range(n_rows):
+        for j in range(n_cols):
+            val = mat[i, j]
+            if np.isnan(val):
+                continue
+            ax.text(
+                j + 0.5,
+                i + 0.5,
+                format(val, fmt),
+                ha="center",
+                va="center",
+                fontsize=9,
+                fontweight="bold",
+                color="black",
+            )
+
+
 def plot_four_panels(
     mean_l1: np.ndarray,
     se_l1: np.ndarray,
@@ -111,7 +140,9 @@ def plot_four_panels(
     out_path: Path,
     title_suffix: str = "",
 ) -> None:
-    fig, axes = plt.subplots(2, 2, figsize=(10, 8), constrained_layout=True)
+    style_path = Path(__file__).resolve().parents[1] / "clean_fig.mplstyle"
+    plt.style.use(str(style_path))
+    fig, axes = plt.subplots(2, 2, figsize=(11, 8), constrained_layout=True)
 
     vmin = float(np.nanmin([mean_l1, mean_l2]))
     vmax = float(np.nanmax([mean_l1, mean_l2]))
@@ -121,21 +152,66 @@ def plot_four_panels(
     xlabels = [f"{c:g}" for c in cols]
     ylabels = [f"{r:g}" for r in idx]
 
-    for ax, data, ttl, cmap, v0, v1 in [
-        (axes[0, 0], mean_l1, r"Mean $\log(\hat\lambda_1/\lambda_1)$", "viridis", vmin, vmax),
-        (axes[0, 1], mean_l2, r"Mean $\log(\hat\lambda_2/\lambda_2)$", "viridis", vmin, vmax),
-        (axes[1, 0], se_l1, r"SE of $\log(\hat\lambda_1/\lambda_1)$", "magma", smin, smax),
-        (axes[1, 1], se_l2, r"SE of $\log(\hat\lambda_2/\lambda_2)$", "magma", smin, smax),
+    for ax, data, ttl, cmap, v0, v1, afmt in [
+        (
+            axes[0, 0],
+            mean_l1,
+            r"Mean $\log(\hat\lambda_1/\lambda_1)$",
+            "bwr",
+            vmin,
+            vmax,
+            ".1f",
+        ),
+        (
+            axes[0, 1],
+            mean_l2,
+            r"Mean $\log(\hat\lambda_2/\lambda_2)$",
+            "bwr",
+            vmin,
+            vmax,
+            ".1f",
+        ),
+        (
+            axes[1, 0],
+            se_l1,
+            r"SE of $\log(\hat\lambda_1/\lambda_1)$",
+            "viridis",
+            smin,
+            smax,
+            ".2f",
+        ),
+        (
+            axes[1, 1],
+            se_l2,
+            r"SE of $\log(\hat\lambda_2/\lambda_2)$",
+            "viridis",
+            smin,
+            smax,
+            ".2f",
+        ),
     ]:
-        im = ax.imshow(data, aspect="auto", cmap=cmap, vmin=v0, vmax=v1)
-        ax.set_xticks(range(len(cols)))
-        ax.set_xticklabels(xlabels, rotation=45, ha="right")
-        ax.set_yticks(range(len(idx)))
-        ax.set_yticklabels(ylabels)
+        center = 0.0 if cmap == "bwr" else None
+        hm = sns.heatmap(
+            data,
+            ax=ax,
+            cmap=cmap,
+            vmin=v0,
+            vmax=v1,
+            center=center,
+            cbar=True,
+            cbar_kws={"shrink": 0.9},
+            xticklabels=xlabels,
+            yticklabels=ylabels,
+            linewidths=0.5,
+            linecolor="white",
+        )
+        _annotate_heatmap(ax, data, afmt)
+        hm.collections[0].colorbar.ax.tick_params(labelsize=10)
         ax.set_xlabel(r"true $\lambda_2$")
         ax.set_ylabel(r"true $\lambda_1$")
         ax.set_title(ttl + title_suffix)
-        plt.colorbar(im, ax=ax, fraction=0.046)
+        ax.tick_params(axis="x", rotation=45)
+        ax.tick_params(axis="y", rotation=0)
 
     out_path.parent.mkdir(parents=True, exist_ok=True)
     fig.savefig(out_path, format="pdf")
