@@ -9,9 +9,25 @@ Use this file as the default non-manuscript log for autonomous method, implement
 - Promote durable results into a more specific doc in `docs/` when the workstream becomes substantial.
 - For analysis plotting, default to a single `PDF` output unless the user explicitly requests an additional export format.
 
-## 2026-04-21
+## 2026-04-21 (afternoon update)
 
-- Added empirical reproduction of Barrett & Dherin (2022) "Implicit Gradient Regularization" on branch `barrett-igr-reproduction`. New files:
+- Added a Barrett Figure 2 reproduction on the same branch. New files:
+  - [`experiments/barrett_igr_figure2.py`](/home/jrudoler/inductive-bias/experiments/barrett_igr_figure2.py): trains MLPs on MNIST across a grid of (learning_rate, width). For each run, tracks test accuracy per epoch, selects the Barrett-style max-test-acc iterate (train_acc ≥ threshold, fallback to overall max-test-acc if not reached), computes `R_IG = (1/p)·||∇L||²` on the full train set at that iterate, and runs a short flow-ref trajectory estimator from that state to get `λ̂`.
+  - [`analysis/barrett_igr_figure2_plot.py`](/home/jrudoler/inductive-bias/analysis/barrett_igr_figure2_plot.py): produces [`figures/barrett_igr_figure2.pdf`](/home/jrudoler/inductive-bias/figures/barrett_igr_figure2.pdf) with two panels colored by number of parameters — (a) `R_IG vs λ̂`, (b) `test_acc vs λ̂`.
+- Configuration used: 3-layer tanh MLP with widths {32, 64, 128, 256}, learning rates {0.003, 0.01, 0.03, 0.1}, 3 seeds, 20 epochs mini-batch SGD on an 8k MNIST subsample. Estimator probe: 20 full-batch GD steps at training lr with k=30 substep flow reference. Train-acc threshold relaxed to 0.9 (tanh on subsample does not always hit 100%).
+- Results (aggregated over seeds, n=48 runs total):
+  - Clean monotonic trends: within each width, increasing η produces larger `λ̂`, smaller `R_IG`, and higher test accuracy — matches Barrett's Fig 2 qualitatively.
+  - `λ̂/λ_theory` ranges from 0.99 (η=0.003) down to 0.78 (η=0.1), matching our earlier finding that higher-order O(η²) deviations from backward error appear at large η. For all η, `λ̂` is a tight estimate of `λ_theory = η·p/4` up to this η-dependent bias.
+  - **Subtlety found**: at η=0.003, `residual_ratio ≈ 0.995` (fit appears noisy) BUT `λ̂/λ_theory ≈ 0.99` (estimate is accurate). The closed-form projection `(p/2)·⟨Hg, target⟩/⟨Hg, Hg⟩` is robust: the in-direction component of `target` is still `(η/2)·(1-1/k)·Hg` even at small η, but the orthogonal component (floating-point noise in the tiny `Δθ_flow - Δθ_GD` difference) is O(1) relative to target magnitude. `residual_ratio = 1 - R²` reflects the noise floor, not estimator accuracy. Float64 would shrink the noise floor if we need tighter `residual_ratio` values at small η.
+- Theory consistency check (vs. Barrett & Dherin arXiv:2009.11162):
+  - Paper: `λ ≡ hm/4`, `R_IG = (1/m)·||∇E||²`, modified loss `Ẽ = E + λ·R_IG = E + (h/4)·||∇E||²`. Proof sets `f₁ = -(1/2)Hg = -(1/4)∇||∇E||²`.
+  - Our code: `R(θ, λ) = (λ/p)·||∇L||²` with `λ = η·p/4`. Expands to `(η/4)·||∇L||² = (h/4)·||∇E||²`. ✓
+  - Our predicted bias gradient: `(2·λ/p)·Hg = (η/2)·Hg`. Matches `∇R = h/2·Hg` in the paper's notation. ✓
+  - Our flow-ref target: `(Δθ_flow − Δθ_GD)/η ≈ (η/2)·(1−1/k)·Hg`, where the `(1−1/k)` factor comes from the k-substep Euler reference having its own backward error `((η/k)²/2)·Hg` per sub-step. Observed `λ̂/λ_theory` matches `1 − 1/k` at small η. ✓
+  - ReLU failure is *predicted* by the theory — Barrett's proof requires `E` sufficiently differentiable; ReLU kinks violate this.
+- No misspecification found in the prior write-up.
+
+## 2026-04-21
   - [`src/core/igr_trajectory.py`](/home/jrudoler/inductive-bias/src/core/igr_trajectory.py): closed-form scalar-λ fitter for `R = (λ/p)·||∇L||²` and a `compute_full_batch_grad_and_hvp` helper.
   - [`experiments/barrett_igr_trajectory.py`](/home/jrudoler/inductive-bias/experiments/barrett_igr_trajectory.py): single-run trajectory collector with `--mode flow_ref` (GD at η compared to a k-substep near-flow reference) and `--mode sgd` (mini-batch residual target `-Δθ/η - g_full`). Supports `--dataset {synthetic, mnist}` and `--activation {relu, tanh, gelu}` for MNIST MLPs.
   - [`scripts/run_barrett_igr_sweep.py`](/home/jrudoler/inductive-bias/scripts/run_barrett_igr_sweep.py): local sweep driver covering synthetic (η × p × seed) and MNIST (arch × η × seed).

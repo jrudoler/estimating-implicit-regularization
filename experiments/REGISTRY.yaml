@@ -181,6 +181,14 @@ experiments:
     purpose: "Empirical reproduction of Barrett & Dherin (2022) implicit gradient regularization (lambda = eta*p/4) via trajectory-based gradient matching; flow-ref and SGD modes on synthetic OLS and MNIST."
     last_verified: 2026-04-21
 
+  - id: barrett_igr_figure2
+    status: active
+    entrypoint: experiments/barrett_igr_figure2.py
+    sweep: null
+    launcher: null
+    purpose: "Reproduction of Barrett & Dherin (2022) Figure 2: R_IG and test accuracy vs. estimated lambda across (learning_rate x width) MLP grid on MNIST, using our trajectory estimator for lambda."
+    last_verified: 2026-04-21
+
 deprecated_assets:
   - path: experiments/implicit_reg_sweep.slurm
     replacement: scripts/wandb_sweep.slurm
