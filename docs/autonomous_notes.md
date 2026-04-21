@@ -9,6 +9,10 @@ Use this file as the default non-manuscript log for autonomous method, implement
 - Promote durable results into a more specific doc in `docs/` when the workstream becomes substantial.
 - For analysis plotting, default to a single `PDF` output unless the user explicitly requests an additional export format.
 
+## 2026-04-20
+
+- Updated [`notebooks/method-vis.ipynb`](/home/jrudoler/inductive-bias/notebooks/method-vis.ipynb) with torch-based regression loss visualizations for the gradient-step-deviation section: the contour cell now follows a short minibatch trajectory and, at each iterate, overlays both the recomputed full-batch and minibatch autograd steps on the full-batch MSE landscape; the following 3D surface cell reuses the same multi-step trajectory on the full-batch loss surface.
+
 ## 2026-03-27
 
 - Added [`SmoothedPowerBias`](/home/jrudoler/inductive-bias/src/core/bias.py) for the family `R_p(theta) = lambda * sum_j (theta_j^2 + epsilon)^(p/2)` with optional trainable `lambda` and trainable global exponent `p`.
