@@ -9,6 +9,25 @@ Use this file as the default non-manuscript log for autonomous method, implement
 - Promote durable results into a more specific doc in `docs/` when the workstream becomes substantial.
 - For analysis plotting, default to a single `PDF` output unless the user explicitly requests an additional export format.
 
+## 2026-04-21
+
+- Added empirical reproduction of Barrett & Dherin (2022) "Implicit Gradient Regularization" on branch `barrett-igr-reproduction`. New files:
+  - [`src/core/igr_trajectory.py`](/home/jrudoler/inductive-bias/src/core/igr_trajectory.py): closed-form scalar-λ fitter for `R = (λ/p)·||∇L||²` and a `compute_full_batch_grad_and_hvp` helper.
+  - [`experiments/barrett_igr_trajectory.py`](/home/jrudoler/inductive-bias/experiments/barrett_igr_trajectory.py): single-run trajectory collector with `--mode flow_ref` (GD at η compared to a k-substep near-flow reference) and `--mode sgd` (mini-batch residual target `-Δθ/η - g_full`). Supports `--dataset {synthetic, mnist}` and `--activation {relu, tanh, gelu}` for MNIST MLPs.
+  - [`scripts/run_barrett_igr_sweep.py`](/home/jrudoler/inductive-bias/scripts/run_barrett_igr_sweep.py): local sweep driver covering synthetic (η × p × seed) and MNIST (arch × η × seed).
+  - [`analysis/barrett_igr_plot.py`](/home/jrudoler/inductive-bias/analysis/barrett_igr_plot.py): produces [`figures/barrett_igr_reproduction.pdf`](/home/jrudoler/inductive-bias/figures/barrett_igr_reproduction.pdf).
+- Target form used is `(Δθ_flow − Δθ_GD)/η`, not `(Δθ_GD − Δθ_flow)/η`. Derivation: a single GD step is `−η·g` exactly; one true-flow step over time η is `−η·g + (η²/2)·Hg + O(η³)`; dividing the gap by η gives `(η/2)·Hg`, which equals `∇R` at Barrett's `λ = η·p/4`. First smoke test had the sign flipped and produced `λ̂ ≈ −η·p/4` — fixed.
+- Finite-substep bias: k sub-steps of size η/k accumulate their own `O(h²)` Euler error. The per-unit-time gap becomes `(η/2)·(1 − 1/k)·Hg`, so `λ̂ ≈ (ηp/4)·(1 − 1/k)`. Observed ratios across the synthetic sweep match this precisely (k=100 ⇒ ratio ≈ 0.989; k=10 ⇒ ratio ≈ 0.90). No additional correction applied in code; document the bias and use large k where affordable.
+- Empirical findings (synthetic OLS, `n=1000`, `p ∈ {5,10,20}`, `η ∈ {1e-3, 3e-3, 1e-2, 3e-2}`, `k=100`, 3 seeds, 300 GD steps):
+  - Flow-ref recovers `λ = ηp/4` with ratio ≈ 0.99 at small η, ≈ 0.97 at η = 0.03 (higher-order `O(η²)` terms). Residual ratio `||target − predicted||/||target|| ≤ 0.003` everywhere. Seed-to-seed variance < 0.001 in the ratio.
+  - SGD mode (B ∈ {32, 128}, 400 steps): per-step residual `target = g_batch − g_full` is pure mini-batch sampling noise, orthogonal to `Hg` in expectation. Linear regression of target on `Hg` yields `residual_ratio ≈ 1` and sign-flipping λ̂ across seeds. **Conclusion:** single-step SGD residuals do NOT expose Barrett's IGR directly; they expose batch-sampling noise. To extract Barrett's effect from SGD would require epoch-averaged targets plus a noise-covariance model, out of scope for this reproduction.
+- Empirical findings (MNIST, `n=2000 subsample`, hidden `[64,32]`, η ∈ {3e-4, 1e-3, 3e-3}, k=10, 2 seeds, 30 steps):
+  - Linear logistic regression: ratio ≈ 0.895, residual_ratio ≤ 0.015.
+  - Tanh MLP: ratio ≈ 0.900, residual_ratio ≤ 0.004. Matches 1 − 1/k = 0.9 exactly.
+  - ReLU MLP: ratio ranges over 0.90–1.38 with residual_ratio ≈ 0.99 (fit explains ~nothing). The ReLU kinks break the backward-error smoothness assumption: the coarse GD step and the k-substep reference can cross different activation boundaries, and the resulting `(Δθ_flow − Δθ_GD)` is no longer aligned with `(η/2)·Hg`. Moral: Barrett's IGR formula applies cleanly to smooth losses/architectures; piecewise-linear activations violate the assumption.
+- Limitations / next steps: (i) MNIST runs used `n=2000` subsample and `k=10` for CPU budget; bump to full 60k and `k ≥ 50` on GPU for a paper-grade figure; (ii) no formal uncertainty quantification on the fit (variance-of-ratio is tiny empirically but not bootstrapped); (iii) SGD residual framing is worth a separate deeper pass — possibly compare epoch-averaged `Δθ_SGD` to a flow reference; (iv) pre-existing `GradientSquaredPenaltyEstimator` in [`src/core/estimators.py`](/home/jrudoler/inductive-bias/src/core/estimators.py) uses the *analytic* `(η/2)·Hg` target; the new trajectory fitter complements it by using the observed `Δθ_flow − Δθ_GD`.
+- Registered as `barrett_igr_trajectory` in [`experiments/REGISTRY.yaml`](/home/jrudoler/inductive-bias/experiments/REGISTRY.yaml).
+
 ## 2026-04-20
 
 - Updated [`notebooks/method-vis.ipynb`](/home/jrudoler/inductive-bias/notebooks/method-vis.ipynb) with torch-based regression loss visualizations for the gradient-step-deviation section: the contour cell now follows a short minibatch trajectory and, at each iterate, overlays both the recomputed full-batch and minibatch autograd steps on the full-batch MSE landscape; the following 3D surface cell reuses the same multi-step trajectory on the full-batch loss surface.

@@ -2,7 +2,7 @@
 # status values: active | legacy | appendix | deprecated
 # Keep this file up to date when adding/removing experiments.
 
-updated_at: 2026-03-27
+updated_at: 2026-04-21
 
 experiments:
   - id: dropout_bias_estimation
@@ -172,6 +172,14 @@ experiments:
     launcher: scripts/nonlinear_multi_geometry_replicate_ablation.slurm
     purpose: "Measure geometry recovery as the number of bootstrap retrains increases, reusing one large replicate pool per case."
     last_verified: 2026-03-30
+
+  - id: barrett_igr_trajectory
+    status: active
+    entrypoint: experiments/barrett_igr_trajectory.py
+    sweep: null
+    launcher: scripts/run_barrett_igr_sweep.py
+    purpose: "Empirical reproduction of Barrett & Dherin (2022) implicit gradient regularization (lambda = eta*p/4) via trajectory-based gradient matching; flow-ref and SGD modes on synthetic OLS and MNIST."
+    last_verified: 2026-04-21
 
 deprecated_assets:
   - path: experiments/implicit_reg_sweep.slurm
