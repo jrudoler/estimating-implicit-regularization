@@ -37,6 +37,7 @@ if str(REPO_ROOT) not in sys.path:
 from core.igr_trajectory import (
     compute_full_batch_grad_and_hvp,
     fit_igr_lambda_closed_form,
+    integrate_gradient_flow_rk4,
 )
 
 
@@ -93,6 +94,15 @@ def parse_args() -> argparse.Namespace:
         type=int,
         default=20,
         help="Number of sub-steps for the near-flow reference (flow_ref mode).",
+    )
+    parser.add_argument(
+        "--reference-method",
+        choices=("euler", "rk4"),
+        default="rk4",
+        help="Method for the near-flow reference. 'rk4' (recommended) gives "
+        "O(h^5) local error per substep and avoids the k-Euler 'two-Euler "
+        "tautology' artifact where the reference and primary trajectories "
+        "are both Euler discretizations.",
     )
     parser.add_argument(
         "--batch-size",
@@ -249,12 +259,23 @@ def run_flow_ref(
         theta_before = theta.clone()
 
         if t in cp_set:
-            # Reference: k sub-steps from theta_before
-            ref_model = copy.deepcopy(model)
-            sub_h = args.eta / args.flow_k
-            for _ in range(args.flow_k):
-                full_batch_grad_step(ref_model, loss_fn, features, targets, sub_h)
-            theta_after_flow = flat_params(ref_model)
+            # Near-flow reference from theta_before over time eta.
+            if args.reference_method == "rk4":
+                theta_after_flow = integrate_gradient_flow_rk4(
+                    model,
+                    loss_fn,
+                    features,
+                    targets,
+                    theta_before,
+                    t_end=args.eta,
+                    n_steps=args.flow_k,
+                )
+            else:  # euler
+                ref_model = copy.deepcopy(model)
+                sub_h = args.eta / args.flow_k
+                for _ in range(args.flow_k):
+                    full_batch_grad_step(ref_model, loss_fn, features, targets, sub_h)
+                theta_after_flow = flat_params(ref_model)
 
             # Compute full-batch grad and Hg at theta_before.
             flat_grad, flat_hvp = compute_full_batch_grad_and_hvp(

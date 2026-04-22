@@ -112,3 +112,126 @@ def compute_full_batch_grad_and_hvp(
     )
     flat_hvp = torch.cat([h.reshape(-1) for h in hvp_tensors])
     return flat_grad.detach(), flat_hvp.detach()
+
+
+def _compute_flat_grad_at(
+    model: torch.nn.Module,
+    loss_fn: torch.nn.Module,
+    features: Tensor,
+    targets: Tensor,
+    flat_theta: Tensor,
+) -> Tensor:
+    """Evaluate flat grad L at a specified flat parameter vector without
+    mutating the caller's model. Uses functional_call so the model's own
+    parameters are untouched."""
+    from collections import OrderedDict
+    from torch.func import functional_call
+
+    # Rebuild the structured param dict from the flat vector.
+    param_dict: OrderedDict[str, Tensor] = OrderedDict()
+    offset = 0
+    for name, p in model.named_parameters():
+        n = p.numel()
+        chunk = flat_theta[offset : offset + n].view(p.shape)
+        param_dict[name] = chunk.detach().clone().requires_grad_(True)
+        offset += n
+
+    predictions = functional_call(model, param_dict, (features,))
+    loss = loss_fn(predictions, targets)
+    grads = torch.autograd.grad(loss, tuple(param_dict.values()))
+    return torch.cat([g.reshape(-1) for g in grads]).detach()
+
+
+def _compute_flat_hg_at(
+    model: torch.nn.Module,
+    loss_fn: torch.nn.Module,
+    features: Tensor,
+    targets: Tensor,
+    flat_theta: Tensor,
+) -> tuple[Tensor, Tensor]:
+    """Flat (grad, H@grad) at a specified flat parameter vector, without
+    mutating the caller's model."""
+    from collections import OrderedDict
+    from torch.func import functional_call
+
+    param_dict: OrderedDict[str, Tensor] = OrderedDict()
+    offset = 0
+    for name, p in model.named_parameters():
+        n = p.numel()
+        chunk = flat_theta[offset : offset + n].view(p.shape)
+        param_dict[name] = chunk.detach().clone().requires_grad_(True)
+        offset += n
+
+    predictions = functional_call(model, param_dict, (features,))
+    loss = loss_fn(predictions, targets)
+    params_tuple = tuple(param_dict.values())
+    grads = torch.autograd.grad(loss, params_tuple, create_graph=True)
+    flat_grad = torch.cat([g.reshape(-1) for g in grads])
+    hvp_tensors = torch.autograd.grad(
+        grads, params_tuple, grad_outputs=grads, retain_graph=False
+    )
+    flat_hvp = torch.cat([h.reshape(-1) for h in hvp_tensors])
+    return flat_grad.detach(), flat_hvp.detach()
+
+
+def integrate_gradient_flow_rk4(
+    model: torch.nn.Module,
+    loss_fn: torch.nn.Module,
+    features: Tensor,
+    targets: Tensor,
+    theta0: Tensor,
+    t_end: float,
+    n_steps: int,
+) -> Tensor:
+    """Fixed-step RK4 integration of gradient flow dtheta/dt = -grad L(theta).
+
+    Returns theta(t_end). Does not mutate the model's own parameters.
+    Local error O(h^5), global O(h^4) where h = t_end/n_steps, so even modest
+    n_steps gives a reference trajectory essentially indistinguishable from
+    the true ODE solution at the scales we care about (h << 1).
+    """
+    if n_steps < 1:
+        raise ValueError("n_steps must be >= 1 for RK4 integration.")
+    h = t_end / n_steps
+    theta = theta0.detach().clone()
+    for _ in range(n_steps):
+        k1 = -_compute_flat_grad_at(model, loss_fn, features, targets, theta)
+        k2 = -_compute_flat_grad_at(model, loss_fn, features, targets, theta + 0.5 * h * k1)
+        k3 = -_compute_flat_grad_at(model, loss_fn, features, targets, theta + 0.5 * h * k2)
+        k4 = -_compute_flat_grad_at(model, loss_fn, features, targets, theta + h * k3)
+        theta = theta + (h / 6.0) * (k1 + 2.0 * k2 + 2.0 * k3 + k4)
+    return theta
+
+
+def integrate_modified_flow_rk4(
+    model: torch.nn.Module,
+    loss_fn: torch.nn.Module,
+    features: Tensor,
+    targets: Tensor,
+    theta0: Tensor,
+    t_end: float,
+    n_steps: int,
+    eta: float,
+) -> Tensor:
+    """Fixed-step RK4 integration of the Barrett-modified flow
+        dtheta/dt = -grad L(theta) - (eta/2) * H(theta) @ grad L(theta).
+
+    This is the ODE whose trajectory Barrett & Dherin (2021) predict GD with
+    step size eta follows to O(eta^2) per step. Returns theta(t_end).
+    """
+    if n_steps < 1:
+        raise ValueError("n_steps must be >= 1 for RK4 integration.")
+    h = t_end / n_steps
+
+    def drift(th: Tensor) -> Tensor:
+        g, hg = _compute_flat_hg_at(model, loss_fn, features, targets, th)
+        return -g - 0.5 * eta * hg
+
+    theta = theta0.detach().clone()
+    for _ in range(n_steps):
+        k1 = drift(theta)
+        k2 = drift(theta + 0.5 * h * k1)
+        k3 = drift(theta + 0.5 * h * k2)
+        k4 = drift(theta + h * k3)
+        theta = theta + (h / 6.0) * (k1 + 2.0 * k2 + 2.0 * k3 + k4)
+    return theta

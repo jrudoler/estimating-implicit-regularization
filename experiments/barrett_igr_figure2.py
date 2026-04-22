@@ -39,6 +39,7 @@ if str(REPO_ROOT) not in sys.path:
 from core.igr_trajectory import (
     compute_full_batch_grad_and_hvp,
     fit_igr_lambda_closed_form,
+    integrate_gradient_flow_rk4,
 )
 
 
@@ -85,7 +86,13 @@ def parse_args() -> argparse.Namespace:
         default=30,
         help="Number of full-batch GD steps to run from max-test-acc state for the lambda estimator.",
     )
-    parser.add_argument("--flow-k", type=int, default=50)
+    parser.add_argument("--flow-k", type=int, default=20)
+    parser.add_argument(
+        "--reference-method",
+        choices=("euler", "rk4"),
+        default="rk4",
+        help="Method for the near-flow reference in the lambda_hat probe.",
+    )
     parser.add_argument(
         "--estimator-eta",
         type=float,
@@ -188,6 +195,7 @@ def estimate_lambda_flow_ref(
     eta: float,
     num_steps: int,
     flow_k: int,
+    reference_method: str = "rk4",
 ) -> dict:
     """Run num_steps full-batch GD steps from current model state, collecting
     flow-ref (Δθ_flow - Δθ_GD)/η targets. Fit scalar λ in closed form."""
@@ -198,14 +206,23 @@ def estimate_lambda_flow_ref(
     for t in range(1, num_steps + 1):
         theta_before = flat_params(model)
 
-        # Reference: k substeps of h = eta/k from theta_before on a clone.
-        ref_model = copy.deepcopy(model)
-        sub_h = eta / flow_k
-        for _ in range(flow_k):
-            full_batch_gd_step(ref_model, loss_fn, features, targets, sub_h)
-        theta_after_flow = flat_params(ref_model)
+        if reference_method == "rk4":
+            theta_after_flow = integrate_gradient_flow_rk4(
+                model,
+                loss_fn,
+                features,
+                targets,
+                theta_before,
+                t_end=eta,
+                n_steps=flow_k,
+            )
+        else:  # euler
+            ref_model = copy.deepcopy(model)
+            sub_h = eta / flow_k
+            for _ in range(flow_k):
+                full_batch_gd_step(ref_model, loss_fn, features, targets, sub_h)
+            theta_after_flow = flat_params(ref_model)
 
-        # Hvp at theta_before.
         flat_grad, flat_hvp = compute_full_batch_grad_and_hvp(
             model, loss_fn, features, targets
         )
@@ -361,6 +378,7 @@ def run_one(
         eta=est_eta,
         num_steps=args.estimator_steps,
         flow_k=args.flow_k,
+        reference_method=args.reference_method,
     )
 
     return {
