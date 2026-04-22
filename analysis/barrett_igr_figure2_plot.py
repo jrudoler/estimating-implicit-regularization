@@ -58,8 +58,6 @@ def main() -> None:
     etas = np.array([r["eta"] for r in results], dtype=float)
     residuals = np.array([r["residual_ratio"] for r in results], dtype=float)
 
-    reg_value = xs * r_ig  # lambda_hat * R_IG = value of implicit regularizer in modified loss
-
     unique_params = sorted(np.unique(num_params).tolist())
     cmap = plt.get_cmap("viridis")
     param_to_color = {
@@ -67,7 +65,7 @@ def main() -> None:
         for i, m in enumerate(unique_params)
     }
 
-    fig, axes = plt.subplots(1, 3, figsize=(15, 4.5))
+    fig, axes = plt.subplots(1, 2, figsize=(11, 4.5))
 
     # Panel (a): R_IG vs lambda
     for m in unique_params:
@@ -115,30 +113,6 @@ def main() -> None:
     axes[1].legend(title="# params", loc="lower right", fontsize=8, frameon=False)
     axes[1].grid(True, which="both", alpha=0.25)
 
-    # Panel (c): test accuracy vs lambda * R_IG (value of the implicit regularizer
-    # at the max-test-acc iterate, per Barrett's modified loss Etilde = E + lambda*R_IG).
-    # Addresses the confound that (a)+(b) could be explained entirely by test_acc ~ 1/R_IG.
-    for m in unique_params:
-        mask = num_params == m
-        order = np.argsort(reg_value[mask])
-        axes[2].plot(
-            reg_value[mask][order],
-            test_acc[mask][order] * 100,
-            marker="o",
-            linestyle="--",
-            color=param_to_color[m],
-            label=f"{m}",
-            markersize=6,
-            alpha=0.85,
-            linewidth=1.0,
-        )
-    axes[2].set_xscale("log")
-    axes[2].set_xlabel(r"$\hat{\lambda} \cdot R_{IG}$  (implicit reg. term value)")
-    axes[2].set_ylabel("test accuracy (%)")
-    axes[2].set_title(r"(c) Test accuracy vs $\hat{\lambda} \cdot R_{IG}$")
-    axes[2].legend(title="# params", loc="lower right", fontsize=8, frameon=False)
-    axes[2].grid(True, which="both", alpha=0.25)
-
     config = payload.get("config", {})
     activation = config.get("activation", "?")
     train_samples = config.get("train_samples", "?")
@@ -155,7 +129,6 @@ def main() -> None:
     print(
         f"Data: n_runs={len(results)}, lambda_hat range=[{xs.min():.3g}, {xs.max():.3g}], "
         f"R_IG range=[{r_ig.min():.3g}, {r_ig.max():.3g}], "
-        f"lambda*R_IG range=[{reg_value.min():.3g}, {reg_value.max():.3g}], "
         f"test_acc range=[{test_acc.min():.3f}, {test_acc.max():.3f}], "
         f"median residual_ratio={np.median(residuals):.3f}"
     )

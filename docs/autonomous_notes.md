@@ -9,6 +9,15 @@ Use this file as the default non-manuscript log for autonomous method, implement
 - Promote durable results into a more specific doc in `docs/` when the workstream becomes substantial.
 - For analysis plotting, default to a single `PDF` output unless the user explicitly requests an additional export format.
 
+## 2026-04-22
+
+- **Upgraded the flow-reference trajectory estimator from k-substep Euler to RK4.** The previous k-Euler reference was a hidden tautology: both sides of `(Δθ_flow − Δθ_GD)/η` were Euler discretizations, so Taylor arithmetic forced the `(1 − 1/k)·(η/2)·Hg` result regardless of whether Barrett's physical interpretation was correct. RK4 (implemented in `src/core/igr_trajectory.py::integrate_gradient_flow_rk4`) has O(h^5) local error, so the reference is essentially the true gradient-flow ODE solution. The comparison now *measures* the Euler-vs-true-flow deviation rather than computing it algebraically. Smoke test with synthetic p=5, η=0.01, flow-k=20: Euler gives ratio 0.944 (matches 1 − 1/20 = 0.95 Euler artifact); RK4 gives ratio 0.993 (no 1/k bias; residual 0.7% is honest O(η²) higher-order backward-error). Both `experiments/barrett_igr_trajectory.py` and `experiments/barrett_igr_figure2.py` now accept `--reference-method {euler, rk4}` with `rk4` as default.
+- **Added a non-tautological long-horizon test** in `experiments/barrett_igr_long_horizon.py`. From a shared θ₀, compute three trajectories: (i) discrete GD at step η, (ii) original-loss gradient flow via RK4, (iii) modified-loss flow `θ̇ = −∇L − (η/2)·Hg` via RK4, all sampled at t = k·η. Barrett's Thm 3.1 predicts trajectory (i) tracks (iii) to O(η²) per step while diverging from (ii) by O(η) per step. The test is empirically substantive: the per-step Taylor identity is forced by smoothness, but whether the modified loss's long-horizon integrability actually matches GD's accumulated path is a real theorem that can fail.
+  - **Result on synthetic OLS** (p=10, n=500, N=50 steps): at η=0.01 drift_mod / drift_orig = **0.014**; at η=0.03 ratio = 0.038 (η²-scaling visible). Modified flow tracks GD ≈ 70× better than original flow.
+  - **Result on MNIST tanh MLP** (hidden [64,32], n=2000, N=30): ratio = **0.011** — modified flow tracks GD ≈ 90× better.
+  - **Contrast: MNIST ReLU MLP**: ratio = **0.914** — modified flow barely improves over original flow. ReLU non-smoothness invalidates Barrett's backward-error analysis; the predicted correction `(η/2)·Hg` does not capture GD's deviation from gradient flow when activation kinks are crossed between iterates. This matches (and extends) our earlier finding that the single-step flow-ref estimator's residual_ratio ≈ 1 for ReLU.
+  - Figure: `figures/barrett_igr_long_horizon.pdf`. Plot script `analysis/barrett_igr_long_horizon_plot.py`.
+
 ## 2026-04-21 (afternoon update)
 
 - Added a Barrett Figure 2 reproduction on the same branch. New files:

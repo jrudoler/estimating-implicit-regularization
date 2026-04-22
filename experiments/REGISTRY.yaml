@@ -2,7 +2,7 @@
 # status values: active | legacy | appendix | deprecated
 # Keep this file up to date when adding/removing experiments.
 
-updated_at: 2026-04-21
+updated_at: 2026-04-22
 
 experiments:
   - id: dropout_bias_estimation
@@ -187,7 +187,15 @@ experiments:
     sweep: null
     launcher: null
     purpose: "Reproduction of Barrett & Dherin (2022) Figure 2: R_IG and test accuracy vs. estimated lambda across (learning_rate x width) MLP grid on MNIST, using our trajectory estimator for lambda."
-    last_verified: 2026-04-21
+    last_verified: 2026-04-22
+
+  - id: barrett_igr_long_horizon
+    status: active
+    entrypoint: experiments/barrett_igr_long_horizon.py
+    sweep: null
+    launcher: null
+    purpose: "Non-tautological trajectory-tracking test of Barrett Thm 3.1: compares discrete GD to RK4-integrated original-loss and modified-loss flows over many steps, measuring accumulated drift."
+    last_verified: 2026-04-22
 
 deprecated_assets:
   - path: experiments/implicit_reg_sweep.slurm
