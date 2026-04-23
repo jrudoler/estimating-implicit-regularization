@@ -12,6 +12,12 @@ from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 PAPER_FIGURES_DIR = REPO_ROOT / "paper" / "figures"
+DEFAULT_BARRETT_LONG_HORIZON_RESULTS = [
+    REPO_ROOT / "results" / "barrett_igr_lh_synth_eta001.pt",
+    REPO_ROOT / "results" / "barrett_igr_lh_synth_eta003.pt",
+    REPO_ROOT / "results" / "barrett_igr_lh_mnist_tanh_eta001.pt",
+    REPO_ROOT / "results" / "barrett_igr_lh_mnist_relu_eta001.pt",
+]
 
 
 @dataclass(frozen=True)
@@ -126,7 +132,7 @@ def build_barrett_long_horizon(
     results_paths: list[Path] | None,
     dry_run: bool,
 ) -> None:
-    resolved = results_paths or [REPO_ROOT / "results" / "barrett_igr_long_horizon.pt"]
+    resolved = results_paths or DEFAULT_BARRETT_LONG_HORIZON_RESULTS
     missing = [path for path in resolved if not path.exists()]
     if missing:
         raise FileNotFoundError(
