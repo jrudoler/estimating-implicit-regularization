@@ -34,17 +34,11 @@ FIGURE_ASSETS: dict[str, FigureAsset] = {
         default_out=PAPER_FIGURES_DIR / "tradeoff-vis.png",
         provenance="Preserved manuscript asset derived from notebooks/method-vis.ipynb.",
     ),
-    "dropout_bias_ridge_panel": FigureAsset(
-        figure_id="dropout_bias_ridge_panel",
-        source=PAPER_FIGURES_DIR / "dropout_bias_ridge_panel.png",
-        default_out=PAPER_FIGURES_DIR / "dropout_bias_ridge_panel.png",
-        provenance="Preserved manuscript asset with notebook lineage in notebooks/l2_estimation_deep_ReLU.ipynb.",
-    ),
     "OLS_early_stopping_figure": FigureAsset(
         figure_id="OLS_early_stopping_figure",
         source=PAPER_FIGURES_DIR / "OLS_early_stopping_figure.pdf",
         default_out=PAPER_FIGURES_DIR / "OLS_early_stopping_figure.pdf",
-        provenance="Preserved manuscript asset; exact active generator is not standardized in this cleanup pass.",
+        provenance="Preserved manuscript asset assembled externally from automated OLS component figures.",
     ),
     "radial_sine_function_data_2d": FigureAsset(
         figure_id="radial_sine_function_data_2d",

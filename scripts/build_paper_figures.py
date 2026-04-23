@@ -30,9 +30,9 @@ FIGURE_TASKS: tuple[FigureTask, ...] = (
     FigureTask("tradeoff-vis", "Preserved manuscript asset with notebook provenance."),
     FigureTask("sgd-vs-full-batch", "Notebook-derived asset exported from notebooks/method-vis.ipynb."),
     FigureTask("elasticnet_recovery_mean_se", "Experiment + plot script figure."),
-    FigureTask("OLS_early_stopping_figure", "Preserved manuscript asset."),
+    FigureTask("OLS_early_stopping_figure", "Preserved manuscript asset plus automated component figures."),
     FigureTask("lambda_vs_epochs", "Script-generated OLS early-stopping figure."),
-    FigureTask("dropout_bias_ridge_panel", "Notebook-lineage figure preserved as a manuscript asset."),
+    FigureTask("dropout_bias_ridge_panel", "W&B-sweep-derived notebook figure."),
     FigureTask("barrett_igr_figure2", "Experiment + plot script figure."),
     FigureTask("barrett_igr_long_horizon", "Experiment + plot script figure."),
 )
@@ -50,8 +50,20 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--elasticnet-csv",
         type=Path,
-        default=REPO_ROOT / "artifacts" / "elasticnet_runs.csv",
-        help="CSV prerequisite for scripts/plot_elasticnet_recovery.py.",
+        default=None,
+        help="Optional local CSV prerequisite for scripts/plot_elasticnet_recovery.py.",
+    )
+    parser.add_argument(
+        "--elasticnet-sweep-id",
+        type=str,
+        default="9a7ll8aa",
+        help="W&B sweep id for the multi-seed beta=1e-3 elastic-net recovery figure.",
+    )
+    parser.add_argument(
+        "--elasticnet-entity-project",
+        type=str,
+        default="jhrudoler-penn/inductive-bias",
+        help="entity/project for the full elastic-net recovery W&B sweep.",
     )
     parser.add_argument(
         "--barrett-igr-figure2-results",
@@ -65,6 +77,24 @@ def parse_args() -> argparse.Namespace:
         nargs="*",
         default=None,
         help="One or more .pt files from experiments/barrett_igr_long_horizon.py.",
+    )
+    parser.add_argument(
+        "--dropout-sweep-id",
+        type=str,
+        default="chiy2qjz",
+        help="W&B sweep id for the dropout ridge panel figure.",
+    )
+    parser.add_argument(
+        "--wandb-entity",
+        type=str,
+        default="jhrudoler-penn",
+        help="W&B entity for notebook-backed sweep figures.",
+    )
+    parser.add_argument(
+        "--wandb-project",
+        type=str,
+        default="inductive-bias",
+        help="W&B project for notebook-backed sweep figures.",
     )
     parser.add_argument("--dry-run", action="store_true")
     return parser.parse_args()
@@ -86,19 +116,79 @@ def export_preserved_asset(figure_id: str, dry_run: bool) -> None:
     run_command(command, dry_run)
 
 
-def build_elasticnet(csv_path: Path, dry_run: bool) -> None:
-    if not csv_path.exists():
-        raise FileNotFoundError(
-            f"Missing prerequisite CSV for elasticnet figure: {csv_path}"
-        )
+def build_method_vis_figures(dry_run: bool) -> None:
+    command = [
+        sys.executable,
+        str(REPO_ROOT / "scripts" / "regenerate_method_vis_figures.py"),
+    ]
+    run_command(command, dry_run)
+
+
+def build_linear_regression_ols_components(dry_run: bool) -> None:
+    command = [
+        sys.executable,
+        str(REPO_ROOT / "scripts" / "regenerate_linear_regression_ols_figures.py"),
+    ]
+    run_command(command, dry_run)
+
+
+def build_ols_early_stopping_assets(dry_run: bool) -> None:
+    export_preserved_asset("OLS_early_stopping_figure", dry_run)
+    build_linear_regression_ols_components(dry_run)
+
+
+def build_dropout_bias_ridge_panel(
+    sweep_id: str,
+    entity: str,
+    project: str,
+    dry_run: bool,
+) -> None:
+    command = [
+        sys.executable,
+        str(REPO_ROOT / "scripts" / "regenerate_dropout_bias_ridge_panel.py"),
+        "--sweep-id",
+        sweep_id,
+        "--entity",
+        entity,
+        "--project",
+        project,
+        "--output",
+        str(PAPER_FIGURES_DIR / "dropout_bias_ridge_panel.png"),
+    ]
+    run_command(command, dry_run)
+
+
+def build_elasticnet(
+    csv_path: Path | None,
+    sweep_id: str,
+    entity_project: str,
+    dry_run: bool,
+) -> None:
     command = [
         sys.executable,
         str(REPO_ROOT / "scripts" / "plot_elasticnet_recovery.py"),
-        "--csv",
-        str(csv_path),
-        "--output",
-        str(PAPER_FIGURES_DIR / "elasticnet_recovery_mean_se.pdf"),
     ]
+    if csv_path is not None:
+        if not csv_path.exists():
+            raise FileNotFoundError(
+                f"Missing prerequisite CSV for elasticnet figure: {csv_path}"
+            )
+        command.extend(["--csv", str(csv_path)])
+    else:
+        command.extend(
+            [
+                "--sweep-id",
+                sweep_id,
+                "--entity-project",
+                entity_project,
+            ]
+        )
+    command.extend(
+        [
+            "--output",
+            str(PAPER_FIGURES_DIR / "elasticnet_recovery_mean_se.pdf"),
+        ]
+    )
     run_command(command, dry_run)
 
 
@@ -156,15 +246,24 @@ def main() -> None:
 
     for figure_id in args.figures:
         try:
-            if figure_id in {
-                "tradeoff-vis",
-                "sgd-vs-full-batch",
-                "OLS_early_stopping_figure",
-                "dropout_bias_ridge_panel",
-            }:
-                export_preserved_asset(figure_id, args.dry_run)
+            if figure_id in {"tradeoff-vis", "sgd-vs-full-batch"}:
+                build_method_vis_figures(args.dry_run)
+            elif figure_id == "dropout_bias_ridge_panel":
+                build_dropout_bias_ridge_panel(
+                    sweep_id=args.dropout_sweep_id,
+                    entity=args.wandb_entity,
+                    project=args.wandb_project,
+                    dry_run=args.dry_run,
+                )
+            elif figure_id == "OLS_early_stopping_figure":
+                build_ols_early_stopping_assets(args.dry_run)
             elif figure_id == "elasticnet_recovery_mean_se":
-                build_elasticnet(args.elasticnet_csv, args.dry_run)
+                build_elasticnet(
+                    args.elasticnet_csv,
+                    args.elasticnet_sweep_id,
+                    args.elasticnet_entity_project,
+                    args.dry_run,
+                )
             elif figure_id == "lambda_vs_epochs":
                 build_lambda_vs_epochs(args.dry_run)
             elif figure_id == "barrett_igr_figure2":
