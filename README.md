@@ -93,7 +93,7 @@ Read from `paper/` for research context, definitions, and framing, but do not ed
 
 - [`experiments/REGISTRY.yaml`](/home/jrudoler/inductive-bias/experiments/REGISTRY.yaml): canonical inventory of active, appendix, legacy, and deprecated experiment assets
 - recovery scripts such as [`experiments/l2_train_and_recover.py`](/home/jrudoler/inductive-bias/experiments/l2_train_and_recover.py), [`experiments/l2_nuclear_train_and_recover.py`](/home/jrudoler/inductive-bias/experiments/l2_nuclear_train_and_recover.py), and [`experiments/l2_orthogonal_train_and_recover.py`](/home/jrudoler/inductive-bias/experiments/l2_orthogonal_train_and_recover.py)
-- mixed-bias and identifiability studies such as [`experiments/mixed_bias_recovery.py`](/home/jrudoler/inductive-bias/experiments/mixed_bias_recovery.py), [`experiments/function_class_identifiability.py`](/home/jrudoler/inductive-bias/experiments/function_class_identifiability.py), and [`experiments/matrix_spectrum_identifiability.py`](/home/jrudoler/inductive-bias/experiments/matrix_spectrum_identifiability.py)
+- mixed-bias and identifiability studies such as [`experiments/mixed_bias_recovery.py`](/home/jrudoler/inductive-bias/experiments/mixed_bias_recovery.py), [`experiments/function_class_identifiability.py`](/home/jrudoler/inductive-bias/experiments/function_class_identifiability.py), and [`experiments/nonlinear_multi_geometry_suite.py`](/home/jrudoler/inductive-bias/experiments/nonlinear_multi_geometry_suite.py)
 - practical deep-learning settings such as [`experiments/dropout_bias_estimation.py`](/home/jrudoler/inductive-bias/experiments/dropout_bias_estimation.py), [`experiments/mnist_implicit_reg.py`](/home/jrudoler/inductive-bias/experiments/mnist_implicit_reg.py), and [`experiments/mnist_deep_relu_bias.py`](/home/jrudoler/inductive-bias/experiments/mnist_deep_relu_bias.py)
 - stability and resampling work such as [`experiments/bootstrap_bias_recovery.py`](/home/jrudoler/inductive-bias/experiments/bootstrap_bias_recovery.py)
 
@@ -107,6 +107,7 @@ Read from `paper/` for research context, definitions, and framing, but do not ed
 
 - [`scripts/wandb_sweep.slurm`](/home/jrudoler/inductive-bias/scripts/wandb_sweep.slurm): canonical GPU sweep launcher on the cluster
 - [`scripts/bias_from_sweep.py`](/home/jrudoler/inductive-bias/scripts/bias_from_sweep.py): download checkpoints from a W&B sweep and optionally run downstream bias estimation
+- [`scripts/build_paper_figures.py`](/home/jrudoler/inductive-bias/scripts/build_paper_figures.py): regenerate or verify the figures referenced by [`paper/main.tex`](/home/jrudoler/inductive-bias/paper/main.tex)
 - [`scripts/`](/home/jrudoler/inductive-bias/scripts): sweep helpers, launch utilities, and reporting scripts
 
 ### Tests And Profiling

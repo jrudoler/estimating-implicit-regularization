@@ -2,7 +2,7 @@
 # status values: active | legacy | appendix | deprecated
 # Keep this file up to date when adding/removing experiments.
 
-updated_at: 2026-04-22
+updated_at: 2026-04-23
 
 experiments:
   - id: dropout_bias_estimation
@@ -87,7 +87,7 @@ experiments:
 
   - id: gradient_penalty_evaluation
     status: appendix
-    entrypoint: experiments/gradient_penalty_evaluation.py
+    entrypoint: archive/experiments_legacy_2026-04/gradient_penalty_evaluation.py
     sweep: null
     launcher: null
     purpose: "Evaluate gradient-penalty estimators with synthetic and MNIST data."
@@ -95,7 +95,7 @@ experiments:
 
   - id: kernel_regression_rbf
     status: appendix
-    entrypoint: experiments/kernel-regression-RBF.py
+    entrypoint: archive/experiments_legacy_2026-04/kernel-regression-RBF.py
     sweep: null
     launcher: null
     purpose: "Kernel regression experiments tied to earlier theory notes."
@@ -103,7 +103,7 @@ experiments:
 
   - id: ridge_nuclear_pair_test
     status: legacy
-    entrypoint: experiments/ridge_nuclear_recovery_test.py
+    entrypoint: archive/experiments_legacy_2026-04/ridge_nuclear_recovery_test.py
     sweep: null
     launcher: null
     purpose: "Pairwise geometry/prototype recovery script."
@@ -111,7 +111,7 @@ experiments:
 
   - id: ridge_orthogonal_pair_test
     status: legacy
-    entrypoint: experiments/ridge_orthogonal_recovery_test.py
+    entrypoint: archive/experiments_legacy_2026-04/ridge_orthogonal_recovery_test.py
     sweep: null
     launcher: null
     purpose: "Pairwise geometry/prototype recovery script."
@@ -119,7 +119,7 @@ experiments:
 
   - id: ridge_lasso_pair_test
     status: legacy
-    entrypoint: experiments/ridge_lasso_recovery_test.py
+    entrypoint: archive/experiments_legacy_2026-04/ridge_lasso_recovery_test.py
     sweep: null
     launcher: null
     purpose: "Pairwise geometry/prototype recovery script."
@@ -127,7 +127,7 @@ experiments:
 
   - id: ridge_rnv_pair_test
     status: legacy
-    entrypoint: experiments/ridge_rnv_recovery_test.py
+    entrypoint: archive/experiments_legacy_2026-04/ridge_rnv_recovery_test.py
     sweep: null
     launcher: null
     purpose: "Pairwise geometry/prototype recovery script."
@@ -135,7 +135,7 @@ experiments:
 
   - id: regularizer_screening
     status: legacy
-    entrypoint: experiments/regularizer_screening.py
+    entrypoint: archive/experiments_legacy_2026-04/regularizer_screening.py
     sweep: null
     launcher: null
     purpose: "One-off regularizer alignment screening utility."

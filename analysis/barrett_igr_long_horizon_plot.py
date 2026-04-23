@@ -21,6 +21,7 @@ import torch
 
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
+PAPER_FIGURES_DIR = REPO_ROOT / "paper" / "figures"
 
 
 def parse_args() -> argparse.Namespace:
@@ -42,7 +43,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--out",
         type=Path,
-        default=REPO_ROOT / "figures" / "barrett_igr_long_horizon.pdf",
+        default=PAPER_FIGURES_DIR / "barrett_igr_long_horizon.pdf",
     )
     return parser.parse_args()
 

@@ -9,6 +9,12 @@ Use this file as the default non-manuscript log for autonomous method, implement
 - Promote durable results into a more specific doc in `docs/` when the workstream becomes substantial.
 - For analysis plotting, default to a single `PDF` output unless the user explicitly requests an additional export format.
 
+## 2026-04-23
+
+- Slimmed the active project surface to align with the manuscript and retained research trajectory. Added [`docs/paper_figure_inventory.md`](/home/jrudoler/inductive-bias/docs/paper_figure_inventory.md) as the provenance map for all figures currently referenced by [`paper/main.tex`](/home/jrudoler/inductive-bias/paper/main.tex).
+- Standardized paper-facing figure defaults so retained script-backed figure producers now target `paper/figures/` by default: [`scripts/plot_lambda_vs_epochs.py`](/home/jrudoler/inductive-bias/scripts/plot_lambda_vs_epochs.py), [`scripts/plot_elasticnet_recovery.py`](/home/jrudoler/inductive-bias/scripts/plot_elasticnet_recovery.py), [`analysis/barrett_igr_figure2_plot.py`](/home/jrudoler/inductive-bias/analysis/barrett_igr_figure2_plot.py), and [`analysis/barrett_igr_long_horizon_plot.py`](/home/jrudoler/inductive-bias/analysis/barrett_igr_long_horizon_plot.py).
+- Added [`scripts/export_notebook_figure.py`](/home/jrudoler/inductive-bias/scripts/export_notebook_figure.py) for notebook-derived or preserved manuscript assets and [`scripts/build_paper_figures.py`](/home/jrudoler/inductive-bias/scripts/build_paper_figures.py) as the top-level paper figure builder.
+
 ## 2026-04-22
 
 - **Upgraded the flow-reference trajectory estimator from k-substep Euler to RK4.** The previous k-Euler reference was a hidden tautology: both sides of `(Δθ_flow − Δθ_GD)/η` were Euler discretizations, so Taylor arithmetic forced the `(1 − 1/k)·(η/2)·Hg` result regardless of whether Barrett's physical interpretation was correct. RK4 (implemented in `src/core/igr_trajectory.py::integrate_gradient_flow_rk4`) has O(h^5) local error, so the reference is essentially the true gradient-flow ODE solution. The comparison now *measures* the Euler-vs-true-flow deviation rather than computing it algebraically. Smoke test with synthetic p=5, η=0.01, flow-k=20: Euler gives ratio 0.944 (matches 1 − 1/20 = 0.95 Euler artifact); RK4 gives ratio 0.993 (no 1/k bias; residual 0.7% is honest O(η²) higher-order backward-error). Both `experiments/barrett_igr_trajectory.py` and `experiments/barrett_igr_figure2.py` now accept `--reference-method {euler, rk4}` with `rk4` as default.
@@ -57,6 +63,14 @@ Use this file as the default non-manuscript log for autonomous method, implement
 ## 2026-04-20
 
 - Updated [`notebooks/method-vis.ipynb`](/home/jrudoler/inductive-bias/notebooks/method-vis.ipynb) with torch-based regression loss visualizations for the gradient-step-deviation section: the contour cell now follows a short minibatch trajectory and, at each iterate, overlays both the recomputed full-batch and minibatch autograd steps on the full-batch MSE landscape; the following 3D surface cell reuses the same multi-step trajectory on the full-batch loss surface.
+
+## 2026-04-23
+
+- Added [`scripts/regenerate_dropout_bias_ridge_panel.py`](/home/jrudoler/inductive-bias/scripts/regenerate_dropout_bias_ridge_panel.py) so the paper's dropout ridge panel is now rebuilt from the W&B sweep used by [`notebooks/l2_estimation_deep_ReLU.ipynb`](/home/jrudoler/inductive-bias/notebooks/l2_estimation_deep_ReLU.ipynb), with [`scripts/build_paper_figures.py`](/home/jrudoler/inductive-bias/scripts/build_paper_figures.py) treating it as an active figure pipeline rather than a preserved-only asset.
+- Fixed [`src/core/wandb_utils.py`](/home/jrudoler/inductive-bias/src/core/wandb_utils.py) so `wandb_summary_df()` correctly includes optional system metrics instead of failing on an indentation error; the default W&B project helper values now match the active `inductive-bias` project.
+- Corrected the elastic-net paper-figure provenance again after checking W&B directly: the paper mean/SE figure comes from sweep `9a7ll8aa` for [`sweeps/elasticnet_sweep_config_beta1e3.yaml`](/home/jrudoler/inductive-bias/sweeps/elasticnet_sweep_config_beta1e3.yaml), not from the small local `artifacts/elasticnet_runs.csv` fallback and not from the older archived notebook sweep `krcszr6z`. W&B confirms `krcszr6z` has 180 non-seeded runs over multiple smooth values, while `9a7ll8aa` has 360 fixed-`beta=1e-3` runs with `seed = 0..9` and the logged `recovery/log_mult_*` metrics the paper plot expects. [`scripts/build_paper_figures.py`](/home/jrudoler/inductive-bias/scripts/build_paper_figures.py) now defaults to `9a7ll8aa` and only uses a local CSV when explicitly provided.
+- Added [`scripts/regenerate_linear_regression_ols_figures.py`](/home/jrudoler/inductive-bias/scripts/regenerate_linear_regression_ols_figures.py) so the OLS early-stopping component plots from [`notebooks/linear-regression.ipynb`](/home/jrudoler/inductive-bias/notebooks/linear-regression.ipynb) are regenerated into `paper/figures/` as stable artifacts (`Lambda_comparison-ols.pdf` and `predictive_weights_comparison_ols.pdf`) even though the final annotated paper panel remains an externally assembled preserved asset.
+- Added `docs/paper_figure_pipeline.md` as the end-to-end figure pipeline note, spelling out for each active paper figure the upstream experiment or notebook, any intermediate artifacts, the maintained generator script, and the canonical `paper/figures/` output path.
 
 ## 2026-03-27
 

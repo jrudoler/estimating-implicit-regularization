@@ -18,6 +18,8 @@ import numpy as np
 import seaborn as sns
 
 _LN10 = math.log(10.0)
+REPO_ROOT = Path(__file__).resolve().parents[1]
+PAPER_FIGURES_DIR = REPO_ROOT / "paper" / "figures"
 
 
 def _load_csv(path: Path) -> list[dict[str, str]]:
@@ -353,7 +355,7 @@ def main() -> None:
     p.add_argument(
         "--output",
         type=Path,
-        default=Path("figures/elasticnet_recovery_mean_se.pdf"),
+        default=PAPER_FIGURES_DIR / "elasticnet_recovery_mean_se.pdf",
     )
     args = p.parse_args()
 

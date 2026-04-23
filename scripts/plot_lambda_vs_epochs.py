@@ -21,6 +21,7 @@ the iterative estimator converges to the right thing. Agreement with
 
 from __future__ import annotations
 
+import argparse
 import sys
 from pathlib import Path
 
@@ -38,6 +39,10 @@ from core.models import LinearRegression          # noqa: E402
 from core.data import FullBatchDataModule         # noqa: E402
 from core.bias import RidgeBias                   # noqa: E402
 from core.estimators import BiasWithMSE           # noqa: E402
+
+
+REPO_ROOT = Path(__file__).resolve().parents[1]
+PAPER_FIGURES_DIR = REPO_ROOT / "paper" / "figures"
 
 
 # ── experiment parameters (match the notebook / paper) ─────────────────
@@ -100,7 +105,19 @@ def fit_lambda_iterative(theta_star: torch.Tensor,
     return bias_model.get_bias_params()["scale"]
 
 
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument(
+        "--out",
+        type=Path,
+        default=PAPER_FIGURES_DIR / "lambda_vs_epochs.pdf",
+        help="Canonical output path for the manuscript figure.",
+    )
+    return parser.parse_args()
+
+
 def main() -> None:
+    args = parse_args()
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     torch.set_default_dtype(torch.float64)
     torch.set_float32_matmul_precision("high")
@@ -170,11 +187,9 @@ def main() -> None:
     ax.legend(frameon=False, loc="lower left", fontsize=10)
     ax.grid(True, which="both", alpha=0.3)
 
-    out_dir = Path(__file__).resolve().parents[1] / "figures"
-    out_dir.mkdir(exist_ok=True)
-    out_path = out_dir / "lambda_vs_epochs.pdf"
-    fig.savefig(out_path)
-    print(f"\nSaved → {out_path}")
+    args.out.parent.mkdir(parents=True, exist_ok=True)
+    fig.savefig(args.out)
+    print(f"\nSaved -> {args.out}")
     plt.close(fig)
 
 

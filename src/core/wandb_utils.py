@@ -7,7 +7,7 @@ from typing import Optional
 def get_sweep_runs(
     sweep_id: str,
     entity: str = "jhrudoler-penn",
-    project: str = "inductive-bias-experiments",
+    project: str = "inductive-bias",
     state: Optional[str] = "finished",
     timeout: int = 60,
 ) -> list:
@@ -38,7 +38,7 @@ def get_sweep_runs(
 
 def get_project_runs(
     entity: str = "jhrudoler-penn",
-    project: str = "inductive-bias-experiments",
+    project: str = "inductive-bias",
     filters: Optional[dict] = None,
     state: Optional[str] = "finished",
     timeout: int = 60,
@@ -66,7 +66,7 @@ def get_project_runs(
     return runs
 
 
-def wandb_summary_df(runs, include_system_metrics: bool = True) -> pd.DataFrame:
+def wandb_summary_df(runs: list, include_system_metrics: bool = True) -> pd.DataFrame:
     """Make a DataFrame of run configs, metrics, and optionally GPU stats.
 
     Args:
@@ -88,14 +88,12 @@ def wandb_summary_df(runs, include_system_metrics: bool = True) -> pd.DataFrame:
         row = {"run_id": run.id, "run_name": run.name, **config, **metrics}
 
         if include_system_metrics:
-        # get gpu memory and utilization
-        system_metrics = run.system_metrics
-        # get gpu memory and utilization by regex
-        system_metrics = {
-            k: v
-            for k, v in system_metrics.items()
-            if re.match(r"^system\.gpu\.\d+\.(gpu|memory)$", k)
-        }
+            system_metrics = run.system_metrics
+            system_metrics = {
+                k: v
+                for k, v in system_metrics.items()
+                if re.match(r"^system\.gpu\.\d+\.(gpu|memory)$", k)
+            }
             row.update(system_metrics)
 
         rows.append(row)
@@ -120,4 +118,3 @@ def get_run_history(
     if keys is not None:
         return run.history(keys=keys, samples=samples, pandas=True)
     return run.history(samples=samples, pandas=True)
-
