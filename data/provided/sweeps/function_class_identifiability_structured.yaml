@@ -1,0 +1,77 @@
+name: function_class_identifiability_structured
+project: inductive-bias-experiments
+method: grid
+metric:
+  name: identifiability/gt_mean_rel_error
+  goal: minimize
+parameters:
+  function_class:
+    value: teacher_relu
+  data_mode:
+    value: structured
+  gt_bias_types:
+    value: "ridge,nuclear_norm"
+  gt_lambdas:
+    value: "0.05,0.05"
+  auto_balance_gt_lambdas:
+    value: true
+  gt_lambda_scale:
+    value: 0.05
+  selection_mode:
+    value: fixed
+  estimator_mode:
+    value: normalized
+  candidate_bias_types:
+    value: "ridge,nuclear_norm"
+  estimation_bias_types:
+    value: "ridge,nuclear_norm"
+  n_samples:
+    value: 2048
+  input_dim:
+    value: 20
+  input_spectrum:
+    values: [uniform, spiked, power_law]
+  input_rank:
+    values: [10, 20]
+  input_spectrum_decay:
+    values: [1.0, 2.0]
+  teacher_spectrum:
+    values: [uniform, spiked, power_law]
+  teacher_rank:
+    values: [8, 16]
+  teacher_spectrum_decay:
+    values: [1.0, 2.0]
+  teacher_hidden_dim:
+    value: 16
+  teacher_activation:
+    value: relu
+  target_scale:
+    value: 1.0
+  noise_std:
+    value: 0.02
+  depth:
+    value: 1
+  width:
+    value: 16
+  batch_size:
+    value: 256
+  lr:
+    value: 0.001
+  max_epochs:
+    value: 150
+  patience:
+    value: 20
+  bias_lr:
+    value: 0.05
+  bias_max_epochs:
+    value: 600
+  bias_patience:
+    value: 60
+  seed:
+    values: [42, 123]
+command:
+  - uv
+  - run
+  - python
+  - ${program}
+program: experiments/function_class_identifiability.py

@@ -1,0 +1,39 @@
+name: mnist_dropout_ridge_bias_grid
+project: inductive-bias
+method: grid
+metric:
+  name: val/acc
+  goal: maximize
+parameters:
+  bias_types:
+    value: "ridge"
+  batch_size:
+    value: 2048
+  lr:
+    value: 0.05
+  max_epochs:
+    value: 500
+  momentum:
+    value: 0.9
+  l2_penalty:
+    value: 0.0
+  width:
+    values: [128, 256, 512]
+  depth:
+    values: [1, 3, 5]
+  dropout:
+    values: [0.0, 0.05, 0.1, 0.15, 0.2, 0.3, 0.4, 0.5]
+  batchnorm:
+    value: false
+  seed:
+    values: [123, 42, 666, 314, 17, 111, 325, 643, 432, 51]
+  num_data_workers:
+    value: 4
+  bias_lr: 
+    value: 0.05
+command:
+  - uv
+  - run
+  - python
+  - ${program}
+program: experiments/dropout_bias_estimation.py

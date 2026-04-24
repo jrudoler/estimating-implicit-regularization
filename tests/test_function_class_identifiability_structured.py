@@ -4,7 +4,7 @@ import math
 
 import torch
 
-from experiments.function_class_identifiability import (
+from analysis.function_class_identifiability.run import (
     build_spectrum_values,
     build_teacher_first_layer,
     generate_dataset,

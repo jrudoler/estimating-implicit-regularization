@@ -1,0 +1,27 @@
+# Snakemake v7 cluster profile for SLURM.
+# Usage: uv run snakemake --profile workflow/profiles/slurm <target>
+#
+# Per-rule SBATCH fields come from config/cluster.yaml and are interpolated via
+# {cluster.<field>} below. The fallback is the __default__ block in cluster.yaml.
+
+cluster: >
+  sbatch
+  --parsable
+  --partition={cluster.partition}
+  --cpus-per-task={cluster.cpus-per-task}
+  --mem={cluster.mem}
+  --time={cluster.time}
+  --gres={cluster.gres}
+  --output={cluster.output}
+  --error={cluster.error}
+  --job-name={rule}
+  --chdir=/home/jrudoler/inductive-bias
+cluster-config: ../../../config/cluster.yaml
+jobs: 50
+local-cores: 2
+keep-going: true
+rerun-incomplete: true
+restart-times: 1
+latency-wait: 60
+printshellcmds: true
+use-conda: false

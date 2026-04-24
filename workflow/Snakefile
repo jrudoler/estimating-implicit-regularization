@@ -1,0 +1,59 @@
+# Top-level Snakefile for the inductive-bias workflow.
+#
+# Common invocations:
+#   uv run snakemake -s workflow/Snakefile --cores 4 figures
+#     Rebuild all paper-bound figures from existing data/generated/ snapshots.
+#     No SLURM, no W&B pulls unless a parquet is missing.
+#
+#   uv run snakemake -s workflow/Snakefile --profile workflow/profiles/slurm paper
+#     Full end-to-end: submits SLURM jobs for missing trains, pulls W&B runs,
+#     rebuilds figures, stages them into paper/generated/figures/, runs latexmk.
+#
+#   uv run snakemake -s workflow/Snakefile --cores 4 results/figures/barrett_igr_figure2.pdf
+#     Rebuild only one figure's sub-DAG.
+#
+#   uv run snakemake -s workflow/Snakefile --cores 4 launch_wandb_sweep_<analysis>
+#     Opt-in: create sweep + submit N SLURM agents, capture the new ID, block
+#     until all agents finish.
+#
+#   uv run snakemake -s workflow/Snakefile --forcerun pull_wandb_sweep --cores 4 \
+#       results/figures/elasticnet_recovery_mean_se.pdf
+#     Force a W&B re-pull for one analysis and rebuild only its figure.
+
+
+include: "rules/common.smk"
+include: "rules/wandb.smk"
+include: "rules/train.smk"
+include: "rules/plot.smk"
+include: "rules/paper.smk"
+
+
+PAPER_FIGURES = [
+    "results/figures/tradeoff-vis.png",
+    "results/figures/sgd-vs-full-batch.png",
+    "results/figures/elasticnet_recovery_mean_se.pdf",
+    "results/figures/OLS_early_stopping_figure.pdf",
+    "results/figures/Lambda_comparison-ols.pdf",
+    "results/figures/predictive_weights_comparison_ols.pdf",
+    "results/figures/lambda_vs_epochs.pdf",
+    "results/figures/dropout_bias_ridge_panel.png",
+    "results/figures/barrett_igr_figure2.pdf",
+    "results/figures/barrett_igr_long_horizon.pdf",
+]
+
+
+rule all:
+    input:
+        "paper/main.pdf",
+
+
+rule figures:
+    """Rebuild every paper-bound figure under results/figures/."""
+    input:
+        PAPER_FIGURES,
+
+
+rule paper:
+    """Compile paper/main.pdf from staged figures."""
+    input:
+        "paper/main.pdf",

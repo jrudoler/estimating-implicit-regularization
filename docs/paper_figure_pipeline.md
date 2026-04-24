@@ -1,28 +1,28 @@
 # Paper Figure Pipeline
 
-This note is the end-to-end map from active experiment or notebook logic to the artifacts under `paper/figures/`.
+This note is the end-to-end map from active experiment or notebook logic to the artifacts under `paper/generated/figures/`.
 
 It is meant to answer three questions clearly:
 
 1. What code or data generates each figure?
 2. What intermediate artifacts are expected?
-3. What file under `paper/figures/` is the canonical output?
+3. What file under `paper/generated/figures/` is the canonical output?
 
 ## Conventions
 
 - The manuscript lives in the `paper/` git submodule.
-- The canonical destination for manuscript-bound figures is `paper/figures/`.
-- The top-level builder is `scripts/build_paper_figures.py`.
+- The canonical destination for manuscript-bound figures is `paper/generated/figures/`.
+- The top-level builder is the Snakemake workflow: run `uv run snakemake -s workflow/Snakefile --cores 4 figures` (figures only) or `--profile workflow/profiles/slurm paper` (end-to-end).
 - Some figures are generated directly from scripts or notebook wrappers.
-- Some figures depend on prior experiment outputs in `results/` or W&B sweeps.
-- `paper/figures/OLS_early_stopping_figure.pdf` is a preserved final panel assembled externally, but its component figures are still regenerated automatically.
+- Some figures depend on prior experiment outputs in `data/generated/<analysis>/` (the local snapshot of training outputs) or W&B sweeps pulled into `data/generated/<analysis>/runs.parquet`.
+- `paper/generated/figures/OLS_early_stopping_figure.pdf` is a preserved final panel assembled externally, but its component figures are still regenerated automatically.
 
 ## Top-Level Entry Points
 
 - Build all paper figures:
-  - `uv run python scripts/build_paper_figures.py`
+  - `uv run snakemake -s workflow/Snakefile --cores 4 figures`
 - Build one figure or workflow:
-  - `uv run python scripts/build_paper_figures.py --figures <figure_id>`
+  - `uv run snakemake -s workflow/Snakefile --cores 4 results/figures/<figure_id>.<ext>`
 - Active provenance summary:
   - `docs/paper_figure_inventory.md`
 
@@ -35,13 +35,13 @@ It is meant to answer three questions clearly:
 - Upstream source:
   - `notebooks/method-vis.ipynb`
 - Maintained generator:
-  - `scripts/regenerate_method_vis_figures.py`
+  - `analysis/plot_method_vis/run.py`
 - Intermediate artifacts:
   - none required
 - Canonical output:
-  - `paper/figures/tradeoff-vis.png`
+  - `paper/generated/figures/tradeoff-vis.png`
 - Build command:
-  - `uv run python scripts/build_paper_figures.py --figures tradeoff-vis`
+  - `uv run snakemake -s workflow/Snakefile --cores 4 results/figures/tradeoff-vis.png`
 
 ### 2. `sgd-vs-full-batch.png`
 
@@ -50,22 +50,22 @@ It is meant to answer three questions clearly:
 - Upstream source:
   - `notebooks/method-vis.ipynb`
 - Maintained generator:
-  - `scripts/regenerate_method_vis_figures.py`
+  - `analysis/plot_method_vis/run.py`
 - Intermediate artifacts:
   - none required
 - Canonical output:
-  - `paper/figures/sgd-vs-full-batch.png`
+  - `paper/generated/figures/sgd-vs-full-batch.png`
 - Build command:
-  - `uv run python scripts/build_paper_figures.py --figures sgd-vs-full-batch`
+  - `uv run snakemake -s workflow/Snakefile --cores 4 results/figures/sgd-vs-full-batch.png`
 
 ### 3. `elasticnet_recovery_mean_se.pdf`
 
 - Figure id:
   - `elasticnet_recovery_mean_se`
 - Upstream experiment:
-  - `experiments/elasticnet_train_and_recover.py`
+  - `analysis/elasticnet_train_and_recover/run.py`
 - Active sweep config:
-  - `sweeps/elasticnet_sweep_config_beta1e3.yaml`
+  - `data/provided/sweeps/elasticnet_sweep_config_beta1e3.yaml`
 - Confirmed W&B sweep:
   - `9a7ll8aa`
 - Sweep structure:
@@ -83,20 +83,20 @@ It is meant to answer three questions clearly:
   - `smooth`
   - `seed`
 - Maintained figure generator:
-  - `scripts/plot_elasticnet_recovery.py`
+  - `analysis/plot_elasticnet_recovery/run.py`
 - Top-level builder path:
-  - `scripts/build_paper_figures.py` defaults to sweep `9a7ll8aa`
+  - `uv run snakemake -s workflow/Snakefile` defaults to sweep `9a7ll8aa`
 - Canonical output:
-  - `paper/figures/elasticnet_recovery_mean_se.pdf`
+  - `paper/generated/figures/elasticnet_recovery_mean_se.pdf`
 - Local fallback:
-  - `scripts/run_elasticnet_figure_batch.py`
+  - `analysis/elasticnet_train_and_recover/helpers/run_figure_batch.py`
   - this is only a fallback if explicitly pointed at a suitable CSV
 - Important non-source:
   - `archive/notebooks_legacy_2026-04/elasticnet_viz.ipynb`
   - archived sweep `krcszr6z`
   - this older notebook sweep is not the paper `mean/SE` source
 - Build command:
-  - `uv run python scripts/build_paper_figures.py --figures elasticnet_recovery_mean_se`
+  - `uv run snakemake -s workflow/Snakefile --cores 4 results/figures/elasticnet_recovery_mean_se.pdf`
 
 ### 4. `OLS_early_stopping_figure.pdf`
 
@@ -105,18 +105,18 @@ It is meant to answer three questions clearly:
 - Status:
   - preserved final manuscript asset
 - Final paper asset:
-  - `paper/figures/OLS_early_stopping_figure.pdf`
+  - `paper/generated/figures/OLS_early_stopping_figure.pdf`
 - Reason preserved:
   - the final annotated panel was assembled externally rather than by one repo-native script
 - Notebook lineage for automated component figures:
   - `notebooks/linear-regression.ipynb`
 - Maintained component generator:
-  - `scripts/regenerate_linear_regression_ols_figures.py`
+  - `analysis/plot_linear_regression_ols/run.py`
 - Automated component outputs:
-  - `paper/figures/Lambda_comparison-ols.pdf`
-  - `paper/figures/predictive_weights_comparison_ols.pdf`
+  - `paper/generated/figures/Lambda_comparison-ols.pdf`
+  - `paper/generated/figures/predictive_weights_comparison_ols.pdf`
 - Top-level builder behavior:
-  - `scripts/build_paper_figures.py --figures OLS_early_stopping_figure`
+  - `uv run snakemake -s workflow/Snakefile --cores 4 results/figures/OLS_early_stopping_figure.pdf`
   - preserves the final assembled panel
   - regenerates both component figures
 - Related follow-on notebooks:
@@ -129,67 +129,67 @@ It is meant to answer three questions clearly:
 - Figure id:
   - `lambda_vs_epochs`
 - Maintained generator:
-  - `scripts/plot_lambda_vs_epochs.py`
+  - `analysis/plot_lambda_vs_epochs/run.py`
 - Canonical output:
-  - `paper/figures/lambda_vs_epochs.pdf`
+  - `paper/generated/figures/lambda_vs_epochs.pdf`
 - Important note:
   - this script is active and automated, but heavier than the other figure builders because it reruns training internally
 - Build command:
-  - `uv run python scripts/build_paper_figures.py --figures lambda_vs_epochs`
+  - `uv run snakemake -s workflow/Snakefile --cores 4 results/figures/lambda_vs_epochs.pdf`
 
 ### 6. `dropout_bias_ridge_panel.png`
 
 - Figure id:
   - `dropout_bias_ridge_panel`
 - Upstream experiment:
-  - `experiments/dropout_bias_estimation.py`
+  - `analysis/dropout_bias_estimation/run.py`
 - Active sweep config:
-  - `sweeps/dropout_l2_bias.yaml`
+  - `data/provided/sweeps/dropout_l2_bias.yaml`
 - Confirmed W&B sweep:
   - `chiy2qjz`
 - Notebook lineage:
   - `notebooks/l2_estimation_deep_ReLU.ipynb`
 - Maintained generator:
-  - `scripts/regenerate_dropout_bias_ridge_panel.py`
+  - `analysis/plot_dropout_bias_ridge_panel/run.py`
 - Canonical output:
-  - `paper/figures/dropout_bias_ridge_panel.png`
+  - `paper/generated/figures/dropout_bias_ridge_panel.png`
 - Important note:
   - this requires W&B access at build time
 - Build command:
-  - `uv run python scripts/build_paper_figures.py --figures dropout_bias_ridge_panel`
+  - `uv run snakemake -s workflow/Snakefile --cores 4 results/figures/dropout_bias_ridge_panel.png`
 
 ### 7. `barrett_igr_figure2.pdf`
 
 - Figure id:
   - `barrett_igr_figure2`
 - Upstream experiment:
-  - `experiments/barrett_igr_figure2.py`
+  - `analysis/barrett_igr_figure2/run.py`
 - Expected intermediate result:
-  - `results/barrett_igr_figure2.pt`
+  - `data/generated/barrett_igr_figure2/results.pt`
 - Maintained plotter:
-  - `analysis/barrett_igr_figure2_plot.py`
+  - `analysis/plot_barrett_igr_figure2/run.py`
 - Canonical output:
-  - `paper/figures/barrett_igr_figure2.pdf`
+  - `paper/generated/figures/barrett_igr_figure2.pdf`
 - Build command:
-  - `uv run python scripts/build_paper_figures.py --figures barrett_igr_figure2`
+  - `uv run snakemake -s workflow/Snakefile --cores 4 results/figures/barrett_igr_figure2.pdf`
 
 ### 8. `barrett_igr_long_horizon.pdf`
 
 - Figure id:
   - `barrett_igr_long_horizon`
 - Upstream experiment:
-  - `experiments/barrett_igr_long_horizon.py`
+  - `analysis/barrett_igr_long_horizon/run.py`
 - Expected intermediate results:
-  - `results/barrett_igr_lh_synth_eta001.pt`
-  - `results/barrett_igr_lh_synth_eta003.pt`
-  - `results/barrett_igr_lh_mnist_tanh_eta001.pt`
-  - `results/barrett_igr_lh_mnist_relu_eta001.pt`
+  - `data/generated/barrett_igr_long_horizon/synth_eta001.pt`
+  - `data/generated/barrett_igr_long_horizon/synth_eta003.pt`
+  - `data/generated/barrett_igr_long_horizon/mnist_tanh_eta001.pt`
+  - `data/generated/barrett_igr_long_horizon/mnist_relu_eta001.pt`
 - Maintained plotter:
-  - `analysis/barrett_igr_long_horizon_plot.py`
+  - `analysis/plot_barrett_igr_long_horizon/run.py`
 - Canonical output:
-  - `paper/figures/barrett_igr_long_horizon.pdf`
+  - `paper/generated/figures/barrett_igr_long_horizon.pdf`
 - Build command:
-  - `uv run python scripts/build_paper_figures.py --figures barrett_igr_long_horizon`
+  - `uv run snakemake -s workflow/Snakefile --cores 4 results/figures/barrett_igr_long_horizon.pdf`
 
 ## Additional Reproducible Paper-Figure Components
 
@@ -197,12 +197,12 @@ These are not currently direct `paper/main.tex` includes, but they are part of t
 
 ### OLS component figures
 
-- `paper/figures/Lambda_comparison-ols.pdf`
-- `paper/figures/predictive_weights_comparison_ols.pdf`
+- `paper/generated/figures/Lambda_comparison-ols.pdf`
+- `paper/generated/figures/predictive_weights_comparison_ols.pdf`
 - Source:
   - `notebooks/linear-regression.ipynb`
 - Maintained generator:
-  - `scripts/regenerate_linear_regression_ols_figures.py`
+  - `analysis/plot_linear_regression_ols/run.py`
 
 ## Build Behavior Summary
 
@@ -229,12 +229,12 @@ These are not currently direct `paper/main.tex` includes, but they are part of t
 - End-to-end pipeline note:
   - `docs/paper_figure_pipeline.md`
 - Top-level builder:
-  - `scripts/build_paper_figures.py`
+  - `uv run snakemake -s workflow/Snakefile`
 - Preserved-asset export helper:
   - `scripts/export_notebook_figure.py`
 
 ## Practical Rules
 
-- If a figure is in `paper/main.tex`, its canonical output should be under `paper/figures/`.
-- If a figure depends on experiment outputs, the experiment should write numeric artifacts to `results/` or W&B, and only the final plot step should write to `paper/figures/`.
+- If a figure is in `paper/main.tex`, its canonical output should be under `paper/generated/figures/`.
+- If a figure depends on experiment outputs, the experiment should write numeric artifacts to `results/` or W&B, and only the final plot step should write to `paper/generated/figures/`.
 - If a final paper panel was assembled externally, keep that final panel preserved, but still automate the reproducible component plots when possible.

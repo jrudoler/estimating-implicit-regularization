@@ -1,22 +1,26 @@
-# data and models
-MNIST/*
-wandb/*
-inductive-bias/*
+# External data downloads (MNIST lives under data/raw/MNIST via the workflow).
+data/raw/MNIST/
+wandb/
+inductive-bias/
 
+# SLURM and training logs
+logs/
+lightning_logs/
 
-# logs
-logs/*
-lightning_logs/*
-
-# results and saved models
-*results/*
-*saved_models/*
-*checkpoints/*
+# Generated artifacts (workflow reproduces these from data/raw, data/provided,
+# and W&B). Commit paper/generated/ from inside the paper submodule, not here.
+data/generated/
+results/
+saved_models/
+checkpoints/
 dummy/
-notebooks/artifacts/*
+notebooks/artifacts/
 artifacts/
 
-# python extras
+# Snakemake state
+.snakemake/
+
+# Python
 __pycache__/
 *.pyc
 *.cpython*
