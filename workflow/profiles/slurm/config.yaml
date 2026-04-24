@@ -1,28 +1,25 @@
-# Snakemake v7 cluster profile for SLURM.
+# Snakemake 9 SLURM profile for the inductive-bias workflow.
 # Usage: uv run snakemake --profile workflow/profiles/slurm <target>
 #
-# Per-rule SBATCH fields come from config/cluster.yaml and are interpolated via
-# {cluster.<field>} below. The fallback is the __default__ block in cluster.yaml.
+# Uses the `snakemake-executor-plugin-slurm` plugin to submit one sbatch job
+# per rule instance. Rules declare their own `resources:` (partition, runtime,
+# mem_mb, cpus_per_task, slurm_extra) in workflow/rules/train.smk. Rules not
+# declaring slurm resources inherit the defaults below. Cheap rules listed
+# via `localrules:` in workflow/Snakefile always run on the submitting host.
 
-cluster: >
-  sbatch
-  --parsable
-  --partition={cluster.partition}
-  --cpus-per-task={cluster.cpus-per-task}
-  --mem={cluster.mem}
-  --time={cluster.time}
-  --gres={cluster.gres}
-  --output={cluster.output}
-  --error={cluster.error}
-  --job-name={rule}
-  --chdir=/home/jrudoler/inductive-bias
-cluster-config: ../../../config/cluster.yaml
+executor: slurm
 jobs: 50
-local-cores: 2
+local-cores: 4
 keep-going: true
 keep-incomplete: true
 rerun-incomplete: true
 restart-times: 1
 latency-wait: 60
 printshellcmds: true
-use-conda: false
+
+default-resources:
+  slurm_partition: whartonstat
+  slurm_account: ""         # most PSLE clusters don't need an account
+  runtime: 120              # minutes
+  mem_mb: 16000
+  cpus_per_task: 4

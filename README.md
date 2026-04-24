@@ -38,7 +38,7 @@ workflow/
   Snakefile
   rules/         common, wandb, train, plot, paper
   profiles/slurm SBATCH profile for cluster execution
-config/          sweeps.yaml, cluster.yaml, paper.yaml
+config/          sweeps.yaml (W&B sweep IDs, per-analysis)
 ```
 
 See [science-repo-skill.md](science-repo-skill.md) for the canonical description of the layout and [docs/paper_figure_pipeline.md](docs/paper_figure_pipeline.md) for the figure-by-figure provenance map.
@@ -101,7 +101,24 @@ uv run snakemake -s workflow/Snakefile --profile workflow/profiles/slurm \
 
 ### SLURM
 
-SBATCH parameters per rule live in [config/cluster.yaml](config/cluster.yaml). The profile at [workflow/profiles/slurm/config.yaml](workflow/profiles/slurm/config.yaml) wires Snakemake's generic `--cluster` submission to those values. GPU-resource rules override `gres`, `mem`, and `time` on a per-rule basis.
+SLURM is optional. Training rules declare their cluster resources inline via `resources:` blocks in [workflow/rules/train.smk](workflow/rules/train.smk) (partition, runtime, mem_mb, cpus_per_task, `slurm_extra="--gres=gpu:1"`). Cheap rules (plotting, W&B pulls, staging, latexmk) are listed under `localrules:` in [workflow/Snakefile](workflow/Snakefile) and always run on the submitting host.
+
+```bash
+# Run everything locally (training rules will use whichever CUDA device the shell sees, or CPU).
+uv run snakemake --cores 4 figures
+
+# Submit training rules to SLURM via the snakemake-executor-plugin-slurm
+# profile; cheap rules stay local automatically.
+uv run snakemake --profile workflow/profiles/slurm paper
+```
+
+Per-rule overrides: tweak the `resources:` block on the offending rule, or override at the CLI:
+
+```bash
+uv run snakemake --profile workflow/profiles/slurm \
+    --set-resources barrett_igr_long_horizon_mnist_tanh:runtime=720 \
+    results/figures/barrett_igr_long_horizon.pdf
+```
 
 ### Paper assembly
 

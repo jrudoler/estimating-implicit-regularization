@@ -1,6 +1,18 @@
 # Direct-run training experiments that don't go through a W&B sweep.
-# Each rule produces artifacts under data/generated/<analysis>/ that plot
-# rules consume. Heavy outputs are wrapped in protected().
+#
+# Each rule produces artifacts under data/generated/<analysis>/. Resources
+# declared here are consumed by the SLURM executor plugin when the workflow
+# is run with `--profile workflow/profiles/slurm` (or `--executor slurm`):
+#
+#   slurm_partition -> -p / --partition
+#   runtime         -> -t / --time (minutes)
+#   mem_mb          -> --mem (MB)
+#   cpus_per_task   -> -c / --cpus-per-task
+#   slurm_extra     -> free-form sbatch flags (we use it for --gres=gpu:1)
+#
+# Under `--cores N` (local) these resources are ignored and the rule runs
+# on the local machine. GPU availability is not enforced locally; it's your
+# responsibility to run on a GPU-equipped host if you want CUDA.
 
 
 rule barrett_igr_figure2:
@@ -9,6 +21,12 @@ rule barrett_igr_figure2:
     output:
         pt="data/generated/barrett_igr_figure2/results.pt",
         json="data/generated/barrett_igr_figure2/results.json",
+    resources:
+        slurm_partition="whartonstat",
+        runtime=240,
+        mem_mb=32000,
+        cpus_per_task=4,
+        slurm_extra="--gres=gpu:1",
     shell:
         "PYTHONPATH=src uv run python {input.script} --out {output.pt}"
 
@@ -19,6 +37,12 @@ rule barrett_igr_long_horizon_synth_eta001:
     output:
         pt="data/generated/barrett_igr_long_horizon/synth_eta001.pt",
         json="data/generated/barrett_igr_long_horizon/synth_eta001.json",
+    resources:
+        slurm_partition="whartonstat",
+        runtime=360,
+        mem_mb=32000,
+        cpus_per_task=4,
+        slurm_extra="--gres=gpu:1",
     shell:
         "PYTHONPATH=src uv run python {input.script} "
         "--dataset synthetic --eta 0.01 --num-steps 50 --n-samples 500 --seed 0 "
@@ -31,6 +55,12 @@ rule barrett_igr_long_horizon_synth_eta003:
     output:
         pt="data/generated/barrett_igr_long_horizon/synth_eta003.pt",
         json="data/generated/barrett_igr_long_horizon/synth_eta003.json",
+    resources:
+        slurm_partition="whartonstat",
+        runtime=360,
+        mem_mb=32000,
+        cpus_per_task=4,
+        slurm_extra="--gres=gpu:1",
     shell:
         "PYTHONPATH=src uv run python {input.script} "
         "--dataset synthetic --eta 0.03 --num-steps 50 --n-samples 500 --seed 0 "
@@ -43,6 +73,12 @@ rule barrett_igr_long_horizon_mnist_tanh:
     output:
         pt="data/generated/barrett_igr_long_horizon/mnist_tanh_eta001.pt",
         json="data/generated/barrett_igr_long_horizon/mnist_tanh_eta001.json",
+    resources:
+        slurm_partition="whartonstat",
+        runtime=360,
+        mem_mb=32000,
+        cpus_per_task=4,
+        slurm_extra="--gres=gpu:1",
     shell:
         "PYTHONPATH=src uv run python {input.script} "
         "--dataset mnist --activation tanh --eta 0.01 --num-steps 30 --n-samples 1000 --seed 0 "
@@ -55,6 +91,12 @@ rule barrett_igr_long_horizon_mnist_relu:
     output:
         pt="data/generated/barrett_igr_long_horizon/mnist_relu_eta001.pt",
         json="data/generated/barrett_igr_long_horizon/mnist_relu_eta001.json",
+    resources:
+        slurm_partition="whartonstat",
+        runtime=360,
+        mem_mb=32000,
+        cpus_per_task=4,
+        slurm_extra="--gres=gpu:1",
     shell:
         "PYTHONPATH=src uv run python {input.script} "
         "--dataset mnist --activation relu --eta 0.01 --num-steps 30 --n-samples 1000 --seed 0 "
@@ -66,6 +108,12 @@ rule barrett_igr_trajectory:
         script="analysis/barrett_igr_trajectory/run.py",
     output:
         results=protected("data/generated/barrett_igr_trajectory/results.pt"),
+    resources:
+        slurm_partition="whartonstat",
+        runtime=240,
+        mem_mb=32000,
+        cpus_per_task=4,
+        slurm_extra="--gres=gpu:1",
     shell:
         "PYTHONPATH=src uv run python {input.script} --output {output.results}"
 
@@ -78,6 +126,12 @@ rule nonlinear_multi_geometry_suite:
     params:
         out_dir="data/generated/nonlinear_multi_geometry_suite",
         fig_dir="results/figures/nonlinear_multi_geometry_suite",
+    resources:
+        slurm_partition="whartonstat",
+        runtime=240,
+        mem_mb=32000,
+        cpus_per_task=4,
+        slurm_extra="--gres=gpu:1",
     shell:
         "PYTHONPATH=src uv run python {input.script} "
         "--n-samples 256 --input-dim 12 --depth 2 --width 32 "
@@ -96,6 +150,12 @@ rule nonlinear_multi_geometry_replicate_ablation:
     params:
         out_dir="data/generated/nonlinear_multi_geometry_replicate_ablation",
         fig_dir="results/figures/nonlinear_multi_geometry_replicate_ablation",
+    resources:
+        slurm_partition="whartonstat",
+        runtime=240,
+        mem_mb=32000,
+        cpus_per_task=4,
+        slurm_extra="--gres=gpu:1",
     shell:
         "PYTHONPATH=src uv run python {input.script} "
         "--output-dir {params.out_dir} --figure-dir {params.fig_dir} "
@@ -107,5 +167,11 @@ rule nonlinear_power_retrain_geometry:
         script="analysis/nonlinear_power_retrain_geometry/run.py",
     output:
         results=protected("data/generated/nonlinear_power_retrain_geometry/results.json"),
+    resources:
+        slurm_partition="whartonstat",
+        runtime=240,
+        mem_mb=32000,
+        cpus_per_task=4,
+        slurm_extra="--gres=gpu:1",
     shell:
         "PYTHONPATH=src uv run python {input.script} --output {output.results}"
