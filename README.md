@@ -120,6 +120,23 @@ uv run snakemake --profile workflow/profiles/slurm \
     results/figures/barrett_igr_long_horizon.pdf
 ```
 
+### Device (CPU vs GPU) for training rules
+
+The training scripts autodetect CUDA → MPS → CPU. To force one, pass `--config device=<value>`:
+
+```bash
+# Force CPU (e.g., for reproducibility or when no GPU is present):
+uv run snakemake --config device=cpu --cores 4 figures
+
+# Force CUDA (also a useful sanity check that the env sees the GPU):
+uv run snakemake --config device=cuda --cores 4 figures
+
+# Defaults (autodetect):
+uv run snakemake --cores 4 figures
+```
+
+The flag threads through to every training rule via [workflow/rules/common.smk](workflow/rules/common.smk) → `device_arg()` → each rule's `{params.device}`.
+
 ### Paper assembly
 
 - The manuscript is the submodule at [`paper/`](paper). The workflow writes paper-bound figures into `paper/generated/figures/`.

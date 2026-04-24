@@ -11,8 +11,11 @@
 #   slurm_extra     -> free-form sbatch flags (we use it for --gres=gpu:1)
 #
 # Under `--cores N` (local) these resources are ignored and the rule runs
-# on the local machine. GPU availability is not enforced locally; it's your
-# responsibility to run on a GPU-equipped host if you want CUDA.
+# on the local machine.
+#
+# Device selection: the scripts autodetect CUDA > MPS > CPU. Override for
+# a specific run with `--config device=<cpu|cuda|mps>`; the value threads
+# into every training rule's shell via common.smk::device_arg().
 
 
 rule barrett_igr_figure2:
@@ -21,6 +24,8 @@ rule barrett_igr_figure2:
     output:
         pt="data/generated/barrett_igr_figure2/results.pt",
         json="data/generated/barrett_igr_figure2/results.json",
+    params:
+        device=device_arg(),
     resources:
         slurm_partition="whartonstat",
         runtime=240,
@@ -28,7 +33,7 @@ rule barrett_igr_figure2:
         cpus_per_task=4,
         slurm_extra="--gres=gpu:1",
     shell:
-        "PYTHONPATH=src uv run python {input.script} --out {output.pt}"
+        "PYTHONPATH=src uv run python {input.script} {params.device} --out {output.pt}"
 
 
 rule barrett_igr_long_horizon_synth_eta001:
@@ -37,6 +42,8 @@ rule barrett_igr_long_horizon_synth_eta001:
     output:
         pt="data/generated/barrett_igr_long_horizon/synth_eta001.pt",
         json="data/generated/barrett_igr_long_horizon/synth_eta001.json",
+    params:
+        device=device_arg(),
     resources:
         slurm_partition="whartonstat",
         runtime=360,
@@ -46,7 +53,7 @@ rule barrett_igr_long_horizon_synth_eta001:
     shell:
         "PYTHONPATH=src uv run python {input.script} "
         "--dataset synthetic --eta 0.01 --num-steps 50 --n-samples 500 --seed 0 "
-        "--double-precision --device cpu --save {output.pt}"
+        "--double-precision {params.device} --save {output.pt}"
 
 
 rule barrett_igr_long_horizon_synth_eta003:
@@ -55,6 +62,8 @@ rule barrett_igr_long_horizon_synth_eta003:
     output:
         pt="data/generated/barrett_igr_long_horizon/synth_eta003.pt",
         json="data/generated/barrett_igr_long_horizon/synth_eta003.json",
+    params:
+        device=device_arg(),
     resources:
         slurm_partition="whartonstat",
         runtime=360,
@@ -64,7 +73,7 @@ rule barrett_igr_long_horizon_synth_eta003:
     shell:
         "PYTHONPATH=src uv run python {input.script} "
         "--dataset synthetic --eta 0.03 --num-steps 50 --n-samples 500 --seed 0 "
-        "--double-precision --device cpu --save {output.pt}"
+        "--double-precision {params.device} --save {output.pt}"
 
 
 rule barrett_igr_long_horizon_mnist_tanh:
@@ -73,6 +82,8 @@ rule barrett_igr_long_horizon_mnist_tanh:
     output:
         pt="data/generated/barrett_igr_long_horizon/mnist_tanh_eta001.pt",
         json="data/generated/barrett_igr_long_horizon/mnist_tanh_eta001.json",
+    params:
+        device=device_arg(),
     resources:
         slurm_partition="whartonstat",
         runtime=360,
@@ -82,7 +93,7 @@ rule barrett_igr_long_horizon_mnist_tanh:
     shell:
         "PYTHONPATH=src uv run python {input.script} "
         "--dataset mnist --activation tanh --eta 0.01 --num-steps 30 --n-samples 1000 --seed 0 "
-        "--double-precision --save {output.pt}"
+        "--double-precision {params.device} --save {output.pt}"
 
 
 rule barrett_igr_long_horizon_mnist_relu:
@@ -91,6 +102,8 @@ rule barrett_igr_long_horizon_mnist_relu:
     output:
         pt="data/generated/barrett_igr_long_horizon/mnist_relu_eta001.pt",
         json="data/generated/barrett_igr_long_horizon/mnist_relu_eta001.json",
+    params:
+        device=device_arg(),
     resources:
         slurm_partition="whartonstat",
         runtime=360,
@@ -100,7 +113,7 @@ rule barrett_igr_long_horizon_mnist_relu:
     shell:
         "PYTHONPATH=src uv run python {input.script} "
         "--dataset mnist --activation relu --eta 0.01 --num-steps 30 --n-samples 1000 --seed 0 "
-        "--double-precision --save {output.pt}"
+        "--double-precision {params.device} --save {output.pt}"
 
 
 rule barrett_igr_trajectory:
@@ -108,6 +121,8 @@ rule barrett_igr_trajectory:
         script="analysis/barrett_igr_trajectory/run.py",
     output:
         results=protected("data/generated/barrett_igr_trajectory/results.pt"),
+    params:
+        device=device_arg(),
     resources:
         slurm_partition="whartonstat",
         runtime=240,
@@ -115,7 +130,7 @@ rule barrett_igr_trajectory:
         cpus_per_task=4,
         slurm_extra="--gres=gpu:1",
     shell:
-        "PYTHONPATH=src uv run python {input.script} --output {output.results}"
+        "PYTHONPATH=src uv run python {input.script} {params.device} --output {output.results}"
 
 
 rule nonlinear_multi_geometry_suite:
