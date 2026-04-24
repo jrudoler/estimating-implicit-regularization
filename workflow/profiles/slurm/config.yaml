@@ -20,6 +20,7 @@ cluster-config: ../../../config/cluster.yaml
 jobs: 50
 local-cores: 2
 keep-going: true
+keep-incomplete: true
 rerun-incomplete: true
 restart-times: 1
 latency-wait: 60

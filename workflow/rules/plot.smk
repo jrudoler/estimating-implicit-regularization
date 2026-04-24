@@ -1,30 +1,38 @@
 # Figure-generation rules. One rule per plot entrypoint.
 #
 # Each rule:
-#   - reads intermediates from data/generated/<analysis>/
+#   - reads intermediates from data/generated/<analysis>/ or (for W&B-backed
+#     plots) queries the sweep via config/sweeps.yaml
 #   - writes the final PDF or PNG to results/figures/
 
 
 rule plot_elasticnet_recovery:
     input:
         script="analysis/plot_elasticnet_recovery/run.py",
-        runs="data/generated/elasticnet_train_and_recover/runs.parquet",
     output:
         pdf="results/figures/elasticnet_recovery_mean_se.pdf",
+    params:
+        sweep_id=lambda wc: config["elasticnet_train_and_recover"]["id"],
+        entity_project=lambda wc: config["elasticnet_train_and_recover"]["entity_project"],
     shell:
         "PYTHONPATH=src uv run python {input.script} "
-        "--input {input.runs} --output-pdf {output.pdf}"
+        "--sweep-id {params.sweep_id} --entity-project {params.entity_project} "
+        "--output {output.pdf}"
 
 
 rule plot_dropout_bias_ridge_panel:
     input:
         script="analysis/plot_dropout_bias_ridge_panel/run.py",
-        runs="data/generated/dropout_bias_estimation/runs.parquet",
     output:
         png="results/figures/dropout_bias_ridge_panel.png",
+    params:
+        sweep_id=lambda wc: config["dropout_bias_estimation"]["id"],
+        entity=lambda wc: config["dropout_bias_estimation"]["entity_project"].split("/")[0],
+        project=lambda wc: config["dropout_bias_estimation"]["entity_project"].split("/")[1],
     shell:
         "PYTHONPATH=src uv run python {input.script} "
-        "--input {input.runs} --output-png {output.png}"
+        "--sweep-id {params.sweep_id} --entity {params.entity} --project {params.project} "
+        "--output {output.png}"
 
 
 rule plot_barrett_igr_figure2:
@@ -35,7 +43,7 @@ rule plot_barrett_igr_figure2:
         pdf="results/figures/barrett_igr_figure2.pdf",
     shell:
         "PYTHONPATH=src uv run python {input.script} "
-        "--input {input.results} --output-pdf {output.pdf}"
+        "--results {input.results} --out {output.pdf}"
 
 
 rule plot_barrett_igr_long_horizon:
@@ -49,8 +57,8 @@ rule plot_barrett_igr_long_horizon:
         pdf="results/figures/barrett_igr_long_horizon.pdf",
     shell:
         "PYTHONPATH=src uv run python {input.script} "
-        "--inputs {input.synth_eta001} {input.synth_eta003} {input.mnist_tanh} {input.mnist_relu} "
-        "--output-pdf {output.pdf}"
+        "--results {input.synth_eta001} {input.synth_eta003} {input.mnist_tanh} {input.mnist_relu} "
+        "--out {output.pdf}"
 
 
 rule plot_lambda_vs_epochs:
@@ -59,7 +67,7 @@ rule plot_lambda_vs_epochs:
     output:
         pdf="results/figures/lambda_vs_epochs.pdf",
     shell:
-        "PYTHONPATH=src uv run python {input.script} --output-pdf {output.pdf}"
+        "PYTHONPATH=src uv run python {input.script} --out {output.pdf}"
 
 
 rule plot_method_vis:
@@ -81,7 +89,7 @@ rule plot_linear_regression_ols:
         pred_weights="results/figures/predictive_weights_comparison_ols.pdf",
     shell:
         "PYTHONPATH=src uv run python {input.script} "
-        "--out-lambda-cmp {output.lambda_cmp} --out-pred-weights {output.pred_weights}"
+        "--lambda-out {output.lambda_cmp} --weights-out {output.pred_weights}"
 
 
 rule stage_preserved_figure:

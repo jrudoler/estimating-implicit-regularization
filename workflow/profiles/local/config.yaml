@@ -3,6 +3,7 @@
 
 cores: 4
 keep-going: false
-printshellcmds: true
+keep-incomplete: true    # don't delete outputs of failed jobs
 rerun-incomplete: true
+printshellcmds: true
 use-conda: false
