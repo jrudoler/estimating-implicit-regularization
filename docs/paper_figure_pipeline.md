@@ -1,21 +1,21 @@
 # Paper Figure Pipeline
 
-This note is the end-to-end map from active experiment or notebook logic to the artifacts under `paper/generated/figures/`.
+This note is the end-to-end map from active experiment or notebook logic to the artifacts under `paper/figures/`.
 
 It is meant to answer three questions clearly:
 
 1. What code or data generates each figure?
 2. What intermediate artifacts are expected?
-3. What file under `paper/generated/figures/` is the canonical output?
+3. What file under `paper/figures/` is the canonical output?
 
 ## Conventions
 
 - The manuscript lives in the `paper/` git submodule.
-- The canonical destination for manuscript-bound figures is `paper/generated/figures/`.
+- The canonical destination for manuscript-bound figures is `paper/figures/`.
 - The top-level builder is the Snakemake workflow: run `uv run snakemake -s workflow/Snakefile --cores 4 figures` (figures only) or `--profile workflow/profiles/slurm paper` (end-to-end).
 - Some figures are generated directly from scripts or notebook wrappers.
 - Some figures depend on prior experiment outputs in `data/generated/<analysis>/` (the local snapshot of training outputs) or W&B sweeps pulled into `data/generated/<analysis>/runs.parquet`.
-- `paper/generated/figures/OLS_early_stopping_figure.pdf` is a preserved final panel assembled externally, but its component figures are still regenerated automatically.
+- `paper/figures/OLS_early_stopping_figure.pdf` is a preserved final panel assembled externally, but its component figures are still regenerated automatically.
 
 ## Top-Level Entry Points
 
@@ -39,7 +39,7 @@ It is meant to answer three questions clearly:
 - Intermediate artifacts:
   - none required
 - Canonical output:
-  - `paper/generated/figures/tradeoff-vis.png`
+  - `paper/figures/tradeoff-vis.png`
 - Build command:
   - `uv run snakemake -s workflow/Snakefile --cores 4 results/figures/tradeoff-vis.png`
 
@@ -54,7 +54,7 @@ It is meant to answer three questions clearly:
 - Intermediate artifacts:
   - none required
 - Canonical output:
-  - `paper/generated/figures/sgd-vs-full-batch.png`
+  - `paper/figures/sgd-vs-full-batch.png`
 - Build command:
   - `uv run snakemake -s workflow/Snakefile --cores 4 results/figures/sgd-vs-full-batch.png`
 
@@ -87,7 +87,7 @@ It is meant to answer three questions clearly:
 - Top-level builder path:
   - `uv run snakemake -s workflow/Snakefile` defaults to sweep `9a7ll8aa`
 - Canonical output:
-  - `paper/generated/figures/elasticnet_recovery_mean_se.pdf`
+  - `paper/figures/elasticnet_recovery_mean_se.pdf`
 - Local fallback:
   - `analysis/elasticnet_train_and_recover/helpers/run_figure_batch.py`
   - this is only a fallback if explicitly pointed at a suitable CSV
@@ -105,7 +105,7 @@ It is meant to answer three questions clearly:
 - Status:
   - preserved final manuscript asset
 - Final paper asset:
-  - `paper/generated/figures/OLS_early_stopping_figure.pdf`
+  - `paper/figures/OLS_early_stopping_figure.pdf`
 - Reason preserved:
   - the final annotated panel was assembled externally rather than by one repo-native script
 - Notebook lineage for automated component figures:
@@ -113,8 +113,8 @@ It is meant to answer three questions clearly:
 - Maintained component generator:
   - `analysis/plot_linear_regression_ols/run.py`
 - Automated component outputs:
-  - `paper/generated/figures/Lambda_comparison-ols.pdf`
-  - `paper/generated/figures/predictive_weights_comparison_ols.pdf`
+  - `paper/figures/Lambda_comparison-ols.pdf`
+  - `paper/figures/predictive_weights_comparison_ols.pdf`
 - Top-level builder behavior:
   - `uv run snakemake -s workflow/Snakefile --cores 4 results/figures/OLS_early_stopping_figure.pdf`
   - preserves the final assembled panel
@@ -131,7 +131,7 @@ It is meant to answer three questions clearly:
 - Maintained generator:
   - `analysis/plot_lambda_vs_epochs/run.py`
 - Canonical output:
-  - `paper/generated/figures/lambda_vs_epochs.pdf`
+  - `paper/figures/lambda_vs_epochs.pdf`
 - Important note:
   - this script is active and automated, but heavier than the other figure builders because it reruns training internally
 - Build command:
@@ -152,7 +152,7 @@ It is meant to answer three questions clearly:
 - Maintained generator:
   - `analysis/plot_dropout_bias_ridge_panel/run.py`
 - Canonical output:
-  - `paper/generated/figures/dropout_bias_ridge_panel.png`
+  - `paper/figures/dropout_bias_ridge_panel.png`
 - Important note:
   - this requires W&B access at build time
 - Build command:
@@ -169,7 +169,7 @@ It is meant to answer three questions clearly:
 - Maintained plotter:
   - `analysis/plot_barrett_igr_figure2/run.py`
 - Canonical output:
-  - `paper/generated/figures/barrett_igr_figure2.pdf`
+  - `paper/figures/barrett_igr_figure2.pdf`
 - Build command:
   - `uv run snakemake -s workflow/Snakefile --cores 4 results/figures/barrett_igr_figure2.pdf`
 
@@ -187,7 +187,7 @@ It is meant to answer three questions clearly:
 - Maintained plotter:
   - `analysis/plot_barrett_igr_long_horizon/run.py`
 - Canonical output:
-  - `paper/generated/figures/barrett_igr_long_horizon.pdf`
+  - `paper/figures/barrett_igr_long_horizon.pdf`
 - Build command:
   - `uv run snakemake -s workflow/Snakefile --cores 4 results/figures/barrett_igr_long_horizon.pdf`
 
@@ -197,8 +197,8 @@ These are not currently direct `paper/main.tex` includes, but they are part of t
 
 ### OLS component figures
 
-- `paper/generated/figures/Lambda_comparison-ols.pdf`
-- `paper/generated/figures/predictive_weights_comparison_ols.pdf`
+- `paper/figures/Lambda_comparison-ols.pdf`
+- `paper/figures/predictive_weights_comparison_ols.pdf`
 - Source:
   - `notebooks/linear-regression.ipynb`
 - Maintained generator:
@@ -235,6 +235,6 @@ These are not currently direct `paper/main.tex` includes, but they are part of t
 
 ## Practical Rules
 
-- If a figure is in `paper/main.tex`, its canonical output should be under `paper/generated/figures/`.
-- If a figure depends on experiment outputs, the experiment should write numeric artifacts to `results/` or W&B, and only the final plot step should write to `paper/generated/figures/`.
+- If a figure is in `paper/main.tex`, its canonical output should be under `paper/figures/`.
+- If a figure depends on experiment outputs, the experiment should write numeric artifacts to `results/` or W&B, and only the final plot step should write to `paper/figures/`.
 - If a final paper panel was assembled externally, keep that final panel preserved, but still automate the reproducible component plots when possible.

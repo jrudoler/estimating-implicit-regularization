@@ -33,7 +33,7 @@ src/core/        shared Python package (imports as `from core.X import ...`)
 results/
   data/          final tables
   figures/       final manuscript figures (source of truth)
-paper/           submodule; `paper/generated/` staged by the workflow
+paper/           submodule; `paper/figures/` staged by the workflow
 workflow/
   Snakefile
   rules/         common, wandb, train, plot, paper
@@ -139,8 +139,7 @@ The flag threads through to every training rule via [workflow/rules/common.smk](
 
 ### Paper assembly
 
-- The manuscript is the submodule at [`paper/`](paper). The workflow writes paper-bound figures into `paper/generated/figures/`.
-- `paper/main.tex` should include `\graphicspath{{generated/figures/}}` so `\includegraphics{barrett_igr_figure2}` resolves to the staged PDF.
+- The manuscript is the submodule at [`paper/`](paper). The workflow writes paper-bound figures into `paper/figures/`, which is what `\includegraphics{figures/<fig>}` in `paper/main.tex` resolves to.
 - `paper_pdf` depends on every figure having been staged, so `uv run snakemake -s workflow/Snakefile paper` will stage figures first and then run `latexmk`.
 
 ## Core library
@@ -163,5 +162,5 @@ PYTHONPATH=src uv run pytest tests/
 The manuscript lives in the separate git submodule at [`paper/`](paper). Treat it as operationally separate from the parent repo:
 
 - read it freely as context during coding tasks
-- the workflow writes into `paper/generated/`; commits for that subtree happen inside the submodule
+- the workflow writes into `paper/figures/`; commits for that subtree happen inside the submodule
 - `paper/main.tex` and hand-authored LaTeX are still read-only unless manuscript changes are explicitly requested

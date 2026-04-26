@@ -14,7 +14,7 @@ This file is the canonical repo-local instructions for autonomous work in `/home
 
 ## Paper Repo Safety Rules
 
-- Treat `paper/` as read-only by default, with one carveout: the Snakemake workflow writes generated artifacts into `paper/generated/` (figures, tables, `_results.tex`, `manifest.json`). Treat anything under `paper/generated/` as workflow output that the parent `Snakefile` owns, not as hand-authored manuscript content.
+- Treat `paper/` as read-only by default, with one carveout: the Snakemake workflow writes paper-bound figures into `paper/figures/` via the `stage_paper_figure` rule. Files under `paper/figures/` are workflow output owned by the parent `Snakefile`, not hand-authored manuscript content.
 - Hand-authored LaTeX (e.g. `paper/main.tex`, `paper/ref.bib`, `paper/macros.tex`) remains read-only unless the user explicitly requests manuscript edits.
 - Before any manuscript edit, always `cd paper/` first.
 - Before any manuscript edit, refresh `paper/` from the manuscript GitHub repo first.
@@ -110,5 +110,5 @@ git commit -m "Update paper submodule pointer"
 
 - For analysis figures, default to a single vector output format, `PDF`, unless the user explicitly asks for an additional raster export.
 - Do not emit both `.png` and `.pdf` versions of the same analysis figure by default.
-- Write figures to `results/figures/` via the corresponding `analysis/plot_<name>/run.py` rule in the Snakefile, not via ad-hoc scripts. The `stage_paper_figure` rule copies them into `paper/generated/figures/`.
+- Write figures to `results/figures/` via the corresponding `analysis/plot_<name>/run.py` rule in the Snakefile, not via ad-hoc scripts. The `stage_paper_figure` rule copies them into `paper/figures/`.
 - Intermediates (`.pt`, `.parquet`, `.json` produced by training) go under `data/generated/<analysis>/`, not `results/`.
