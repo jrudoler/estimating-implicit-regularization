@@ -92,6 +92,19 @@ rule plot_linear_regression_ols:
         "--lambda-out {output.lambda_cmp} --weights-out {output.pred_weights}"
 
 
+rule plot_ols_full_matrix_recovery:
+    input:
+        script="analysis/plot_ols_full_matrix_recovery/run.py",
+        results="data/generated/ols_full_matrix_recovery/results.pt",
+    output:
+        recovery="results/figures/ols_full_matrix_recovery.pdf",
+        distance="results/figures/ols_full_matrix_distance_to_theory.pdf",
+    shell:
+        "PYTHONPATH=src uv run python {input.script} "
+        "--input {input.results} "
+        "--out-recovery {output.recovery} --out-distance {output.distance}"
+
+
 rule stage_preserved_figure:
     input:
         src="data/provided/paper_assets/{fig_id}.{ext}",
