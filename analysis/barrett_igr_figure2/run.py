@@ -48,11 +48,15 @@ LOGGER = logging.getLogger(__name__)
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--out", type=Path, default=REPO_ROOT / "results" / "barrett_igr_figure2.pt")
+    parser.add_argument(
+        "--out", type=Path, default=REPO_ROOT / "results" / "barrett_igr_figure2.pt"
+    )
     parser.add_argument("--mnist-root", type=Path, default=REPO_ROOT / "data" / "raw")
     parser.add_argument("--train-samples", type=int, default=10000)
     parser.add_argument("--test-samples", type=int, default=5000)
-    parser.add_argument("--activation", choices=("relu", "tanh", "gelu"), default="tanh")
+    parser.add_argument(
+        "--activation", choices=("relu", "tanh", "gelu"), default="tanh"
+    )
     parser.add_argument(
         "--widths",
         type=str,
@@ -115,6 +119,16 @@ def resolve_device(name: str | None) -> torch.device:
     return torch.device("cpu")
 
 
+def resolve_dtype(args: argparse.Namespace, device: torch.device) -> torch.dtype:
+    if device.type == "mps":
+        if args.double_precision:
+            LOGGER.warning(
+                "MPS does not reliably support float64; using float32 instead."
+            )
+        return torch.float32
+    return torch.float64 if args.double_precision else torch.float32
+
+
 def load_mnist(
     root: Path, train_samples: int, test_samples: int, seed: int, dtype: torch.dtype
 ) -> tuple[TensorDataset, TensorDataset]:
@@ -143,7 +157,11 @@ def load_mnist(
 
 
 def build_mlp(
-    input_dim: int, widths: Sequence[int], num_classes: int, activation: str, dtype: torch.dtype
+    input_dim: int,
+    widths: Sequence[int],
+    num_classes: int,
+    activation: str,
+    dtype: torch.dtype,
 ) -> nn.Module:
     act = {"relu": nn.ReLU, "tanh": nn.Tanh, "gelu": nn.GELU}[activation]
     layers: list[nn.Module] = []
@@ -156,7 +174,9 @@ def build_mlp(
     return nn.Sequential(*layers)
 
 
-def evaluate(model: nn.Module, features: Tensor, targets: Tensor, batch_size: int = 2048) -> float:
+def evaluate(
+    model: nn.Module, features: Tensor, targets: Tensor, batch_size: int = 2048
+) -> float:
     model.eval()
     correct = 0
     total = 0
@@ -322,7 +342,9 @@ def run_one(
         if epoch % args.eval_every == 0 or epoch == args.epochs:
             train_acc = evaluate(model, train_features, train_targets)
             test_acc = evaluate(model, test_features, test_targets)
-            history.append({"epoch": epoch, "train_acc": train_acc, "test_acc": test_acc})
+            history.append(
+                {"epoch": epoch, "train_acc": train_acc, "test_acc": test_acc}
+            )
             LOGGER.info(
                 "w=%d eta=%.3g seed=%d epoch=%d train_acc=%.4f test_acc=%.4f",
                 width,
@@ -421,8 +443,8 @@ def main() -> None:
         level=getattr(logging, args.log_level.upper(), logging.INFO),
     )
 
-    dtype = torch.float64 if args.double_precision else torch.float32
     device = resolve_device(args.device)
+    dtype = resolve_dtype(args, device)
     LOGGER.info("device=%s dtype=%s", device, dtype)
 
     widths = [int(x) for x in args.widths.split(",")]
@@ -437,7 +459,9 @@ def main() -> None:
     results: list[dict] = []
     combos = list(product(widths, etas, seeds))
     for i, (width, eta, seed) in enumerate(combos, 1):
-        LOGGER.info("[%d/%d] width=%d eta=%.4g seed=%d", i, len(combos), width, eta, seed)
+        LOGGER.info(
+            "[%d/%d] width=%d eta=%.4g seed=%d", i, len(combos), width, eta, seed
+        )
         try:
             res = run_one(args, train_ds, test_ds, width, eta, seed, device, dtype)
             results.append(res)
@@ -450,7 +474,9 @@ def main() -> None:
                 res["residual_ratio"],
             )
         except Exception as e:
-            LOGGER.exception("Run failed for width=%d eta=%g seed=%d: %s", width, eta, seed, e)
+            LOGGER.exception(
+                "Run failed for width=%d eta=%g seed=%d: %s", width, eta, seed, e
+            )
 
     args.out.parent.mkdir(parents=True, exist_ok=True)
     torch.save({"results": results, "config": vars(args)}, args.out)

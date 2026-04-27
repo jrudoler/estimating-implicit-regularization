@@ -166,6 +166,11 @@ uv run snakemake -s workflow/Snakefile --profile workflow/profiles/slurm \
 
 The training scripts autodetect CUDA → MPS → CPU. To force one, pass `--config device=<value>`:
 
+On Apple Silicon, MPS is supported for local iteration, but the Barrett
+training entrypoints will fall back to float32 if you request double
+precision. That keeps the runs working on MPS without silently pretending
+float64 is available there.
+
 ```bash
 # Force CPU (e.g., for reproducibility or when no GPU is present):
 uv run snakemake -s workflow/Snakefile --config device=cpu --cores 4 figures

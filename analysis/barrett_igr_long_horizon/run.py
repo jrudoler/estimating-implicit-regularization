@@ -53,7 +53,9 @@ LOGGER = logging.getLogger(__name__)
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--dataset", choices=("synthetic", "mnist"), default="synthetic")
+    parser.add_argument(
+        "--dataset", choices=("synthetic", "mnist"), default="synthetic"
+    )
     parser.add_argument("--eta", type=float, default=0.01)
     parser.add_argument(
         "--num-steps",
@@ -100,6 +102,16 @@ def resolve_device(name: str | None) -> torch.device:
     return torch.device("cpu")
 
 
+def resolve_dtype(args: argparse.Namespace, device: torch.device) -> torch.dtype:
+    if device.type == "mps":
+        if args.double_precision:
+            LOGGER.warning(
+                "MPS does not reliably support float64; using float32 instead."
+            )
+        return torch.float32
+    return torch.float64 if args.double_precision else torch.float32
+
+
 def make_synthetic(args, dtype) -> tuple[TensorDataset, nn.Module, nn.Module]:
     gen = torch.Generator().manual_seed(args.seed)
     X = torch.randn(args.n_samples, args.p_features, generator=gen, dtype=dtype)
@@ -121,7 +133,9 @@ def make_mnist(args, dtype) -> tuple[TensorDataset, nn.Module, nn.Module]:
     transform = transforms.Compose(
         [transforms.ToTensor(), transforms.Normalize((0.1307,), (0.3081,))]
     )
-    ds = datasets.MNIST(root=args.mnist_root, train=True, download=False, transform=transform)
+    ds = datasets.MNIST(
+        root=args.mnist_root, train=True, download=False, transform=transform
+    )
     if args.mnist_max_samples and args.mnist_max_samples < len(ds):
         gen = torch.Generator().manual_seed(args.seed)
         idx = torch.randperm(len(ds), generator=gen)[: args.mnist_max_samples].tolist()
@@ -163,9 +177,16 @@ def main() -> None:
     )
 
     torch.manual_seed(args.seed)
-    dtype = torch.float64 if args.double_precision else torch.float32
     device = resolve_device(args.device)
-    LOGGER.info("dataset=%s eta=%g N=%d dtype=%s device=%s", args.dataset, args.eta, args.num_steps, dtype, device)
+    dtype = resolve_dtype(args, device)
+    LOGGER.info(
+        "dataset=%s eta=%g N=%d dtype=%s device=%s",
+        args.dataset,
+        args.eta,
+        args.num_steps,
+        dtype,
+        device,
+    )
 
     if args.dataset == "synthetic":
         ds, model, loss_fn = make_synthetic(args, dtype)
@@ -192,7 +213,10 @@ def main() -> None:
         theta_gd_snapshots.append(new_theta.detach().clone())
 
     # --- Trajectory 2: original-loss gradient flow via RK4, sampled at k*eta ---
-    LOGGER.info("Integrating original-loss gradient flow (RK4, substeps=%d per eta)...", args.rk4_substeps)
+    LOGGER.info(
+        "Integrating original-loss gradient flow (RK4, substeps=%d per eta)...",
+        args.rk4_substeps,
+    )
     theta_orig_snapshots: list[Tensor] = [theta0.clone()]
     cur = theta0.clone()
     for k in range(1, args.num_steps + 1):
@@ -210,7 +234,10 @@ def main() -> None:
             LOGGER.info("  original-flow step %d/%d", k, args.num_steps)
 
     # --- Trajectory 3: modified-loss flow via RK4, sampled at k*eta ---
-    LOGGER.info("Integrating modified-loss flow (RK4, substeps=%d per eta)...", args.rk4_substeps)
+    LOGGER.info(
+        "Integrating modified-loss flow (RK4, substeps=%d per eta)...",
+        args.rk4_substeps,
+    )
     theta_mod_snapshots: list[Tensor] = [theta0.clone()]
     cur = theta0.clone()
     for k in range(1, args.num_steps + 1):
@@ -254,15 +281,19 @@ def main() -> None:
     )
     LOGGER.info(
         "  ratio drift_orig / drift_theta0 = %.3f (should grow with eta if GD leaves pure-flow path)",
-        drifts[-1]["dist_gd_to_orig_flow"] / max(drifts[-1]["dist_gd_from_theta0"], 1e-30),
+        drifts[-1]["dist_gd_to_orig_flow"]
+        / max(drifts[-1]["dist_gd_from_theta0"], 1e-30),
     )
     LOGGER.info(
         "  ratio drift_mod  / drift_orig   = %.3f (<<1 means modified flow tracks GD far better than original flow)",
-        drifts[-1]["dist_gd_to_mod_flow"] / max(drifts[-1]["dist_gd_to_orig_flow"], 1e-30),
+        drifts[-1]["dist_gd_to_mod_flow"]
+        / max(drifts[-1]["dist_gd_to_orig_flow"], 1e-30),
     )
 
     payload = {
-        "config": {k: (str(v) if isinstance(v, Path) else v) for k, v in vars(args).items()},
+        "config": {
+            k: (str(v) if isinstance(v, Path) else v) for k, v in vars(args).items()
+        },
         "num_params": num_params,
         "eta": args.eta,
         "num_steps": args.num_steps,

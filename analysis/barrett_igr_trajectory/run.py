@@ -46,7 +46,9 @@ LOGGER = logging.getLogger(__name__)
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--dataset", choices=("synthetic", "mnist"), default="synthetic")
+    parser.add_argument(
+        "--dataset", choices=("synthetic", "mnist"), default="synthetic"
+    )
     parser.add_argument("--mode", choices=("flow_ref", "sgd"), default="flow_ref")
     parser.add_argument("--eta", type=float, default=1e-2, help="GD step size eta.")
     parser.add_argument("--num-steps", type=int, default=500)
@@ -117,7 +119,9 @@ def parse_args() -> argparse.Namespace:
         action="store_true",
         help="Run in float64 (recommended for synthetic, slow for MNIST).",
     )
-    parser.add_argument("--device", type=str, default=None, help="cpu/cuda/mps override.")
+    parser.add_argument(
+        "--device", type=str, default=None, help="cpu/cuda/mps override."
+    )
     parser.add_argument(
         "--save",
         type=Path,
@@ -138,11 +142,23 @@ def resolve_device(name: str | None) -> torch.device:
     return torch.device("cpu")
 
 
+def resolve_dtype(args: argparse.Namespace, device: torch.device) -> torch.dtype:
+    if device.type == "mps":
+        if args.double_precision:
+            LOGGER.warning(
+                "MPS does not reliably support float64; using float32 instead."
+            )
+        return torch.float32
+    return torch.float64 if args.double_precision else torch.float32
+
+
 def default_checkpoints(num_steps: int) -> list[int]:
     """Log-spaced checkpoint grid inclusive of first and last steps."""
     if num_steps < 2:
         return [num_steps]
-    n_points = min(20, max(8, int(torch.log10(torch.tensor(float(num_steps))).item() * 6)))
+    n_points = min(
+        20, max(8, int(torch.log10(torch.tensor(float(num_steps))).item() * 6))
+    )
     raw = torch.logspace(0, torch.log10(torch.tensor(float(num_steps))), n_points)
     grid = sorted({int(round(float(x))) for x in raw})
     grid = [t for t in grid if 1 <= t <= num_steps]
@@ -151,7 +167,9 @@ def default_checkpoints(num_steps: int) -> list[int]:
     return grid
 
 
-def make_synthetic(args: argparse.Namespace, dtype: torch.dtype) -> tuple[TensorDataset, nn.Module, nn.Module]:
+def make_synthetic(
+    args: argparse.Namespace, dtype: torch.dtype
+) -> tuple[TensorDataset, nn.Module, nn.Module]:
     gen = torch.Generator().manual_seed(args.seed)
     X = torch.randn(args.n_samples, args.p_features, generator=gen, dtype=dtype)
     beta = 3.0 * torch.randn(args.p_features, generator=gen, dtype=dtype)
@@ -168,7 +186,9 @@ def make_synthetic(args: argparse.Namespace, dtype: torch.dtype) -> tuple[Tensor
     return dataset, model, loss_fn
 
 
-def make_mnist(args: argparse.Namespace, dtype: torch.dtype) -> tuple[TensorDataset, nn.Module, nn.Module]:
+def make_mnist(
+    args: argparse.Namespace, dtype: torch.dtype
+) -> tuple[TensorDataset, nn.Module, nn.Module]:
     from torchvision import datasets, transforms
 
     transform = transforms.Compose(
@@ -183,7 +203,9 @@ def make_mnist(args: argparse.Namespace, dtype: torch.dtype) -> tuple[TensorData
     total = len(dataset)
     if args.mnist_max_samples and args.mnist_max_samples < total:
         gen = torch.Generator().manual_seed(args.seed)
-        indices = torch.randperm(total, generator=gen)[: args.mnist_max_samples].tolist()
+        indices = torch.randperm(total, generator=gen)[
+            : args.mnist_max_samples
+        ].tolist()
         dataset = Subset(dataset, indices)
         total = len(dataset)
 
@@ -408,8 +430,8 @@ def main() -> None:
     )
 
     torch.manual_seed(args.seed)
-    dtype = torch.float64 if args.double_precision else torch.float32
     device = resolve_device(args.device)
+    dtype = resolve_dtype(args, device)
     LOGGER.info(
         "dataset=%s mode=%s eta=%.4g steps=%d dtype=%s device=%s",
         args.dataset,

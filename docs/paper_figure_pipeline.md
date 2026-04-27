@@ -25,6 +25,9 @@ It is meant to answer three questions clearly:
   snapshots.
 - W&B-backed plot rules read local parquet snapshots; only
   `pull_wandb_sweep` queries the W&B API.
+- Barrett-style training entrypoints accept `--double-precision`, but on MPS
+  they intentionally fall back to float32 because MPS does not reliably
+  support float64. Use CPU or CUDA if you need the higher-precision path.
 - `paper/figures/OLS_early_stopping_figure.pdf` is a preserved final panel assembled externally, but its component figures are still regenerated automatically.
 
 ## Top-Level Entry Points
