@@ -18,134 +18,150 @@ The manuscript in [`paper/`](/home/jrudoler/inductive-bias/paper) frames the pro
 - specify a parameterized family of candidate regularizers
 - fit the regularizer parameters so their gradient matches the negative loss gradient
 
-In the codebase, these fitted parameters are the estimated effective regularization or best effective regularizer for the chosen bias family. The repo includes both controlled synthetic studies and larger neural-network experiments to evaluate when this recovery is accurate, when it is misspecified, and when geometry makes the problem ill-conditioned.
+## Repository layout
 
-## Getting Started
+The repo follows a reproducible-science layout with an explicit [`Snakefile`](workflow/Snakefile) that captures every dependency from raw input to final PDF.
 
-This repo uses `uv` for environment management.
+```text
+data/
+  raw/           external downloads (e.g. MNIST)
+  provided/      stable project inputs (sweep YAMLs, paper assets)
+  generated/     workflow-produced intermediates (W&B snapshots, .pt checkpoints)
+analysis/
+  <rule>/run.py  one folder per Snakemake rule
+src/core/        shared Python package (imports as `from core.X import ...`)
+results/
+  data/          final tables
+  figures/       final manuscript figures (source of truth)
+paper/           submodule; `paper/generated/` staged by the workflow
+workflow/
+  Snakefile
+  rules/         common, wandb, train, plot, paper
+  profiles/slurm SBATCH profile for cluster execution
+config/          sweeps.yaml (W&B sweep IDs, per-analysis)
+```
+
+See [science-repo-skill.md](science-repo-skill.md) for the canonical description of the layout and [docs/paper_figure_pipeline.md](docs/paper_figure_pipeline.md) for the figure-by-figure provenance map.
+
+## Getting started
 
 ```bash
 git clone --recurse-submodules git@github.com:jrudoler/inductive-bias.git
 cd inductive-bias
-uv sync
-git submodule update --init --recursive
+bash scripts/bootstrap.sh
 ```
 
-If you already cloned the parent repo without submodules:
+The bootstrap script installs `uv` if missing, syncs the dev group (which includes Snakemake), creates the log and generated directories, and prints the installed snakemake version. It is idempotent.
+
+If you already have `uv`:
 
 ```bash
-git submodule update --init --recursive
+uv sync --group dev
 ```
 
-The manuscript repo is checked out at [`paper/`](/home/jrudoler/inductive-bias/paper) as a submodule. It is available as read-only context for ordinary coding work. By default, implementation and method updates should go to code and non-paper docs, not the manuscript.
+## Workflow
 
-## Typical Workflows
-
-### Run a Single Experiment
-
-Use `uv run` for Python entrypoints:
+Every step runs through Snakemake. The top-level targets are:
 
 ```bash
-uv run python experiments/l2_train_and_recover.py
+# Plot-only: rebuild every paper figure from existing data/generated/ snapshots.
+uv run snakemake -s workflow/Snakefile --cores 4 figures
+
+# Full end-to-end via SLURM: train, pull W&B runs, plot, latexmk -> paper/main.pdf
+uv run snakemake -s workflow/Snakefile --profile workflow/profiles/slurm paper
+
+# Rebuild one figure (only its upstream subgraph).
+uv run snakemake -s workflow/Snakefile --cores 4 results/figures/barrett_igr_figure2.pdf
+
+# Force re-pull one W&B sweep without touching others.
+uv run snakemake -s workflow/Snakefile \
+    --forcerun pull_wandb_sweep \
+    results/figures/elasticnet_recovery_mean_se.pdf
 ```
 
-Other common entrypoints include:
+Analysis sub-DAGs are independent. Rebuilding the OLS figures never triggers the dropout pipeline, and vice versa.
 
-- `experiments/function_class_identifiability.py`
-- `experiments/mixed_bias_recovery.py`
-- `experiments/dropout_bias_estimation.py`
-- `experiments/bootstrap_bias_recovery.py`
+### Adding a new analysis
 
-### Run A W&B Sweep
+1. Decide whether the output is an intermediate (`data/generated/`) or a final result (`results/`).
+2. Create `analysis/<rule>/run.py` with argparse-driven `--input`/`--output` flags.
+3. Move reusable logic into `src/core/`.
+4. Add the rule to [workflow/rules/train.smk](workflow/rules/train.smk) or [workflow/rules/plot.smk](workflow/rules/plot.smk).
+5. If the analysis consumes a W&B sweep, add its sweep ID to [config/sweeps.yaml](config/sweeps.yaml) under the analysis key.
 
-The canonical experiment inventory lives in [`experiments/REGISTRY.yaml`](/home/jrudoler/inductive-bias/experiments/REGISTRY.yaml). The canonical Slurm launcher is [`scripts/wandb_sweep.slurm`](/home/jrudoler/inductive-bias/scripts/wandb_sweep.slurm).
+### W&B sweeps
 
-Typical workflow:
+- Sweep IDs and entity/project are pinned in [config/sweeps.yaml](config/sweeps.yaml). Figures depend on a local `data/generated/<analysis>/runs.parquet` snapshot produced by the `pull_wandb_sweep` rule, so plot rebuilds never re-query W&B.
+- To launch a fresh sweep + SLURM agents and capture the new ID back into `config/sweeps.yaml`:
 
 ```bash
-uv run wandb sweep sweeps/<config>.yaml
-sbatch scripts/wandb_sweep.slurm <SWEEP_ID>
+uv run snakemake -s workflow/Snakefile --profile workflow/profiles/slurm \
+    data/generated/<analysis>/.sweep_done
 ```
 
-### Work With The Manuscript As Context
+### SLURM
 
-Refresh the manuscript locally when needed:
+SLURM is optional. Training rules declare their cluster resources inline via `resources:` blocks in [workflow/rules/train.smk](workflow/rules/train.smk) (partition, runtime, mem_mb, cpus_per_task, `slurm_extra="--gres=gpu:1"`). Cheap rules (plotting, W&B pulls, staging, latexmk) are listed under `localrules:` in [workflow/Snakefile](workflow/Snakefile) and always run on the submitting host.
 
 ```bash
-git -C paper fetch origin
-git -C paper pull --ff-only origin main
+# Run everything locally (training rules will use whichever CUDA device the shell sees, or CPU).
+uv run snakemake --cores 4 figures
+
+# Submit training rules to SLURM via the snakemake-executor-plugin-slurm
+# profile; cheap rules stay local automatically.
+uv run snakemake --profile workflow/profiles/slurm paper
 ```
 
-Read from `paper/` for research context, definitions, and framing, but do not edit it unless manuscript changes are explicitly requested.
+Per-rule overrides: tweak the `resources:` block on the offending rule, or override at the CLI:
 
-## Codebase Overview
-
-### Core Library
-
-- [`src/core/bias.py`](/home/jrudoler/inductive-bias/src/core/bias.py): candidate regularizers and bias parameterizations, including L2-adjacent, spectral, orthogonality, and gradient-penalty style bias models
-- [`src/core/estimators.py`](/home/jrudoler/inductive-bias/src/core/estimators.py): Lightning-based gradient-matching estimators that fit bias parameters against predictive loss gradients
-- [`src/core/models.py`](/home/jrudoler/inductive-bias/src/core/models.py): predictive models used in experiments, including MNIST MLPs and smaller linear or nonlinear networks
-- [`src/core/data.py`](/home/jrudoler/inductive-bias/src/core/data.py): datamodules and dataset loaders
-- [`src/core/plotting.py`](/home/jrudoler/inductive-bias/src/core/plotting.py): plotting helpers for experiment summaries
-- [`src/core/callbacks.py`](/home/jrudoler/inductive-bias/src/core/callbacks.py), [`src/core/utils.py`](/home/jrudoler/inductive-bias/src/core/utils.py), [`src/core/wandb_utils.py`](/home/jrudoler/inductive-bias/src/core/wandb_utils.py): training utilities, logging helpers, and support code
-
-### Experiments
-
-- [`experiments/REGISTRY.yaml`](/home/jrudoler/inductive-bias/experiments/REGISTRY.yaml): canonical inventory of active, appendix, legacy, and deprecated experiment assets
-- recovery scripts such as [`experiments/l2_train_and_recover.py`](/home/jrudoler/inductive-bias/experiments/l2_train_and_recover.py), [`experiments/l2_nuclear_train_and_recover.py`](/home/jrudoler/inductive-bias/experiments/l2_nuclear_train_and_recover.py), and [`experiments/l2_orthogonal_train_and_recover.py`](/home/jrudoler/inductive-bias/experiments/l2_orthogonal_train_and_recover.py)
-- mixed-bias and identifiability studies such as [`experiments/mixed_bias_recovery.py`](/home/jrudoler/inductive-bias/experiments/mixed_bias_recovery.py), [`experiments/function_class_identifiability.py`](/home/jrudoler/inductive-bias/experiments/function_class_identifiability.py), and [`experiments/nonlinear_multi_geometry_suite.py`](/home/jrudoler/inductive-bias/experiments/nonlinear_multi_geometry_suite.py)
-- practical deep-learning settings such as [`experiments/dropout_bias_estimation.py`](/home/jrudoler/inductive-bias/experiments/dropout_bias_estimation.py), [`experiments/mnist_implicit_reg.py`](/home/jrudoler/inductive-bias/experiments/mnist_implicit_reg.py), and [`experiments/mnist_deep_relu_bias.py`](/home/jrudoler/inductive-bias/experiments/mnist_deep_relu_bias.py)
-- stability and resampling work such as [`experiments/bootstrap_bias_recovery.py`](/home/jrudoler/inductive-bias/experiments/bootstrap_bias_recovery.py)
-
-### Analysis And Documentation
-
-- [`analysis/`](/home/jrudoler/inductive-bias/analysis): experiment summaries and analysis scripts, including bootstrap and identifiability writeups
-- [`docs/`](/home/jrudoler/inductive-bias/docs): project notes, handoff context, manuscript-adjacent notes, and autonomous work logs
-- [`docs/autonomous_notes.md`](/home/jrudoler/inductive-bias/docs/autonomous_notes.md): default non-paper log for autonomous method or implementation updates
-
-### Sweep And Cluster Tooling
-
-- [`scripts/wandb_sweep.slurm`](/home/jrudoler/inductive-bias/scripts/wandb_sweep.slurm): canonical GPU sweep launcher on the cluster
-- [`scripts/bias_from_sweep.py`](/home/jrudoler/inductive-bias/scripts/bias_from_sweep.py): download checkpoints from a W&B sweep and optionally run downstream bias estimation
-- [`scripts/build_paper_figures.py`](/home/jrudoler/inductive-bias/scripts/build_paper_figures.py): regenerate or verify the figures referenced by [`paper/main.tex`](/home/jrudoler/inductive-bias/paper/main.tex)
-- [`scripts/`](/home/jrudoler/inductive-bias/scripts): sweep helpers, launch utilities, and reporting scripts
-
-### Tests And Profiling
-
-- [`tests/test_predictive_loss_grad.py`](/home/jrudoler/inductive-bias/tests/test_predictive_loss_grad.py): checks predictive-loss gradient calculations used by the estimators
-- [`tests/test_function_class_identifiability_structured.py`](/home/jrudoler/inductive-bias/tests/test_function_class_identifiability_structured.py): structured regression and identifiability coverage
-- [`tests/PROFILING_README.md`](/home/jrudoler/inductive-bias/tests/PROFILING_README.md): profiling notes and supporting assets
-
-## Project Structure At A Glance
-
-```text
-src/core/        Core bias models, estimators, data modules, and utilities
-experiments/     Main experimental entrypoints and registry
-analysis/        Analysis code and result summaries
-scripts/         Sweep launchers and experiment utilities
-tests/           Tests, smoke checks, and profiling helpers
-docs/            Project notes and autonomous documentation
-paper/           Manuscript submodule for read-only context by default
-archive/         Archived experiment assets retained for reproducibility
+```bash
+uv run snakemake --profile workflow/profiles/slurm \
+    --set-resources barrett_igr_long_horizon_mnist_tanh:runtime=720 \
+    results/figures/barrett_igr_long_horizon.pdf
 ```
 
-## Notes On Manuscript Workflow
+### Device (CPU vs GPU) for training rules
 
-The manuscript lives in the separate git submodule at [`paper/`](/home/jrudoler/inductive-bias/paper). Treat it as operationally separate from the parent repo:
+The training scripts autodetect CUDA → MPS → CPU. To force one, pass `--config device=<value>`:
 
-- use it freely as context during coding tasks
-- do not edit it unless manuscript changes are explicitly requested
-- keep manuscript commits separate from parent repo commits
-- if manuscript changes are made, decide separately whether to commit the updated submodule pointer in the parent repo
+```bash
+# Force CPU (e.g., for reproducibility or when no GPU is present):
+uv run snakemake --config device=cpu --cores 4 figures
 
-## Current State
+# Force CUDA (also a useful sanity check that the env sees the GPU):
+uv run snakemake --config device=cuda --cores 4 figures
 
-The repository includes active work on:
+# Defaults (autodetect):
+uv run snakemake --cores 4 figures
+```
 
-- explicit regularizer recovery in deep networks
-- multi-regularizer identifiability and collinearity analysis
-- synthetic function-class experiments
-- dropout and early-stopping style implicit bias studies
-- bootstrap and subsampling diagnostics for recovery stability
+The flag threads through to every training rule via [workflow/rules/common.smk](workflow/rules/common.smk) → `device_arg()` → each rule's `{params.device}`.
 
-For the most complete research framing, read the manuscript in [`paper/main.tex`](/home/jrudoler/inductive-bias/paper/main.tex). For the most accurate experiment inventory, use [`experiments/REGISTRY.yaml`](/home/jrudoler/inductive-bias/experiments/REGISTRY.yaml).
+### Paper assembly
+
+- The manuscript is the submodule at [`paper/`](paper). The workflow writes paper-bound figures into `paper/generated/figures/`.
+- `paper/main.tex` should include `\graphicspath{{generated/figures/}}` so `\includegraphics{barrett_igr_figure2}` resolves to the staged PDF.
+- `paper_pdf` depends on every figure having been staged, so `uv run snakemake -s workflow/Snakefile paper` will stage figures first and then run `latexmk`.
+
+## Core library
+
+- [`src/core/bias.py`](src/core/bias.py): candidate regularizers and bias parameterizations
+- [`src/core/estimators.py`](src/core/estimators.py): Lightning-based gradient-matching estimators
+- [`src/core/models.py`](src/core/models.py): predictive models (MNIST MLPs, small linear/nonlinear nets)
+- [`src/core/data.py`](src/core/data.py): datamodules and dataset loaders
+- [`src/core/wandb_utils.py`](src/core/wandb_utils.py): W&B API helpers used by `pull_wandb_sweep`
+- [`src/core/plotting.py`](src/core/plotting.py): shared plotting defaults
+
+## Tests
+
+```bash
+PYTHONPATH=src uv run pytest tests/
+```
+
+## Manuscript workflow
+
+The manuscript lives in the separate git submodule at [`paper/`](paper). Treat it as operationally separate from the parent repo:
+
+- read it freely as context during coding tasks
+- the workflow writes into `paper/generated/`; commits for that subtree happen inside the submodule
+- `paper/main.tex` and hand-authored LaTeX are still read-only unless manuscript changes are explicitly requested

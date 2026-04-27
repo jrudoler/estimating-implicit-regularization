@@ -1,0 +1,8 @@
+# Local profile for dev runs without cluster submission.
+# Usage: uv run snakemake --profile workflow/profiles/local <target>
+
+cores: 4
+keep-going: false
+keep-incomplete: true
+rerun-incomplete: true
+printshellcmds: true

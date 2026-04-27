@@ -1,0 +1,83 @@
+# Top-level Snakefile for the inductive-bias workflow.
+#
+# Common invocations:
+#   uv run snakemake --cores 4 figures
+#     Rebuild all paper-bound figures from existing data/generated/ snapshots.
+#     Everything runs locally; GPU rules will use whichever CUDA device the
+#     shell sees (or fall back to CPU).
+#
+#   uv run snakemake --profile workflow/profiles/slurm paper
+#     Training rules submit to SLURM with per-rule resources (GPU, mem,
+#     runtime declared in workflow/rules/train.smk). Cheap rules (plotting,
+#     W&B pulls, stages, latexmk) stay on the submitting host thanks to the
+#     `localrules:` directive below.
+#
+#   uv run snakemake --cores 4 results/figures/barrett_igr_figure2.pdf
+#     Rebuild only one figure's sub-DAG.
+#
+#   uv run snakemake --profile workflow/profiles/slurm launch_wandb_sweep --config analysis=<name>
+#     Opt-in: create sweep + submit N SLURM agents, capture the new ID, wait.
+#
+#   uv run snakemake --forcerun pull_wandb_sweep \
+#       --cores 4 results/figures/elasticnet_recovery_mean_se.pdf
+#     Force a W&B re-pull for one analysis and rebuild only its figure.
+
+
+include: "rules/common.smk"
+include: "rules/wandb.smk"
+include: "rules/train.smk"
+include: "rules/plot.smk"
+include: "rules/paper.smk"
+
+
+# Cheap rules that should always run on the submitting host, even under
+# --executor slurm. Training rules are deliberately omitted so they do
+# submit to the cluster when a SLURM profile is active.
+localrules:
+    all,
+    figures,
+    paper,
+    stage_all_paper_figures,
+    stage_paper_figure,
+    stage_preserved_figure,
+    plot_method_vis,
+    plot_linear_regression_ols,
+    plot_lambda_vs_epochs,
+    plot_barrett_igr_figure2,
+    plot_barrett_igr_long_horizon,
+    plot_elasticnet_recovery,
+    plot_dropout_bias_ridge_panel,
+    pull_wandb_sweep,
+    launch_wandb_sweep,
+    paper_pdf,
+
+
+PAPER_FIGURES = [
+    "results/figures/tradeoff-vis.png",
+    "results/figures/sgd-vs-full-batch.png",
+    "results/figures/elasticnet_recovery_mean_se.pdf",
+    "results/figures/OLS_early_stopping_figure.pdf",
+    "results/figures/Lambda_comparison-ols.pdf",
+    "results/figures/predictive_weights_comparison_ols.pdf",
+    "results/figures/lambda_vs_epochs.pdf",
+    "results/figures/dropout_bias_ridge_panel.png",
+    "results/figures/barrett_igr_figure2.pdf",
+    "results/figures/barrett_igr_long_horizon.pdf",
+]
+
+
+rule all:
+    input:
+        "paper/main.pdf",
+
+
+rule figures:
+    """Rebuild every paper-bound figure under results/figures/."""
+    input:
+        PAPER_FIGURES,
+
+
+rule paper:
+    """Compile paper/main.pdf from staged figures."""
+    input:
+        "paper/main.pdf",

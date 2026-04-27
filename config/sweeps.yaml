@@ -1,0 +1,70 @@
+# W&B sweep IDs for analyses whose runs we pull via wandb API.
+# Each key is the analysis name (matches analysis/<name>/ and rule name).
+# `id` is the sweep ID wandb assigns; `entity_project` is "<entity>/<project>".
+# The `launch_wandb_sweep` rule writes new IDs here when invoked.
+
+elasticnet_train_and_recover:
+  id: 9a7ll8aa
+  entity_project: jhrudoler-penn/inductive-bias
+  sweep_config: data/provided/sweeps/elasticnet_sweep_config_beta1e3.yaml
+  n_agents: 8
+
+dropout_bias_estimation:
+  id: chiy2qjz
+  entity_project: jhrudoler-penn/inductive-bias
+  sweep_config: data/provided/sweeps/dropout_l2_bias.yaml
+  n_agents: 8
+
+dropout_mixed_bias_estimation:
+  id: null
+  entity_project: jhrudoler-penn/inductive-bias
+  sweep_config: data/provided/sweeps/dropout_mixed_bias.yaml
+  n_agents: 8
+
+l2_train_and_recover:
+  id: null
+  entity_project: jhrudoler-penn/inductive-bias
+  sweep_config: data/provided/sweeps/l2_recovery.yaml
+  n_agents: 8
+
+l2_nuclear_train_and_recover:
+  id: null
+  entity_project: jhrudoler-penn/inductive-bias
+  sweep_config: data/provided/sweeps/l2_nuclear_recovery.yaml
+  n_agents: 8
+
+l2_orthogonal_train_and_recover:
+  id: null
+  entity_project: jhrudoler-penn/inductive-bias
+  sweep_config: data/provided/sweeps/l2_orthogonal_recovery.yaml
+  n_agents: 8
+
+mixed_bias_recovery:
+  id: null
+  entity_project: jhrudoler-penn/inductive-bias
+  sweep_config: data/provided/sweeps/mixed_bias_recovery.yaml
+  n_agents: 8
+
+function_class_identifiability:
+  id: null
+  entity_project: jhrudoler-penn/inductive-bias
+  sweep_config: data/provided/sweeps/function_class_identifiability.yaml
+  n_agents: 8
+
+mnist_implicit_reg:
+  id: null
+  entity_project: jhrudoler-penn/inductive-bias
+  sweep_config: data/provided/sweeps/mnist_implicit_reg_sweep.yaml
+  n_agents: 8
+
+mnist_deep_relu_bias:
+  id: null
+  entity_project: jhrudoler-penn/inductive-bias
+  sweep_config: data/provided/sweeps/mnist_deep_relu_bias.yaml
+  n_agents: 8
+
+bootstrap_bias_recovery:
+  id: null
+  entity_project: jhrudoler-penn/inductive-bias
+  sweep_config: data/provided/sweeps/bootstrap_bias_recovery.yaml
+  n_agents: 8
