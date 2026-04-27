@@ -177,6 +177,23 @@ rule nonlinear_multi_geometry_replicate_ablation:
         "--manifest {output.manifest}"
 
 
+rule ols_full_matrix_recovery:
+    """Train 100 endpoints x 5 pools of OLS GD with callback early stopping;
+    fit the symmetric Q via least squares; save tensors for the plot rule.
+    Pure CPU (10-d linear regression), so no GPU resources requested."""
+    input:
+        script="analysis/ols_full_matrix_recovery/run.py",
+    output:
+        results=protected("data/generated/ols_full_matrix_recovery/results.pt"),
+    resources:
+        slurm_partition="whartonstat",
+        runtime=60,
+        mem_mb=8000,
+        cpus_per_task=2,
+    shell:
+        "PYTHONPATH=src uv run python {input.script} --output {output.results}"
+
+
 rule nonlinear_power_retrain_geometry:
     input:
         script="analysis/nonlinear_power_retrain_geometry/run.py",

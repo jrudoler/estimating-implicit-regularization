@@ -23,6 +23,8 @@ rule stage_all_paper_figures:
         "paper/figures/dropout_bias_ridge_panel.png",
         "paper/figures/barrett_igr_figure2.pdf",
         "paper/figures/barrett_igr_long_horizon.pdf",
+        "paper/figures/ols_full_matrix_recovery.pdf",
+        "paper/figures/ols_full_matrix_distance_to_theory.pdf",
 
 
 rule paper_pdf:
