@@ -15,6 +15,7 @@ from pathlib import Path
 import matplotlib.pyplot as plt
 import numpy as np
 import torch
+from cmap import Colormap
 
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -60,7 +61,7 @@ def main() -> None:
     residuals = np.array([r["residual_ratio"] for r in results], dtype=float)
 
     unique_params = sorted(np.unique(num_params).tolist())
-    cmap = plt.get_cmap("viridis")
+    cmap = Colormap("crameri:batlow").to_mpl()
     param_to_color = {
         m: cmap(i / max(1, len(unique_params) - 1))
         for i, m in enumerate(unique_params)

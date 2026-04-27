@@ -72,8 +72,8 @@ def main() -> None:
 
     # method-vis.ipynb emits the paper figures from these code cells:
     # - code cell 2: tradeoff-vis.png
-    # - code cell 11: sgd-vs-full-batch.png
-    for cell_index in (2, 11):
+    # - code cell 4: sgd-vs-full-batch.png
+    for cell_index in (2, 4):
         exec(cells[cell_index], execution_globals)
         plt.close("all")
 

@@ -15,6 +15,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import seaborn as sns
 import torch
+from cmap import Colormap
 from lightning import Trainer
 from lightning.pytorch.callbacks import EarlyStopping
 
@@ -31,6 +32,7 @@ PAPER_FIGURES_DIR = REPO_ROOT / "paper" / "figures"
 STYLE_PATH = REPO_ROOT / "clean_fig.mplstyle"
 DEFAULT_LAMBDA_OUT = PAPER_FIGURES_DIR / "Lambda_comparison-ols.pdf"
 DEFAULT_WEIGHTS_OUT = PAPER_FIGURES_DIR / "predictive_weights_comparison_ols.pdf"
+DIVERGING_CMAP = Colormap("crameri:vik").to_mpl()
 
 
 def parse_args() -> argparse.Namespace:
@@ -220,7 +222,7 @@ def save_lambda_comparison(q: torch.Tensor, q_hat: torch.Tensor, out_path: Path)
     sns.heatmap(
         qhat_cpu.numpy(),
         ax=axes[0],
-        cmap="bwr",
+        cmap=DIVERGING_CMAP,
         norm=norm,
         square=True,
         cbar=False,
@@ -234,7 +236,7 @@ def save_lambda_comparison(q: torch.Tensor, q_hat: torch.Tensor, out_path: Path)
     sns.heatmap(
         q_cpu.numpy(),
         ax=axes[1],
-        cmap="bwr",
+        cmap=DIVERGING_CMAP,
         norm=norm,
         square=True,
         cbar=False,
@@ -255,7 +257,7 @@ def save_lambda_comparison(q: torch.Tensor, q_hat: torch.Tensor, out_path: Path)
             labelleft=False,
         )
 
-    scalar_mappable = plt.cm.ScalarMappable(cmap="bwr", norm=norm)
+    scalar_mappable = plt.cm.ScalarMappable(cmap=DIVERGING_CMAP, norm=norm)
     scalar_mappable.set_array([])
     fig.colorbar(scalar_mappable, ax=axes, location="right", pad=0.04)
 
@@ -288,7 +290,7 @@ def save_predictive_weights_comparison(
     ):
         sns.heatmap(
             theta.reshape(-1, 1),
-            cmap="bwr",
+            cmap=DIVERGING_CMAP,
             norm=norm,
             square=True,
             cbar=False,
@@ -301,7 +303,7 @@ def save_predictive_weights_comparison(
         ax.set_title(title, fontsize=20)
     axes[0].set_ylabel(r"$p$", fontsize=16)
 
-    scalar_mappable = plt.cm.ScalarMappable(cmap="bwr", norm=norm)
+    scalar_mappable = plt.cm.ScalarMappable(cmap=DIVERGING_CMAP, norm=norm)
     scalar_mappable.set_array([])
     plt.colorbar(
         scalar_mappable,
