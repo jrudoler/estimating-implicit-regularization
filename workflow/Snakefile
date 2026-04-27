@@ -47,6 +47,7 @@ localrules:
     plot_barrett_igr_long_horizon,
     plot_elasticnet_recovery,
     plot_dropout_bias_ridge_panel,
+    plot_ols_composite,
     plot_ols_full_matrix_recovery,
     pull_wandb_sweep,
     launch_wandb_sweep,
@@ -66,6 +67,7 @@ PAPER_FIGURES = [
     "results/figures/barrett_igr_long_horizon.pdf",
     "results/figures/ols_full_matrix_recovery.pdf",
     "results/figures/ols_full_matrix_distance_to_theory.pdf",
+    "results/figures/ols_composite.pdf",
 ]
 
 
