@@ -1,7 +1,11 @@
 import matplotlib.pyplot as plt
 import matplotlib as mpl
 import seaborn as sns
+from cmap import Colormap
 from pandas import DataFrame
+
+
+_HUE_CMAP = Colormap("crameri:imola").to_mpl()
 
 
 def panelplot(data: DataFrame, x: str, y: str, hue: str = None, **kwargs) -> None:
@@ -24,7 +28,7 @@ def panelplot(data: DataFrame, x: str, y: str, hue: str = None, **kwargs) -> Non
     ax.grid(True, color="lightgray", linestyle="--", linewidth=0.5)
     if hue is not None:
         norm = mpl.colors.Normalize(vmin=data[hue].min(), vmax=data[hue].max())
-        palette = "Blues"
+        palette = _HUE_CMAP
     else:
         norm = None
         palette = None

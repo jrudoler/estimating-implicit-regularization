@@ -18,6 +18,7 @@ from pathlib import Path
 import matplotlib.pyplot as plt
 import numpy as np
 import torch
+from cmap import Colormap
 
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -56,7 +57,13 @@ def main() -> None:
         raise SystemExit("--labels must match the number of --results files")
 
     fig, axes = plt.subplots(1, 2, figsize=(11, 4.5))
-    cmap = plt.get_cmap("tab10")
+    devon = Colormap("crameri:devon").to_mpl()
+    n_runs = len(args.results)
+    # Sample devon at evenly-spaced positions, avoiding the near-white extreme.
+    sample_positions = (
+        [0.5] if n_runs == 1
+        else [0.15 + 0.6 * i / (n_runs - 1) for i in range(n_runs)]
+    )
 
     for i, path in enumerate(args.results):
         payload = torch.load(path, weights_only=False)
@@ -75,7 +82,7 @@ def main() -> None:
         d_orig = np.array([d["dist_gd_to_orig_flow"] for d in drifts])
         d_mod = np.array([d["dist_gd_to_mod_flow"] for d in drifts])
 
-        color = cmap(i)
+        color = devon(sample_positions[i])
         axes[0].plot(t, d_orig, "-", color=color, label=f"{label}: GD vs. original flow", linewidth=1.5, alpha=0.9)
         axes[0].plot(t, d_mod, "--", color=color, label=f"{label}: GD vs. modified flow", linewidth=1.5, alpha=0.9)
 

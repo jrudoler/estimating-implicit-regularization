@@ -29,6 +29,7 @@ import matplotlib.pyplot as plt
 import torch
 import torch.nn as nn
 import lightning.pytorch as pl
+from cmap import Colormap
 from lightning.pytorch import Trainer
 from lightning.pytorch.callbacks import EarlyStopping
 
@@ -172,13 +173,16 @@ def main() -> None:
     plt.style.use(str(Path(__file__).resolve().parents[2] / "clean_fig.mplstyle"))
     fig, ax = plt.subplots(figsize=(5.0, 3.4))
 
-    ax.loglog(EPOCH_GRID, iter_lambdas, "o-", color="C0",
+    batlow = Colormap("crameri:batlow").to_mpl()
+    c_iter, c_closed, c_theory = batlow(0.2), batlow(0.55), batlow(0.85)
+
+    ax.loglog(EPOCH_GRID, iter_lambdas, "o-", color=c_iter,
               label=r"Iterative $\hat{\lambda}_t$ (gradient matching)",
               markersize=6)
-    ax.loglog(EPOCH_GRID, closed_lambdas, "x", color="C2",
+    ax.loglog(EPOCH_GRID, closed_lambdas, "x", color=c_closed,
               label=r"Closed-form $\hat{\lambda}_t$",
               markersize=8, markeredgewidth=1.8)
-    ax.loglog(EPOCH_GRID, theoretical_lambdas, "--", color="C3",
+    ax.loglog(EPOCH_GRID, theoretical_lambdas, "--", color=c_theory,
               label=r"Theoretical $\mathrm{tr}(Q_t)/p$",
               linewidth=1.5)
 

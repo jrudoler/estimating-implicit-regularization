@@ -14,6 +14,7 @@ matplotlib.use("Agg")
 import matplotlib as mpl
 import matplotlib.pyplot as plt
 import seaborn as sns
+from cmap import Colormap
 
 from core.plotting import panelplot
 from core.wandb_utils import get_sweep_runs, wandb_summary_df
@@ -145,7 +146,9 @@ def build_figure(summary_df) -> plt.Figure:
         vmin=summary_df["train_bias/loss"].min(),
         vmax=summary_df["train_bias/loss"].max(),
     )
-    scalar_mappable = plt.cm.ScalarMappable(cmap="Blues", norm=norm)
+    scalar_mappable = plt.cm.ScalarMappable(
+        cmap=Colormap("crameri:imola").to_mpl(), norm=norm
+    )
     scalar_mappable.set_array([])
     colorbar = grid.figure.colorbar(scalar_mappable, cax=colorbar_axis)
     colorbar.set_label("train_bias/loss")
