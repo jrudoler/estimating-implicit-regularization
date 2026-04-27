@@ -50,6 +50,16 @@ def parse_args() -> argparse.Namespace:
         help="Output path for the predictive-weights comparison heatmap.",
     )
     parser.add_argument(
+        "--save-data",
+        type=Path,
+        default=None,
+        help=(
+            "Optional .pt path. If set, also saves the trained matrices "
+            "(Q theory, q_hat diag, theta_real, theta_hat, theta_hat_prime, "
+            "X, y) so downstream composite plots can reuse them."
+        ),
+    )
+    parser.add_argument(
         "--seed",
         type=int,
         default=56,
@@ -374,6 +384,29 @@ def main() -> None:
         theta_hat_prime=theta_hat_prime,
         out_path=args.weights_out,
     )
+
+    if args.save_data is not None:
+        args.save_data.parent.mkdir(parents=True, exist_ok=True)
+        torch.save(
+            {
+                "config": {
+                    "seed": args.seed,
+                    "input_dim": args.input_dim,
+                    "num_samples": args.num_samples,
+                    "eps": args.eps,
+                    "stop_epoch": stop_epoch,
+                },
+                "Q": q.detach().cpu(),
+                "q_hat_diag": q_hat.detach().cpu(),
+                "theta_real": torch.from_numpy(theta_real),
+                "theta_hat": torch.from_numpy(theta_hat),
+                "theta_hat_prime": torch.from_numpy(theta_hat_prime),
+                "X": x.detach().cpu(),
+                "y": y.detach().cpu(),
+            },
+            args.save_data,
+        )
+        LOGGER.info("Saved %s", args.save_data)
 
 
 if __name__ == "__main__":

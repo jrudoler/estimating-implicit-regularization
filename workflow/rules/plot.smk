@@ -66,8 +66,10 @@ rule plot_lambda_vs_epochs:
         script="analysis/plot_lambda_vs_epochs/run.py",
     output:
         pdf="results/figures/lambda_vs_epochs.pdf",
+        data="data/generated/lambda_vs_epochs/results.pt",
     shell:
-        "PYTHONPATH=src uv run python {input.script} --out {output.pdf}"
+        "PYTHONPATH=src uv run python {input.script} "
+        "--out {output.pdf} --save-data {output.data}"
 
 
 rule plot_method_vis:
@@ -87,9 +89,27 @@ rule plot_linear_regression_ols:
     output:
         lambda_cmp="results/figures/Lambda_comparison-ols.pdf",
         pred_weights="results/figures/predictive_weights_comparison_ols.pdf",
+        data="data/generated/linear_regression_ols/results.pt",
     shell:
         "PYTHONPATH=src uv run python {input.script} "
-        "--lambda-out {output.lambda_cmp} --weights-out {output.pred_weights}"
+        "--lambda-out {output.lambda_cmp} --weights-out {output.pred_weights} "
+        "--save-data {output.data}"
+
+
+rule plot_ols_composite:
+    input:
+        script="analysis/plot_ols_composite/run.py",
+        linear_data="data/generated/linear_regression_ols/results.pt",
+        full_matrix_data="data/generated/ols_full_matrix_recovery/results.pt",
+        lambda_epochs_data="data/generated/lambda_vs_epochs/results.pt",
+    output:
+        pdf="results/figures/ols_composite.pdf",
+    shell:
+        "PYTHONPATH=src uv run python {input.script} "
+        "--linear-data {input.linear_data} "
+        "--full-matrix-data {input.full_matrix_data} "
+        "--lambda-epochs-data {input.lambda_epochs_data} "
+        "--out {output.pdf}"
 
 
 rule plot_ols_full_matrix_recovery:

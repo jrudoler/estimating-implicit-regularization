@@ -114,6 +114,15 @@ def parse_args() -> argparse.Namespace:
         default=PAPER_FIGURES_DIR / "lambda_vs_epochs.pdf",
         help="Canonical output path for the manuscript figure.",
     )
+    parser.add_argument(
+        "--save-data",
+        type=Path,
+        default=None,
+        help=(
+            "Optional .pt path. If set, also saves epoch_grid + iter/closed/"
+            "theory lambda series so downstream composite plots can reuse them."
+        ),
+    )
     return parser.parse_args()
 
 
@@ -195,6 +204,29 @@ def main() -> None:
     fig.savefig(args.out)
     print(f"\nSaved -> {args.out}")
     plt.close(fig)
+
+    if args.save_data is not None:
+        args.save_data.parent.mkdir(parents=True, exist_ok=True)
+        torch.save(
+            {
+                "config": {
+                    "seed": SEED,
+                    "p": P,
+                    "n": N,
+                    "eps": EPS,
+                    "lr": LR,
+                    "bias_max_epochs": BIAS_MAX_EPOCHS,
+                    "bias_patience": BIAS_PATIENCE,
+                    "bias_lr": BIAS_LR,
+                },
+                "epoch_grid": list(EPOCH_GRID),
+                "iter_lambdas": list(iter_lambdas),
+                "closed_lambdas": list(closed_lambdas),
+                "theoretical_lambdas": list(theoretical_lambdas),
+            },
+            args.save_data,
+        )
+        print(f"Saved -> {args.save_data}")
 
 
 if __name__ == "__main__":
