@@ -55,14 +55,14 @@ localrules:
 
 
 PAPER_FIGURES = [
-    "results/figures/tradeoff-vis.png",
-    "results/figures/sgd-vs-full-batch.png",
+    "results/figures/tradeoff-vis.pdf",
+    "results/figures/sgd-vs-full-batch.pdf",
     "results/figures/elasticnet_recovery_mean_se.pdf",
     "results/figures/OLS_early_stopping_figure.pdf",
     "results/figures/Lambda_comparison-ols.pdf",
     "results/figures/predictive_weights_comparison_ols.pdf",
     "results/figures/lambda_vs_epochs.pdf",
-    "results/figures/dropout_bias_ridge_panel.png",
+    "results/figures/dropout_bias_ridge_panel.pdf",
     "results/figures/barrett_igr_figure2.pdf",
     "results/figures/barrett_igr_long_horizon.pdf",
     "results/figures/ols_full_matrix_recovery.pdf",

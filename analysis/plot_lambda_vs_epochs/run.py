@@ -43,7 +43,7 @@ from core.estimators import BiasWithMSE           # noqa: E402
 
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
-PAPER_FIGURES_DIR = REPO_ROOT / "paper" / "figures"
+RESULTS_FIGURES_DIR = REPO_ROOT / "results" / "figures"
 
 
 # ── experiment parameters (match the notebook / paper) ─────────────────
@@ -111,7 +111,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--out",
         type=Path,
-        default=PAPER_FIGURES_DIR / "lambda_vs_epochs.pdf",
+        default=RESULTS_FIGURES_DIR / "lambda_vs_epochs.pdf",
         help="Canonical output path for the manuscript figure.",
     )
     parser.add_argument(

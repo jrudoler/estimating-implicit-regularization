@@ -49,14 +49,14 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--entity",
         type=str,
-        default="jhrudoler-penn",
-        help="W&B entity (organization/user)",
+        default=None,
+        help="W&B entity (organization/user). Defaults to WANDB_ENTITY.",
     )
     parser.add_argument(
         "--project",
         type=str,
-        default="inductive-bias-experiments",
-        help="W&B project name",
+        default=None,
+        help="W&B project name. Defaults to WANDB_PROJECT.",
     )
     parser.add_argument(
         "--output-prefix",

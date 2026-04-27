@@ -28,10 +28,10 @@ from core.utils import compute_Q_matrix, compute_beta_closed_form
 
 LOGGER = logging.getLogger(__name__)
 REPO_ROOT = Path(__file__).resolve().parents[2]
-PAPER_FIGURES_DIR = REPO_ROOT / "paper" / "figures"
+RESULTS_FIGURES_DIR = REPO_ROOT / "results" / "figures"
 STYLE_PATH = REPO_ROOT / "clean_fig.mplstyle"
-DEFAULT_LAMBDA_OUT = PAPER_FIGURES_DIR / "Lambda_comparison-ols.pdf"
-DEFAULT_WEIGHTS_OUT = PAPER_FIGURES_DIR / "predictive_weights_comparison_ols.pdf"
+DEFAULT_LAMBDA_OUT = RESULTS_FIGURES_DIR / "Lambda_comparison-ols.pdf"
+DEFAULT_WEIGHTS_OUT = RESULTS_FIGURES_DIR / "predictive_weights_comparison_ols.pdf"
 DIVERGING_CMAP = Colormap("crameri:vik").to_mpl()
 
 

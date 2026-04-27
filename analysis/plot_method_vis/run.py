@@ -32,7 +32,7 @@ Vec2 = Tuple[float, float]
 
 
 # ----------------------------------------------------------------------
-# Figure 1: tradeoff-vis.png
+# Figure 1: tradeoff-vis.pdf
 # ----------------------------------------------------------------------
 def quad_mse(
     center: Vec2 = (1.0, 1.0), scale: float = 0.5
@@ -143,7 +143,7 @@ def make_tradeoff_vis(out_path: Path) -> None:
 
 
 # ----------------------------------------------------------------------
-# Figure 2: sgd-vs-full-batch.png
+# Figure 2: sgd-vs-full-batch.pdf
 # ----------------------------------------------------------------------
 def two_param_net(theta: torch.Tensor, x: torch.Tensor) -> torch.Tensor:
     weight, bias = theta

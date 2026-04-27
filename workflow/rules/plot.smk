@@ -1,38 +1,33 @@
 # Figure-generation rules. One rule per plot entrypoint.
 #
 # Each rule:
-#   - reads intermediates from data/generated/<analysis>/ or (for W&B-backed
-#     plots) queries the sweep via config/sweeps.yaml
-#   - writes the final PDF or PNG to results/figures/
+#   - reads intermediates from data/generated/<analysis>/, including local
+#     W&B run snapshots in runs.parquet
+#   - writes the final PDF to results/figures/
 
 
 rule plot_elasticnet_recovery:
     input:
         script="analysis/plot_elasticnet_recovery/run.py",
+        runs="data/generated/elasticnet_train_and_recover/runs.parquet",
     output:
         pdf="results/figures/elasticnet_recovery_mean_se.pdf",
-    params:
-        sweep_id=lambda wc: config["elasticnet_train_and_recover"]["id"],
-        entity_project=lambda wc: config["elasticnet_train_and_recover"]["entity_project"],
     shell:
         "PYTHONPATH=src uv run python {input.script} "
-        "--sweep-id {params.sweep_id} --entity-project {params.entity_project} "
+        "--runs-parquet {input.runs} "
         "--output {output.pdf}"
 
 
 rule plot_dropout_bias_ridge_panel:
     input:
         script="analysis/plot_dropout_bias_ridge_panel/run.py",
+        runs="data/generated/dropout_bias_estimation/runs.parquet",
     output:
-        png="results/figures/dropout_bias_ridge_panel.png",
-    params:
-        sweep_id=lambda wc: config["dropout_bias_estimation"]["id"],
-        entity=lambda wc: config["dropout_bias_estimation"]["entity_project"].split("/")[0],
-        project=lambda wc: config["dropout_bias_estimation"]["entity_project"].split("/")[1],
+        pdf="results/figures/dropout_bias_ridge_panel.pdf",
     shell:
         "PYTHONPATH=src uv run python {input.script} "
-        "--sweep-id {params.sweep_id} --entity {params.entity} --project {params.project} "
-        "--output {output.png}"
+        "--runs-parquet {input.runs} "
+        "--output {output.pdf}"
 
 
 rule plot_barrett_igr_figure2:
@@ -76,8 +71,8 @@ rule plot_method_vis:
     input:
         script="analysis/plot_method_vis/run.py",
     output:
-        tradeoff="results/figures/tradeoff-vis.png",
-        sgd_vs_fb="results/figures/sgd-vs-full-batch.png",
+        tradeoff="results/figures/tradeoff-vis.pdf",
+        sgd_vs_fb="results/figures/sgd-vs-full-batch.pdf",
     shell:
         "PYTHONPATH=src uv run python {input.script} "
         "--out-tradeoff {output.tradeoff} --out-sgd-vs-fb {output.sgd_vs_fb}"

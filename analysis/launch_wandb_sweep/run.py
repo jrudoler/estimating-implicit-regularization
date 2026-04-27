@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Create a fresh W&B sweep, submit N SLURM agents, and block until all finish.
 
-Writes the new sweep ID back to config/sweeps.yaml under the provided
+Writes the new sweep ID back to a local sweep id file under the provided
 analysis key. Intended to be run via the Snakemake `launch_wandb_sweep`
 rule as an opt-in per-analysis target.
 
@@ -39,6 +39,11 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--analysis", required=True, help="Analysis key in sweep-ids file.")
     parser.add_argument("--sweep-config", required=True, type=Path, help="Sweep YAML to register.")
+    parser.add_argument(
+        "--entity-project",
+        required=True,
+        help="W&B '<entity>/<project>' where the sweep should be created.",
+    )
     parser.add_argument("--n-agents", type=int, default=8, help="Number of sbatch agents to submit.")
     parser.add_argument("--sweep-ids-file", required=True, type=Path, help="YAML file to update with the new sweep ID.")
     parser.add_argument("--partition", default="whartonstat", help="SLURM partition.")
@@ -58,12 +63,22 @@ def create_sweep(sweep_config: Path, entity_project: str) -> str:
     if not m:
         sys.exit("Could not parse sweep ID from `wandb sweep` output.")
     full_id = m.group(1)
-    return full_id.rsplit("/", 1)[-1]
+    return full_id
 
 
-def update_sweep_ids_file(path: Path, analysis: str, sweep_id: str) -> None:
-    with open(path) as fh:
-        data = yaml.safe_load(fh) or {}
+def update_sweep_ids_file(
+    path: Path,
+    analysis: str,
+    sweep_id: str,
+    entity_project: str,
+) -> None:
+    if path.exists():
+        with open(path) as fh:
+            data = yaml.safe_load(fh) or {}
+    else:
+        data = {}
+    path.parent.mkdir(parents=True, exist_ok=True)
+    data.setdefault("wandb_entity_project", entity_project)
     data.setdefault(analysis, {})
     data[analysis]["id"] = sweep_id
     with open(path, "w") as fh:
@@ -103,13 +118,16 @@ def submit_agents(sweep_id: str, n_agents: int, analysis: str, partition: str, c
 
 def main() -> None:
     args = parse_args()
-    with open(args.sweep_ids_file) as fh:
-        sweeps_cfg = yaml.safe_load(fh)
-    entity_project = sweeps_cfg[args.analysis]["entity_project"]
-    sweep_id = create_sweep(args.sweep_config, entity_project)
-    update_sweep_ids_file(args.sweep_ids_file, args.analysis, sweep_id)
+    full_sweep_id = create_sweep(args.sweep_config, args.entity_project)
+    sweep_id = full_sweep_id.rsplit("/", 1)[-1]
+    update_sweep_ids_file(
+        args.sweep_ids_file,
+        args.analysis,
+        sweep_id,
+        args.entity_project,
+    )
     submit_agents(
-        sweep_id=sweep_id,
+        sweep_id=full_sweep_id,
         n_agents=args.n_agents,
         analysis=args.analysis,
         partition=args.partition,

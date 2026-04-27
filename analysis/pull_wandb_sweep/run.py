@@ -19,13 +19,21 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--sweep-id", required=True, help="W&B sweep ID (e.g. 9a7ll8aa).")
     parser.add_argument(
         "--entity-project",
-        required=True,
-        help="'<entity>/<project>', e.g. jhrudoler-penn/inductive-bias.",
+        default=None,
+        help=(
+            "W&B '<entity>/<project>'. If omitted, uses WANDB_ENTITY_PROJECT "
+            "or WANDB_ENTITY plus WANDB_PROJECT."
+        ),
     )
     parser.add_argument(
         "--state",
         default="finished",
         help="Filter runs by state; pass empty string for all.",
+    )
+    parser.add_argument(
+        "--include-system-metrics",
+        action="store_true",
+        help="Also snapshot W&B system metrics. Figure rules do not need them.",
     )
     parser.add_argument("--output", required=True, type=Path, help="Output parquet path.")
     return parser.parse_args()
@@ -33,10 +41,13 @@ def parse_args() -> argparse.Namespace:
 
 def main() -> None:
     args = parse_args()
-    entity, project = args.entity_project.split("/", 1)
     state = args.state or None
-    runs = get_sweep_runs(args.sweep_id, entity=entity, project=project, state=state)
-    df = wandb_summary_df(runs)
+    runs = get_sweep_runs(
+        args.sweep_id,
+        entity_project=args.entity_project,
+        state=state,
+    )
+    df = wandb_summary_df(runs, include_system_metrics=args.include_system_metrics)
     args.output.parent.mkdir(parents=True, exist_ok=True)
     df.to_parquet(args.output)
     print(f"Wrote {len(df)} rows to {args.output}")

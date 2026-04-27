@@ -13,14 +13,14 @@ rule stage_paper_figure:
 
 rule stage_all_paper_figures:
     input:
-        "paper/figures/tradeoff-vis.png",
-        "paper/figures/sgd-vs-full-batch.png",
+        "paper/figures/tradeoff-vis.pdf",
+        "paper/figures/sgd-vs-full-batch.pdf",
         "paper/figures/elasticnet_recovery_mean_se.pdf",
         "paper/figures/OLS_early_stopping_figure.pdf",
         "paper/figures/Lambda_comparison-ols.pdf",
         "paper/figures/predictive_weights_comparison_ols.pdf",
         "paper/figures/lambda_vs_epochs.pdf",
-        "paper/figures/dropout_bias_ridge_panel.png",
+        "paper/figures/dropout_bias_ridge_panel.pdf",
         "paper/figures/barrett_igr_figure2.pdf",
         "paper/figures/barrett_igr_long_horizon.pdf",
         "paper/figures/ols_full_matrix_recovery.pdf",

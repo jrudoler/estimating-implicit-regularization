@@ -1,13 +1,63 @@
-import wandb
-import pandas as pd
-import re
+import os
 from typing import Optional
+import re
+
+import pandas as pd
+
+
+def parse_entity_project(entity_project: str) -> tuple[str, str]:
+    """Split a W&B '<entity>/<project>' value with a clear validation error."""
+    if "/" not in entity_project:
+        raise ValueError(
+            "W&B entity/project must have the form '<entity>/<project>', "
+            f"got {entity_project!r}."
+        )
+    entity, project = entity_project.split("/", 1)
+    if not entity or not project:
+        raise ValueError(
+            "W&B entity/project must have nonempty entity and project parts, "
+            f"got {entity_project!r}."
+        )
+    return entity, project
+
+
+def resolve_entity_project(
+    *,
+    entity: str | None = None,
+    project: str | None = None,
+    entity_project: str | None = None,
+) -> tuple[str, str]:
+    """Resolve W&B location from explicit args or environment.
+
+    Precedence:
+      1. explicit entity_project
+      2. explicit entity/project, with missing pieces filled from environment
+      3. WANDB_ENTITY_PROJECT
+      4. WANDB_ENTITY + WANDB_PROJECT
+    """
+    if entity_project:
+        return parse_entity_project(entity_project)
+
+    env_entity_project = os.environ.get("WANDB_ENTITY_PROJECT")
+    if entity is None and project is None and env_entity_project:
+        return parse_entity_project(env_entity_project)
+
+    entity = entity or os.environ.get("WANDB_ENTITY")
+    project = project or os.environ.get("WANDB_PROJECT")
+    if not entity or not project:
+        raise ValueError(
+            "Missing W&B location. Provide '<entity>/<project>' via "
+            "--entity-project, Snakemake config 'wandb_entity_project', "
+            "WANDB_ENTITY_PROJECT, or WANDB_ENTITY and WANDB_PROJECT."
+        )
+    return entity, project
 
 
 def get_sweep_runs(
     sweep_id: str,
-    entity: str = "jhrudoler-penn",
-    project: str = "inductive-bias",
+    entity: str | None = None,
+    project: str | None = None,
+    entity_project: str | None = None,
     state: Optional[str] = "finished",
     timeout: int = 60,
 ) -> list:
@@ -15,8 +65,9 @@ def get_sweep_runs(
 
     Args:
         sweep_id: The sweep ID (not including entity/project).
-        entity: W&B entity (organization/user).
-        project: W&B project name.
+        entity: W&B entity (organization/user). Defaults to environment.
+        project: W&B project name. Defaults to environment.
+        entity_project: Combined '<entity>/<project>' value.
         state: Filter runs by state ("finished", "running", etc). None for all.
         timeout: API timeout in seconds.
 
@@ -24,9 +75,14 @@ def get_sweep_runs(
         A list of wandb.Run objects.
 
     Example:
-        >>> runs = get_sweep_runs("abc123")
+        >>> runs = get_sweep_runs("abc123", entity_project="my-team/my-project")
         >>> df = wandb_summary_df(runs)
     """
+    import wandb
+
+    entity, project = resolve_entity_project(
+        entity=entity, project=project, entity_project=entity_project
+    )
     api = wandb.Api(timeout=timeout)
     full_sweep_id = f"{entity}/{project}/{sweep_id}"
     sweep = api.sweep(full_sweep_id)
@@ -37,8 +93,9 @@ def get_sweep_runs(
 
 
 def get_project_runs(
-    entity: str = "jhrudoler-penn",
-    project: str = "inductive-bias",
+    entity: str | None = None,
+    project: str | None = None,
+    entity_project: str | None = None,
     filters: Optional[dict] = None,
     state: Optional[str] = "finished",
     timeout: int = 60,
@@ -46,8 +103,9 @@ def get_project_runs(
     """Get runs from a W&B project, optionally filtered.
 
     Args:
-        entity: W&B entity (organization/user).
-        project: W&B project name.
+        entity: W&B entity (organization/user). Defaults to environment.
+        project: W&B project name. Defaults to environment.
+        entity_project: Combined '<entity>/<project>' value.
         filters: Optional dict of filters (e.g., {"config.depth": 3}).
         state: Filter runs by state ("finished", "running", etc). None for all.
         timeout: API timeout in seconds.
@@ -56,8 +114,16 @@ def get_project_runs(
         A list of wandb.Run objects.
 
     Example:
-        >>> runs = get_project_runs(filters={"config.gt_ridge_lambda": 0.05})
+        >>> runs = get_project_runs(
+        ...     entity_project="my-team/my-project",
+        ...     filters={"config.gt_ridge_lambda": 0.05},
+        ... )
     """
+    import wandb
+
+    entity, project = resolve_entity_project(
+        entity=entity, project=project, entity_project=entity_project
+    )
     api = wandb.Api(timeout=timeout)
     path = f"{entity}/{project}"
     runs = api.runs(path, filters=filters)

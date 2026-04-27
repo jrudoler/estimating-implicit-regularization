@@ -19,7 +19,7 @@ from cmap import Colormap
 
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
-PAPER_FIGURES_DIR = REPO_ROOT / "paper" / "figures"
+RESULTS_FIGURES_DIR = REPO_ROOT / "results" / "figures"
 
 
 def parse_args() -> argparse.Namespace:
@@ -32,7 +32,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--out",
         type=Path,
-        default=PAPER_FIGURES_DIR / "barrett_igr_figure2.pdf",
+        default=RESULTS_FIGURES_DIR / "barrett_igr_figure2.pdf",
     )
     parser.add_argument(
         "--x-quantity",

@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import argparse
 import logging
+import os
 from pathlib import Path
 import sys
 
@@ -247,17 +248,38 @@ def parse_args() -> argparse.Namespace:
     
     # Misc
     parser.add_argument("--seed", type=int, default=42)
+    parser.add_argument(
+        "--wandb-project",
+        type=str,
+        default=None,
+        help="W&B project. Defaults to WANDB_PROJECT.",
+    )
+    parser.add_argument(
+        "--wandb-entity",
+        type=str,
+        default=None,
+        help="W&B entity. Defaults to WANDB_ENTITY.",
+    )
     
     return parser.parse_args()
 
 
 def main() -> None:
+    args = parse_args()
+    wandb_project = args.wandb_project or os.environ.get("WANDB_PROJECT")
+    wandb_entity = args.wandb_entity or os.environ.get("WANDB_ENTITY")
+    if not wandb_project:
+        raise ValueError("Set --wandb-project or WANDB_PROJECT.")
+
     # Initialize W&B
-    run = wandb.init(project="inductive-bias-experiments", job_type="mixed_bias_recovery")
+    run = wandb.init(
+        project=wandb_project,
+        entity=wandb_entity,
+        job_type="mixed_bias_recovery",
+    )
     cfg = run.config
 
     # Parse args, override with W&B config if available
-    args = parse_args()
     dataset_name = cfg.get("dataset", args.dataset)
     data_root = Path(cfg.get("data_root", str(args.data_root)))
     depth = cfg.get("depth", args.depth)
@@ -324,7 +346,8 @@ def main() -> None:
     devices = 1
 
     model_logger = WandbLogger(
-        project="inductive-bias-experiments",
+        project=wandb_project,
+        entity=wandb_entity,
         name=f"train-ridge{gt_ridge_lambda:.4f}-coh{gt_coherence_lambda:.4f}-s{seed}",
         experiment=run,
         log_model=False,
@@ -383,7 +406,8 @@ def main() -> None:
         )
 
     bias_logger = WandbLogger(
-        project="inductive-bias-experiments",
+        project=wandb_project,
+        entity=wandb_entity,
         name=f"estimate-{estimator_type.lower()}-ridge{gt_ridge_lambda:.4f}-coh{gt_coherence_lambda:.4f}-s{seed}",
         experiment=run,
         log_model=False,
@@ -500,4 +524,3 @@ if __name__ == "__main__":
         datefmt="%Y-%m-%d %H:%M:%S",
     )
     main()
-

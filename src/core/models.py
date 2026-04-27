@@ -18,7 +18,7 @@ def load_model_from_artifact(
 
     Args:
         model_class: The model class used to load the checkpoint (e.g., NoisyMLP).
-        artifact_ref: The full artifact reference (e.g., 'jhrudoler-penn/inductive-bias/model-n7awb9ov:v0').
+        artifact_ref: The full artifact reference (e.g., 'entity/project/model-n7awb9ov:v0').
         checkpoint_name: The name of the checkpoint file within the artifact.
 
     Returns:

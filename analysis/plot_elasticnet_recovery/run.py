@@ -11,14 +11,16 @@ from __future__ import annotations
 import argparse
 import csv
 import math
-from collections import defaultdict
 from pathlib import Path
 
 import matplotlib.pyplot as plt
 import numpy as np
+import pandas as pd
+
+from core.wandb_utils import get_sweep_runs, wandb_summary_df
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
-PAPER_FIGURES_DIR = REPO_ROOT / "paper" / "figures"
+RESULTS_FIGURES_DIR = REPO_ROOT / "results" / "figures"
 
 
 def _fmt_lambda(v: float) -> str:
@@ -32,50 +34,43 @@ def _load_csv(path: Path) -> list[dict[str, str]]:
         return list(csv.DictReader(f))
 
 
-def _load_from_wandb(sweep_id: str, entity_project: str) -> list[dict[str, str]]:
-    import wandb
+def _load_parquet(path: Path) -> list[dict[str, object]]:
+    df = pd.read_parquet(path)
+    return _dataframe_rows(df)
 
-    api = wandb.Api()
-    sweep = api.sweep(f"{entity_project}/{sweep_id}")
-    rows: list[dict[str, str]] = []
-    for run in sweep.runs:
-        if run.state != "finished":
-            continue
-        row: dict[str, str] = {}
-        cfg = dict(run.config)
-        if "l1" in cfg:
-            row["true_l1"] = str(cfg["l1"])
-        if "l2" in cfg:
-            row["true_l2"] = str(cfg["l2"])
-        if "smooth" in cfg:
-            row["smooth"] = str(cfg["smooth"])
-        if "seed" in cfg:
-            row["seed"] = str(cfg["seed"])
-        s = run.summary._json_dict
-        for k in (
-            "recovery/log_mult_l1",
-            "recovery/log_mult_l2",
-            "recovery/lambda_1_hat",
-            "recovery/lambda_2_hat",
-            "bias/theta_1",
-            "bias/theta_2",
-        ):
-            if k in s:
-                row[k] = str(s[k])
-        # Backward compat: older sweeps only logged theta_1/theta_2.
-        if "recovery/log_mult_l1" not in row and "bias/theta_1" in row and "true_l1" in row:
-            l1_hat = float(np.exp(float(row["bias/theta_1"])))
-            row["recovery/log_mult_l1"] = str(np.log(l1_hat / float(row["true_l1"])))
-        if "recovery/log_mult_l2" not in row and "bias/theta_2" in row and "true_l2" in row:
-            l2_hat = float(np.exp(float(row["bias/theta_2"])))
-            row["recovery/log_mult_l2"] = str(np.log(l2_hat / float(row["true_l2"])))
-        rows.append(row)
+
+def _load_from_wandb(
+    sweep_id: str,
+    entity_project: str | None,
+) -> list[dict[str, object]]:
+    runs = get_sweep_runs(
+        sweep_id=sweep_id,
+        entity_project=entity_project,
+        state="finished",
+    )
+    return _dataframe_rows(wandb_summary_df(runs, include_system_metrics=False))
+
+
+def _dataframe_rows(df: pd.DataFrame) -> list[dict[str, object]]:
+    rows: list[dict[str, object]] = []
+    for row in df.to_dict("records"):
+        rows.append({k: v for k, v in row.items() if not _is_missing(v)})
     return rows
 
 
-def _parse_records(
-    rows: list[dict[str, str]], smooth: float
-) -> list[dict[str, float]]:
+def _is_missing(value: object) -> bool:
+    if value is None:
+        return True
+    try:
+        missing = pd.isna(value)
+    except (TypeError, ValueError):
+        return False
+    if isinstance(missing, (bool, np.bool_)):
+        return bool(missing)
+    return False
+
+
+def _parse_records(rows: list[dict[str, object]], smooth: float) -> list[dict[str, float]]:
     """Return one tidy record per run with true and estimated lambda values."""
     sub = [
         r
@@ -88,8 +83,12 @@ def _parse_records(
 
     records: list[dict[str, float]] = []
     for r in sub:
-        true_l1 = float(r["true_l1"])
-        true_l2 = float(r["true_l2"])
+        true_l1_raw = r.get("true_l1", r.get("l1"))
+        true_l2_raw = r.get("true_l2", r.get("l2"))
+        if true_l1_raw is None or true_l2_raw is None:
+            continue
+        true_l1 = float(true_l1_raw)
+        true_l2 = float(true_l2_raw)
 
         if "recovery/lambda_1_hat" in r:
             hat_l1 = float(r["recovery/lambda_1_hat"])
@@ -215,28 +214,41 @@ def plot_lineplot(
 
 def main() -> None:
     p = argparse.ArgumentParser()
+    p.add_argument(
+        "--runs-parquet",
+        type=Path,
+        help="Local W&B sweep snapshot produced by pull_wandb_sweep.",
+    )
     p.add_argument("--csv", type=Path, help="CSV from W&B export or local batch script")
-    p.add_argument("--sweep-id", type=str, help="W&B sweep id (use with --entity-project)")
+    p.add_argument(
+        "--sweep-id",
+        type=str,
+        help="Manual fallback: live W&B sweep id (use with --entity-project).",
+    )
     p.add_argument(
         "--entity-project",
         type=str,
-        default="jhrudoler-penn/inductive-bias",
-        help="entity/project for W&B API",
+        help=(
+            "Manual fallback: W&B '<entity>/<project>'. If omitted, uses "
+            "WANDB_ENTITY_PROJECT or WANDB_ENTITY plus WANDB_PROJECT."
+        ),
     )
     p.add_argument("--smooth", type=float, default=1e-3, help="Smoothing beta (paper default 1e-3)")
     p.add_argument(
         "--output",
         type=Path,
-        default=PAPER_FIGURES_DIR / "elasticnet_recovery_mean_se.pdf",
+        default=RESULTS_FIGURES_DIR / "elasticnet_recovery_mean_se.pdf",
     )
     args = p.parse_args()
 
-    if args.csv:
+    if args.runs_parquet:
+        rows = _load_parquet(args.runs_parquet)
+    elif args.csv:
         rows = _load_csv(args.csv)
     elif args.sweep_id:
         rows = _load_from_wandb(args.sweep_id, args.entity_project)
     else:
-        raise SystemExit("Provide --csv or --sweep-id")
+        raise SystemExit("Provide --runs-parquet, --csv, or --sweep-id")
 
     records = _parse_records(rows, args.smooth)
     plot_lineplot(records, args.output)

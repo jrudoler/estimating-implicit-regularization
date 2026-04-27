@@ -7,6 +7,9 @@ inductive-bias/
 logs/
 lightning_logs/
 
+# Local W&B account/project and finished sweep IDs
+config/sweeps.local.yaml
+
 # Generated artifacts (workflow reproduces these from data/raw, data/provided,
 # and W&B). Commit paper/generated/ from inside the paper submodule, not here.
 data/generated/

@@ -1,0 +1,12 @@
+# Copy this file to config/sweeps.local.yaml and fill in your own W&B
+# entity/project plus any finished sweep IDs you want to snapshot locally.
+#
+# The copied config/sweeps.local.yaml file is ignored by git.
+
+wandb_entity_project: your-entity/your-project
+
+elasticnet_train_and_recover:
+  id: your-elasticnet-sweep-id
+
+dropout_bias_estimation:
+  id: your-dropout-sweep-id

@@ -23,7 +23,7 @@ cd /path/to/inductive-bias
 wandb sweep sweeps/l2_nuclear_recovery.yaml
 ```
 
-This will output a sweep ID like `jhrudoler-penn/inductive-bias/abc123xyz`.
+This will output a sweep ID like `your-entity/your-project/abc123xyz`.
 
 ### 2. Launch sweep agents
 
@@ -51,7 +51,7 @@ uv run wandb agent <SWEEP_ID>
 
 View the sweep dashboard at:
 ```
-https://wandb.ai/jhrudoler-penn/inductive-bias/sweeps/<SWEEP_ID>
+https://wandb.ai/<entity>/<project>/sweeps/<SWEEP_ID>
 ```
 
 ### 4. Analyze results
@@ -59,7 +59,7 @@ https://wandb.ai/jhrudoler-penn/inductive-bias/sweeps/<SWEEP_ID>
 Once the sweep completes, inspect metrics directly in W&B:
 
 ```bash
-https://wandb.ai/jhrudoler-penn/inductive-bias/sweeps/<SWEEP_ID>
+https://wandb.ai/<entity>/<project>/sweeps/<SWEEP_ID>
 ```
 
 ## Key Metrics
@@ -122,4 +122,3 @@ Total configurations: 3 × 3 × 2 × 2 × 5 = **180 runs**
 - Reduce `batch_size`
 - Reduce `width` or `depth`
 - Use gradient checkpointing (not currently implemented)
-

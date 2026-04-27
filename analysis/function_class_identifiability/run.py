@@ -7,6 +7,7 @@ import argparse
 from dataclasses import dataclass
 import logging
 import math
+import os
 from pathlib import Path
 import sys
 from typing import Dict, List, Sequence, Tuple
@@ -708,7 +709,14 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--wandb-project",
         type=str,
-        default="inductive-bias-experiments",
+        default=None,
+        help="W&B project. Defaults to WANDB_PROJECT.",
+    )
+    parser.add_argument(
+        "--wandb-entity",
+        type=str,
+        default=None,
+        help="W&B entity. Defaults to WANDB_ENTITY.",
     )
     return parser.parse_args()
 
@@ -725,9 +733,14 @@ def get_scale_params(joint_bias: JointBias, bias_types: Sequence[str]) -> Dict[s
 
 def main() -> None:
     args = parse_args()
+    wandb_project = args.wandb_project or os.environ.get("WANDB_PROJECT")
+    wandb_entity = args.wandb_entity or os.environ.get("WANDB_ENTITY")
+    if not wandb_project:
+        raise ValueError("Set --wandb-project or WANDB_PROJECT.")
 
     run = wandb.init(
-        project=args.wandb_project,
+        project=wandb_project,
+        entity=wandb_entity,
         job_type="function_class_identifiability",
     )
     cfg = run.config
@@ -849,6 +862,7 @@ def main() -> None:
 
     model_logger = WandbLogger(
         project=run.project,
+        entity=wandb_entity,
         name=f"train-{function_class}-d{depth}w{width}-s{seed}",
         experiment=run,
         log_model=True,
@@ -940,6 +954,7 @@ def main() -> None:
 
     bias_logger = WandbLogger(
         project=run.project,
+        entity=wandb_entity,
         name=f"estimate-{function_class}-{selection_mode}-s{seed}",
         experiment=run,
         log_model=False,

@@ -38,7 +38,7 @@ workflow/
   Snakefile
   rules/         common, wandb, train, plot, paper
   profiles/slurm SBATCH profile for cluster execution
-config/          sweeps.yaml (W&B sweep IDs, per-analysis)
+config/          sweeps.yaml (account-neutral W&B sweep manifest)
 ```
 
 See [science-repo-skill.md](science-repo-skill.md) for the canonical description of the layout and [docs/paper_figure_pipeline.md](docs/paper_figure_pipeline.md) for the figure-by-figure provenance map.
@@ -67,13 +67,13 @@ Every step runs through Snakemake. The top-level targets are:
 # Plot-only: rebuild every paper figure from existing data/generated/ snapshots.
 uv run snakemake -s workflow/Snakefile --cores 4 figures
 
-# Full end-to-end via SLURM: train, pull W&B runs, plot, latexmk -> paper/main.pdf
+# Full end-to-end via SLURM: train, pull W&B snapshots, plot, latexmk -> paper/main.pdf
 uv run snakemake -s workflow/Snakefile --profile workflow/profiles/slurm paper
 
 # Rebuild one figure (only its upstream subgraph).
 uv run snakemake -s workflow/Snakefile --cores 4 results/figures/barrett_igr_figure2.pdf
 
-# Force re-pull one W&B sweep without touching others.
+# Force re-pull one W&B snapshot without touching others.
 uv run snakemake -s workflow/Snakefile \
     --forcerun pull_wandb_sweep \
     results/figures/elasticnet_recovery_mean_se.pdf
@@ -87,16 +87,58 @@ Analysis sub-DAGs are independent. Rebuilding the OLS figures never triggers the
 2. Create `analysis/<rule>/run.py` with argparse-driven `--input`/`--output` flags.
 3. Move reusable logic into `src/core/`.
 4. Add the rule to [workflow/rules/train.smk](workflow/rules/train.smk) or [workflow/rules/plot.smk](workflow/rules/plot.smk).
-5. If the analysis consumes a W&B sweep, add its sweep ID to [config/sweeps.yaml](config/sweeps.yaml) under the analysis key.
+5. If the analysis consumes W&B runs, add the sweep config to [config/sweeps.yaml](config/sweeps.yaml) and store personal sweep IDs in `config/sweeps.local.yaml`.
 
 ### W&B sweeps
 
-- Sweep IDs and entity/project are pinned in [config/sweeps.yaml](config/sweeps.yaml). Figures depend on a local `data/generated/<analysis>/runs.parquet` snapshot produced by the `pull_wandb_sweep` rule, so plot rebuilds never re-query W&B.
-- To launch a fresh sweep + SLURM agents and capture the new ID back into `config/sweeps.yaml`:
+[config/sweeps.yaml](config/sweeps.yaml) is intentionally account-neutral. It
+records which analyses have W&B sweep configs, but not a required W&B
+entity/project. Put your local account and finished sweep IDs in
+`config/sweeps.local.yaml`:
+
+```bash
+cp config/sweeps.local.example.yaml config/sweeps.local.yaml
+# edit wandb_entity_project and any finished sweep ids
+```
+
+As alternatives to the local file, pass `--config
+wandb_entity_project=<entity/project>` or export `WANDB_ENTITY_PROJECT`.
+
+Figures never query W&B directly. The workflow first snapshots finished runs to
+`data/generated/<analysis>/runs.parquet` via `pull_wandb_sweep`; plot rules read
+that local parquet. This keeps figure iteration fast and reproducible.
+
+Pull a finished sweep snapshot:
+
+```bash
+uv run snakemake -s workflow/Snakefile --cores 4 \
+    data/generated/elasticnet_train_and_recover/runs.parquet
+```
+
+Refresh a snapshot and rebuild its downstream figure:
+
+```bash
+uv run snakemake -s workflow/Snakefile --cores 4 \
+    --forcerun pull_wandb_sweep \
+    results/figures/elasticnet_recovery_mean_se.pdf
+```
+
+To reproduce from scratch on your own W&B account, launch a fresh sweep and
+agents. The launch rule writes the new sweep ID to ignored
+`config/sweeps.local.yaml` by default:
 
 ```bash
 uv run snakemake -s workflow/Snakefile --profile workflow/profiles/slurm \
+    --config wandb_entity_project=<entity/project> \
     data/generated/<analysis>/.sweep_done
+```
+
+Then pull the snapshot and build figures:
+
+```bash
+uv run snakemake -s workflow/Snakefile --cores 4 \
+    data/generated/<analysis>/runs.parquet
+uv run snakemake -s workflow/Snakefile --cores 4 figures
 ```
 
 ### SLURM
@@ -105,17 +147,17 @@ SLURM is optional. Training rules declare their cluster resources inline via `re
 
 ```bash
 # Run everything locally (training rules will use whichever CUDA device the shell sees, or CPU).
-uv run snakemake --cores 4 figures
+uv run snakemake -s workflow/Snakefile --cores 4 figures
 
 # Submit training rules to SLURM via the snakemake-executor-plugin-slurm
 # profile; cheap rules stay local automatically.
-uv run snakemake --profile workflow/profiles/slurm paper
+uv run snakemake -s workflow/Snakefile --profile workflow/profiles/slurm paper
 ```
 
 Per-rule overrides: tweak the `resources:` block on the offending rule, or override at the CLI:
 
 ```bash
-uv run snakemake --profile workflow/profiles/slurm \
+uv run snakemake -s workflow/Snakefile --profile workflow/profiles/slurm \
     --set-resources barrett_igr_long_horizon_mnist_tanh:runtime=720 \
     results/figures/barrett_igr_long_horizon.pdf
 ```
@@ -126,20 +168,21 @@ The training scripts autodetect CUDA → MPS → CPU. To force one, pass `--conf
 
 ```bash
 # Force CPU (e.g., for reproducibility or when no GPU is present):
-uv run snakemake --config device=cpu --cores 4 figures
+uv run snakemake -s workflow/Snakefile --config device=cpu --cores 4 figures
 
 # Force CUDA (also a useful sanity check that the env sees the GPU):
-uv run snakemake --config device=cuda --cores 4 figures
+uv run snakemake -s workflow/Snakefile --config device=cuda --cores 4 figures
 
 # Defaults (autodetect):
-uv run snakemake --cores 4 figures
+uv run snakemake -s workflow/Snakefile --cores 4 figures
 ```
 
 The flag threads through to every training rule via [workflow/rules/common.smk](workflow/rules/common.smk) → `device_arg()` → each rule's `{params.device}`.
 
 ### Paper assembly
 
-- The manuscript is the submodule at [`paper/`](paper). The workflow writes paper-bound figures into `paper/figures/`, which is what `\includegraphics{figures/<fig>}` in `paper/main.tex` resolves to.
+- The manuscript is the submodule at [`paper/`](paper). The workflow writes canonical final figures to `results/figures/` and stages manuscript copies into `paper/figures/`, which is what `\includegraphics{figures/<fig>}` in `paper/main.tex` resolves to.
+- Changes to `paper/main.tex` include paths are manuscript submodule changes; make them from inside `paper/` and commit/push that repository separately.
 - `paper_pdf` depends on every figure having been staged, so `uv run snakemake -s workflow/Snakefile paper` will stage figures first and then run `latexmk`.
 
 ## Core library
