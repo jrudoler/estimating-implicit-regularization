@@ -19,6 +19,5 @@ uv sync --group dev
 echo "[bootstrap] snakemake: $(uv run snakemake --version)"
 
 mkdir -p logs/slurm data/raw data/provided data/generated results/data results/figures
-mkdir -p paper/generated/figures paper/generated/tables 2>/dev/null || true
 
 echo "[bootstrap] done"

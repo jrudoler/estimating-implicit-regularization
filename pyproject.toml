@@ -29,6 +29,7 @@ dependencies = [
     "ipympl>=0.9.8",
     "torchvision>=0.24.0",
     "nvidia-ml-py>=13.580.82",
+    "cmap>=0.7.2",
 ]
 
 [build-system]
