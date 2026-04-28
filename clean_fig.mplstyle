@@ -1,5 +1,6 @@
 axes.titlesize : 18
 axes.labelsize : 14
+mathtext.fontset : cm
 # lines.linewidth : 3
 # lines.markersize : 10
 xtick.labelsize : 12

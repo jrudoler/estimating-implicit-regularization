@@ -9,6 +9,7 @@
 rule plot_elasticnet_recovery:
     input:
         script="analysis/plot_elasticnet_recovery/run.py",
+        style="clean_fig.mplstyle",
         runs="data/generated/elasticnet_train_and_recover/runs.parquet",
     output:
         pdf="results/figures/elasticnet_recovery_mean_se.pdf",
@@ -21,6 +22,7 @@ rule plot_elasticnet_recovery:
 rule plot_dropout_bias_ridge_panel:
     input:
         script="analysis/plot_dropout_bias_ridge_panel/run.py",
+        style="clean_fig.mplstyle",
         runs="data/generated/dropout_bias_estimation/runs.parquet",
     output:
         pdf="results/figures/dropout_bias_ridge_panel.pdf",
@@ -33,6 +35,7 @@ rule plot_dropout_bias_ridge_panel:
 rule plot_barrett_igr_figure2:
     input:
         script="analysis/plot_barrett_igr_figure2/run.py",
+        style="clean_fig.mplstyle",
         results="data/generated/barrett_igr_figure2/results.pt",
     output:
         pdf="results/figures/barrett_igr_figure2.pdf",
@@ -44,6 +47,7 @@ rule plot_barrett_igr_figure2:
 rule plot_barrett_igr_long_horizon:
     input:
         script="analysis/plot_barrett_igr_long_horizon/run.py",
+        style="clean_fig.mplstyle",
         synth_eta001="data/generated/barrett_igr_long_horizon/synth_eta001.pt",
         synth_eta003="data/generated/barrett_igr_long_horizon/synth_eta003.pt",
         mnist_tanh="data/generated/barrett_igr_long_horizon/mnist_tanh_eta001.pt",
@@ -70,6 +74,7 @@ rule plot_lambda_vs_epochs:
 rule plot_method_vis:
     input:
         script="analysis/plot_method_vis/run.py",
+        style="clean_fig.mplstyle",
     output:
         tradeoff="results/figures/tradeoff-vis.pdf",
         sgd_vs_fb="results/figures/sgd-vs-full-batch.pdf",
@@ -94,6 +99,7 @@ rule plot_linear_regression_ols:
 rule plot_ols_composite:
     input:
         script="analysis/plot_ols_composite/run.py",
+        style="clean_fig.mplstyle",
         linear_data="data/generated/linear_regression_ols/results.pt",
         full_matrix_data="data/generated/ols_full_matrix_recovery/results.pt",
         lambda_epochs_data="data/generated/lambda_vs_epochs/results.pt",
@@ -110,6 +116,7 @@ rule plot_ols_composite:
 rule plot_ols_full_matrix_recovery:
     input:
         script="analysis/plot_ols_full_matrix_recovery/run.py",
+        style="clean_fig.mplstyle",
         results="data/generated/ols_full_matrix_recovery/results.pt",
     output:
         recovery="results/figures/ols_full_matrix_recovery.pdf",
