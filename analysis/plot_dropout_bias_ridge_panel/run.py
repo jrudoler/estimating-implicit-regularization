@@ -159,9 +159,11 @@ def build_figure(summary_df) -> plt.Figure:
     )
     scalar_mappable.set_array([])
     colorbar = grid.figure.colorbar(scalar_mappable, cax=colorbar_axis)
-    colorbar.set_label("train_bias/loss")
+    colorbar.set_label("Loss from fitting regularizer")
 
-    grid.set_axis_labels("dropout", "estimated_ridge")
+    grid.set_axis_labels("", "")
+    grid.figure.supxlabel("Dropout rate", y=0.02)
+    grid.figure.supylabel(r"Estimated ridge penalty $\hat{\lambda}$")
     grid.tick_params(axis="x", rotation=45)
     return grid.figure
 
