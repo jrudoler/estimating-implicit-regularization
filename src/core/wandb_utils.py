@@ -1,3 +1,4 @@
+import collections.abc
 import os
 from typing import Optional
 import re
@@ -148,8 +149,15 @@ def wandb_summary_df(runs: list, include_system_metrics: bool = True) -> pd.Data
         config = run.config
         # get run metrics
         metrics = dict(run.summary)
-        # remove nested dicts (can cause issues)
-        metrics = {k: v for k, v in metrics.items() if not isinstance(v, dict)}
+        # Drop nested mapping values; both plain dicts and wandb's
+        # SummarySubDict (which is a bare object that quacks like a dict but
+        # doesn't subclass Mapping) break parquet writes via pyarrow.
+        metrics = {
+            k: v
+            for k, v in metrics.items()
+            if not isinstance(v, collections.abc.Mapping)
+            and not (hasattr(v, "keys") and callable(getattr(v, "keys", None)))
+        }
 
         row = {"run_id": run.id, "run_name": run.name, **config, **metrics}
 
