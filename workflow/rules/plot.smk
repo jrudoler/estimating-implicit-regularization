@@ -63,12 +63,13 @@ rule plot_barrett_igr_long_horizon:
 rule plot_lambda_vs_epochs:
     input:
         script="analysis/plot_lambda_vs_epochs/run.py",
+        style="clean_fig.mplstyle",
+        results="data/generated/lambda_vs_epochs/results.pt",
     output:
         pdf="results/figures/lambda_vs_epochs.pdf",
-        data="data/generated/lambda_vs_epochs/results.pt",
     shell:
         "PYTHONPATH=src uv run python {input.script} "
-        "--out {output.pdf} --save-data {output.data}"
+        "--input {input.results} --out {output.pdf}"
 
 
 rule plot_method_vis:
@@ -86,14 +87,15 @@ rule plot_method_vis:
 rule plot_linear_regression_ols:
     input:
         script="analysis/plot_linear_regression_ols/run.py",
+        style="clean_fig.mplstyle",
+        results="data/generated/linear_regression_ols/results.pt",
     output:
         lambda_cmp="results/figures/Lambda_comparison-ols.pdf",
         pred_weights="results/figures/predictive_weights_comparison_ols.pdf",
-        data="data/generated/linear_regression_ols/results.pt",
     shell:
         "PYTHONPATH=src uv run python {input.script} "
-        "--lambda-out {output.lambda_cmp} --weights-out {output.pred_weights} "
-        "--save-data {output.data}"
+        "--input {input.results} "
+        "--lambda-out {output.lambda_cmp} --weights-out {output.pred_weights}"
 
 
 rule plot_ols_composite:

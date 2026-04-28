@@ -18,6 +18,34 @@
 # into every training rule's shell via common.smk::device_arg().
 
 
+rule lambda_vs_epochs:
+    input:
+        script="analysis/lambda_vs_epochs/run.py",
+    output:
+        results="data/generated/lambda_vs_epochs/results.pt",
+    resources:
+        slurm_partition="whartonstat",
+        runtime=240,
+        mem_mb=16000,
+        cpus_per_task=2,
+    shell:
+        "PYTHONPATH=src uv run python {input.script} --output {output.results}"
+
+
+rule linear_regression_ols:
+    input:
+        script="analysis/linear_regression_ols/run.py",
+    output:
+        results="data/generated/linear_regression_ols/results.pt",
+    resources:
+        slurm_partition="whartonstat",
+        runtime=120,
+        mem_mb=8000,
+        cpus_per_task=2,
+    shell:
+        "PYTHONPATH=src uv run python {input.script} --output {output.results}"
+
+
 rule barrett_igr_figure2:
     input:
         script="analysis/barrett_igr_figure2/run.py",

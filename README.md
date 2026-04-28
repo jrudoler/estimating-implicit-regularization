@@ -80,11 +80,12 @@ uv run snakemake -s workflow/Snakefile \
 ```
 
 Analysis sub-DAGs are independent. Rebuilding the OLS figures never triggers the dropout pipeline, and vice versa.
+Experiment-backed figures are split into `data/generated/<analysis>/` data rules and `results/figures/` plot rules so plot iteration can rebuild PDFs without rerunning training or data analysis. The methods visualizations are the exception because they have no meaningful intermediate data.
 
 ### Adding a new analysis
 
 1. Decide whether the output is an intermediate (`data/generated/`) or a final result (`results/`).
-2. Create `analysis/<rule>/run.py` with argparse-driven `--input`/`--output` flags.
+2. For experiment-backed figures, create a data script that writes `data/generated/<analysis>/...` and a separate `analysis/plot_<analysis>/run.py` that reads those artifacts and writes `results/figures/...`.
 3. Move reusable logic into `src/core/`.
 4. Add the rule to [workflow/rules/train.smk](workflow/rules/train.smk) or [workflow/rules/plot.smk](workflow/rules/plot.smk).
 5. If the analysis consumes W&B runs, add the sweep config to [config/sweeps.yaml](config/sweeps.yaml) and store personal sweep IDs in `config/sweeps.local.yaml`.

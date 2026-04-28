@@ -131,7 +131,11 @@ It is meant to answer three questions clearly:
   - the final annotated panel was assembled externally rather than by one repo-native script
 - Notebook lineage for automated component figures:
   - `notebooks/linear-regression.ipynb`
-- Maintained component generator:
+- Maintained data generator:
+  - `analysis/linear_regression_ols/run.py`
+- Intermediate artifacts:
+  - `data/generated/linear_regression_ols/results.pt`
+- Maintained component plotter:
   - `analysis/plot_linear_regression_ols/run.py`
 - Automated component outputs:
   - `results/figures/Lambda_comparison-ols.pdf`
@@ -149,14 +153,18 @@ It is meant to answer three questions clearly:
 
 - Figure id:
   - `lambda_vs_epochs`
-- Maintained generator:
+- Maintained data generator:
+  - `analysis/lambda_vs_epochs/run.py`
+- Intermediate artifacts:
+  - `data/generated/lambda_vs_epochs/results.pt`
+- Maintained plotter:
   - `analysis/plot_lambda_vs_epochs/run.py`
 - Canonical output:
   - `results/figures/lambda_vs_epochs.pdf`
 - Staged manuscript copy:
   - `paper/figures/lambda_vs_epochs.pdf`
 - Important note:
-  - this script is active and automated, but heavier than the other figure builders because it reruns training internally
+  - plotting reads the saved `.pt` data so visual iteration does not rerun the heavier bias-fitting computation
 - Build command:
   - `uv run snakemake -s workflow/Snakefile --cores 4 results/figures/lambda_vs_epochs.pdf`
 
@@ -232,7 +240,11 @@ These are not currently direct `paper/main.tex` includes, but they are part of t
 - `results/figures/predictive_weights_comparison_ols.pdf`
 - Source:
   - `notebooks/linear-regression.ipynb`
-- Maintained generator:
+- Maintained data generator:
+  - `analysis/linear_regression_ols/run.py`
+- Intermediate artifacts:
+  - `data/generated/linear_regression_ols/results.pt`
+- Maintained plotter:
   - `analysis/plot_linear_regression_ols/run.py`
 
 ## Build Behavior Summary
@@ -241,6 +253,9 @@ These are not currently direct `paper/main.tex` includes, but they are part of t
 
 - `tradeoff-vis`
 - `sgd-vs-full-batch`
+
+### Experiment-backed figures with separate data and plot rules
+
 - `elasticnet_recovery_mean_se`
 - `lambda_vs_epochs`
 - `dropout_bias_ridge_panel`

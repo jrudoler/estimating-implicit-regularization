@@ -9,6 +9,10 @@ Use this file as the default non-manuscript log for autonomous method, implement
 - Promote durable results into a more specific doc in `docs/` when the workstream becomes substantial.
 - For analysis plotting, default to a single `PDF` output unless the user explicitly requests an additional export format.
 
+## 2026-04-28
+
+- Split the paper-DAG OLS figure workflow so [`analysis/lambda_vs_epochs/run.py`](/home/jrudoler/inductive-bias/analysis/lambda_vs_epochs/run.py) and [`analysis/linear_regression_ols/run.py`](/home/jrudoler/inductive-bias/analysis/linear_regression_ols/run.py) generate reusable `.pt` artifacts under `data/generated/`, while the corresponding `plot_*` entrypoints only render PDFs from those artifacts.
+
 ## 2026-04-23
 
 - Slimmed the active project surface to align with the manuscript and retained research trajectory. Added [`docs/paper_figure_inventory.md`](/home/jrudoler/inductive-bias/docs/paper_figure_inventory.md) as the provenance map for all figures currently referenced by [`paper/main.tex`](/home/jrudoler/inductive-bias/paper/main.tex).
