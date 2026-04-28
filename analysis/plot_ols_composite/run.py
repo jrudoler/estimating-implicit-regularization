@@ -318,19 +318,19 @@ def main() -> None:
     ax_lvse.grid(True, which="both", alpha=0.3)
     ax_lvse.set_title("Heuristic single-endpoint estimator over training")
 
-    ax_C_group.text(
-        0.0,
-        1.02,
-        "C",
-        transform=ax_C_group.transAxes,
-        fontweight="bold",
-        fontsize=18,
-        va="bottom",
-        ha="left",
-        clip_on=False,
-        zorder=32,
-    )
-    for ax, letter in [(ax_A, "A"), (ax_B, "B"), (ax_dist, "D"), (ax_lvse, "E")]:
+    # ax_C_group.text(
+    #     0.0,
+    #     1.02,
+    #     "C",
+    #     transform=ax_C_group.transAxes,
+    #     fontweight="bold",
+    #     fontsize=18,
+    #     va="bottom",
+    #     ha="left",
+    #     clip_on=False,
+    #     zorder=32,
+    # )
+    for ax, letter in [(ax_A, "A"), (ax_B, "B"), (ax_C, "C"), (ax_dist, "D"), (ax_lvse, "E")]:
         _add_panel_label(fig, ax, letter)
 
     args.out.parent.mkdir(parents=True, exist_ok=True)
