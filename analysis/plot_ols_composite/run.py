@@ -40,6 +40,7 @@ import numpy as np
 import seaborn as sns
 import torch
 from cmap import Colormap
+from matplotlib.patches import FancyArrowPatch
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 for _path in (REPO_ROOT, REPO_ROOT / "src"):
@@ -63,6 +64,31 @@ def parse_args() -> argparse.Namespace:
 def _se95(x: torch.Tensor) -> torch.Tensor:
     n = x.shape[0]
     return 1.96 * x.std(dim=0, unbiased=True) / float(np.sqrt(n))
+
+
+def _add_panel_label(fig, ax, letter: str, fontsize: int = 18) -> None:
+    """Bold panel label anchored to the top-left of the full subplot tight bbox.
+
+    Uses get_tightbbox so the label aligns with the outermost left edge of the
+    subplot region (including y-tick and y-axis labels), not just the y-axis spine.
+    """
+    try:
+        fig.canvas.draw()
+        r = fig.canvas.get_renderer()
+        tight = ax.get_tightbbox(r)
+        ax_bb = ax.get_window_extent(r)
+        x_frac = (tight.x0 - ax_bb.x0) / ax_bb.width
+    except Exception:
+        x_frac = 0.0
+    ax.text(
+        x_frac, 1.02, letter,
+        transform=ax.transAxes,
+        fontweight="bold",
+        fontsize=fontsize,
+        va="bottom",
+        ha="left",
+        clip_on=False,
+    )
 
 
 def main() -> None:
@@ -109,7 +135,6 @@ def main() -> None:
     theory_lambdas = np.asarray(lve["theoretical_lambdas"])
 
     # --- Composite figure -------------------------------------------------
-    vmax_q = float(max(np.abs(Q_theory).max(), np.abs(Q_multi).max(), np.abs(Q_single).max()))
     vmax_w = float(
         max(np.abs(theta_real).max(), np.abs(theta_hat).max(), np.abs(theta_hat_prime).max())
     )
@@ -129,9 +154,11 @@ def main() -> None:
     ax_A = fig.add_subplot(row1[0, 0])
     ax_B = fig.add_subplot(row1[0, 1])
     ax_C = fig.add_subplot(row1[0, 2])
-    # Center a narrow colorbar under the heatmaps (~ 1/3 of the heatmap-row width).
+    # One colorbar per heatmap, each under its own column.
     cbar_strip = row1[1, 0:3].subgridspec(1, 3, width_ratios=[1, 1, 1])
-    ax_cbar_q = fig.add_subplot(cbar_strip[0, 1])
+    ax_cbar_A = fig.add_subplot(cbar_strip[0, 0])
+    ax_cbar_B = fig.add_subplot(cbar_strip[0, 1])
+    ax_cbar_C = fig.add_subplot(cbar_strip[0, 2])
 
     weights_grid = row1[:, 3].subgridspec(
         2, 3, height_ratios=[1.0, 0.07], hspace=0.10, wspace=0.04
@@ -141,24 +168,21 @@ def main() -> None:
     ax_w2 = fig.add_subplot(weights_grid[0, 2])
     ax_cbar_w = fig.add_subplot(weights_grid[1, :])
 
-    for ax, mat, title in [
-        (ax_A, Q_theory, r"(A) Theoretical $\Lambda$"),
-        (ax_B, Q_multi, r"(B) Multi-endpoint $\hat{Q}$"),
-        (ax_C, Q_single, r"(C) Single-endpoint $\hat{\Lambda}$"),
+    for ax, mat, title, ax_cbar in [
+        (ax_A, Q_theory, r"Theoretical $\Lambda$", ax_cbar_A),
+        (ax_B, Q_multi, r"Multi-endpoint $\hat{\Lambda}$", ax_cbar_B),
+        (ax_C, Q_single, r"Single-endpoint $\hat{\Lambda}$", ax_cbar_C),
     ]:
-        ax.imshow(mat, cmap=HEATMAP_CMAP, vmin=-vmax_q, vmax=vmax_q, aspect="equal")
+        vmax = float(np.abs(mat).max())
+        im = ax.imshow(mat, cmap=HEATMAP_CMAP, vmin=-vmax, vmax=vmax, aspect="equal")
         ax.set_title(title)
         ax.set_xlabel(r"$p$")
         ax.set_xticks([])
         ax.set_yticks([])
+        for spine in ax.spines.values():
+            spine.set_visible(False)
+        fig.colorbar(im, cax=ax_cbar, orientation="horizontal")
     ax_A.set_ylabel(r"$p$")
-
-    sm_q = plt.cm.ScalarMappable(
-        cmap=HEATMAP_CMAP, norm=plt.Normalize(vmin=-vmax_q, vmax=vmax_q)
-    )
-    sm_q.set_array([])
-    cbar_q = fig.colorbar(sm_q, cax=ax_cbar_q, orientation="horizontal")
-    cbar_q.set_label("value")
 
     norm_w = plt.Normalize(vmin=-vmax_w, vmax=vmax_w)
     for ax, vec, title in [
@@ -204,11 +228,11 @@ def main() -> None:
         counts, dist_lo, dist_hi, color=line_color, alpha=0.2, label="95% SE"
     )
     ax_dist.set_xlabel("Number of endpoints used")
-    ax_dist.set_ylabel(r"$\| \hat{Q}_m - Q \|$")
+    ax_dist.set_ylabel(r"$\| \hat{\Lambda}_m - \Lambda \|$")
     ax_dist.set_xlim(1, num_endpoints)
     ax_dist.grid(alpha=0.3, which="both")
     ax_dist.legend(frameon=False)
-    ax_dist.set_title("(D) Multi-endpoint estimation error")
+    ax_dist.set_title("Multi-endpoint estimation error")
 
     batlow = Colormap("crameri:batlow").to_mpl()
     c_iter, c_closed, c_theory = batlow(0.2), batlow(0.55), batlow(0.85)
@@ -235,13 +259,16 @@ def main() -> None:
         "--",
         color=c_theory,
         linewidth=1.5,
-        label=r"Theoretical $\mathrm{tr}(Q_t)/p$",
+        label=r"Theoretical $\mathrm{tr}(\Lambda_t)/p$",
     )
     ax_lvse.set_xlabel("Gradient descent epochs $t$")
     ax_lvse.set_ylabel(r"Scalar ridge penalty $\hat{\lambda}_t$")
     ax_lvse.legend(frameon=False, loc="lower left", fontsize=10)
     ax_lvse.grid(True, which="both", alpha=0.3)
-    ax_lvse.set_title("(E) Heuristic single-endpoint estimator over training")
+    ax_lvse.set_title("Heuristic single-endpoint estimator over training")
+
+    for ax, letter in [(ax_A, "A"), (ax_B, "B"), (ax_C, "C"), (ax_dist, "D"), (ax_lvse, "E")]:
+        _add_panel_label(fig, ax, letter)
 
     args.out.parent.mkdir(parents=True, exist_ok=True)
     fig.savefig(args.out, bbox_inches="tight")
