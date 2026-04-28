@@ -24,6 +24,14 @@ from core.estimators import BiasWithMSE
 from core.models import LinearRegression
 from core.utils import compute_Q_matrix, compute_beta_closed_form
 
+from analysis.ols_dgp import (
+    DEFAULT_OLS_N,
+    DEFAULT_OLS_NOISE_STD,
+    DEFAULT_OLS_P,
+    DEFAULT_OLS_SEED,
+    sample_ols_problem,
+)
+
 
 LOGGER = logging.getLogger(__name__)
 DEFAULT_OUTPUT = REPO_ROOT / "data" / "generated" / "linear_regression_ols" / "results.pt"
@@ -40,20 +48,26 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--seed",
         type=int,
-        default=56,
+        default=DEFAULT_OLS_SEED,
         help="Random seed matching notebooks/linear-regression.ipynb.",
     )
     parser.add_argument(
         "--input-dim",
         type=int,
-        default=10,
+        default=DEFAULT_OLS_P,
         help="Linear regression feature dimension.",
     )
     parser.add_argument(
         "--num-samples",
         type=int,
-        default=1000,
+        default=DEFAULT_OLS_N,
         help="Synthetic sample count.",
+    )
+    parser.add_argument(
+        "--noise-std",
+        type=float,
+        default=DEFAULT_OLS_NOISE_STD,
+        help="Gaussian observation-noise standard deviation in y = X beta + eps.",
     )
     parser.add_argument(
         "--eps",
@@ -100,15 +114,16 @@ def make_synthetic_problem(
     seed: int,
     input_dim: int,
     num_samples: int,
+    noise_std: float,
 ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
-    torch.manual_seed(seed)
     torch.use_deterministic_algorithms(False)
     torch.set_float32_matmul_precision("highest")
-
-    x = torch.randn(num_samples, input_dim)
-    betas = 3 * torch.randn(input_dim)
-    y = x @ betas
-    return x, y, betas
+    return sample_ols_problem(
+        seed=seed,
+        n=num_samples,
+        p=input_dim,
+        noise_std=noise_std,
+    )
 
 
 def train_predictive_model(
@@ -199,6 +214,7 @@ def generate_payload(args: argparse.Namespace) -> dict[str, Any]:
         seed=args.seed,
         input_dim=args.input_dim,
         num_samples=args.num_samples,
+        noise_std=args.noise_std,
     )
     predictive_model, stop_epoch = train_predictive_model(
         x=x,
@@ -209,6 +225,12 @@ def generate_payload(args: argparse.Namespace) -> dict[str, Any]:
         patience=args.train_patience,
     )
     LOGGER.info("Predictive model early-stopped at epoch %d", stop_epoch)
+    theta_ols = torch.linalg.lstsq(x, y.unsqueeze(1)).solution.squeeze()
+    LOGGER.info(
+        "Empirical OLS sampling error ||theta_ols - beta|| = %.3e (noise_std=%.3g)",
+        float((theta_ols - betas).norm()),
+        args.noise_std,
+    )
 
     beta_from_iterates = compute_beta_iterates(
         x=x,
@@ -242,6 +264,7 @@ def generate_payload(args: argparse.Namespace) -> dict[str, Any]:
             "seed": args.seed,
             "input_dim": args.input_dim,
             "num_samples": args.num_samples,
+            "noise_std": args.noise_std,
             "eps": args.eps,
             "stop_epoch": stop_epoch,
         },

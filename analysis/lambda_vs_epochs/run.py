@@ -25,14 +25,23 @@ from core.estimators import BiasWithMSE  # noqa: E402
 from core.models import LinearRegression  # noqa: E402
 from core.utils import compute_Q_matrix  # noqa: E402
 
+from analysis.ols_dgp import (  # noqa: E402
+    DEFAULT_OLS_N,
+    DEFAULT_OLS_NOISE_STD,
+    DEFAULT_OLS_P,
+    DEFAULT_OLS_SEED,
+    sample_ols_problem,
+)
+
 
 LOGGER = logging.getLogger(__name__)
 DEFAULT_OUTPUT = REPO_ROOT / "data" / "generated" / "lambda_vs_epochs" / "results.pt"
 
 # Experiment parameters matching notebooks/linear-regression.ipynb.
-SEED = 56
-N = 1000
-P = 5
+SEED = DEFAULT_OLS_SEED
+N = DEFAULT_OLS_N
+P = DEFAULT_OLS_P
+NOISE_STD = DEFAULT_OLS_NOISE_STD
 EPS = 1e-2
 LR = EPS / 2
 EPOCH_GRID = [1, 2, 5, 10, 20, 50, 100, 150, 200, 300, 500, 1000]
@@ -51,6 +60,12 @@ def parse_args() -> argparse.Namespace:
         type=Path,
         default=DEFAULT_OUTPUT,
         help="Output .pt path for the reusable experiment data.",
+    )
+    parser.add_argument(
+        "--noise-std",
+        type=float,
+        default=NOISE_STD,
+        help="Gaussian observation-noise standard deviation in y = X beta + eps.",
     )
     return parser.parse_args()
 
@@ -114,23 +129,31 @@ def fit_lambda_iterative(
     return float(scale)
 
 
-def generate_payload() -> dict[str, Any]:
+def generate_payload(args: argparse.Namespace) -> dict[str, Any]:
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    torch.set_default_dtype(torch.float64)
-    torch.set_float32_matmul_precision("high")
+    torch.set_float32_matmul_precision("highest")
     LOGGER.info("Running lambda-vs-epochs data generation on %s", device)
 
     torch.manual_seed(SEED)
-    x = torch.randn(N, P, dtype=torch.float64)
-    betas = 3.0 * torch.randn(P, dtype=torch.float64)
-    y = x @ betas
+    torch.use_deterministic_algorithms(False)
+
+    x, y, betas = sample_ols_problem(
+        seed=SEED,
+        n=N,
+        p=P,
+        noise_std=args.noise_std,
+    )
     x_device, y_device = x.to(device), y.to(device)
 
     theta_ols = torch.linalg.lstsq(x_device, y_device.unsqueeze(1)).solution.squeeze()
     ols_error = (theta_ols - betas.to(device)).norm().item()
-    LOGGER.info("OLS sanity check ||theta_ols - beta|| = %.3e", ols_error)
+    LOGGER.info(
+        "Empirical OLS sampling error ||theta_ols - beta|| = %.3e (noise_std=%.3g)",
+        ols_error,
+        args.noise_std,
+    )
 
-    theta = torch.zeros(P, dtype=torch.float64, device=device)
+    theta = torch.zeros(P, device=device)
     xtx_over_n = x_device.T @ x_device / N
     xty_over_n = x_device.T @ y_device / N
 
@@ -170,6 +193,7 @@ def generate_payload() -> dict[str, Any]:
             "seed": SEED,
             "p": P,
             "n": N,
+            "noise_std": args.noise_std,
             "eps": EPS,
             "lr": LR,
             "bias_max_epochs": BIAS_MAX_EPOCHS,
@@ -187,7 +211,7 @@ def main() -> None:
     configure_logging()
     args = parse_args()
     args.output.parent.mkdir(parents=True, exist_ok=True)
-    torch.save(generate_payload(), args.output)
+    torch.save(generate_payload(args), args.output)
     LOGGER.info("Saved %s", args.output)
 
 

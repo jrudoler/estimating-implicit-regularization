@@ -21,6 +21,7 @@
 rule lambda_vs_epochs:
     input:
         script="analysis/lambda_vs_epochs/run.py",
+        dgp="analysis/ols_dgp.py",
     output:
         results="data/generated/lambda_vs_epochs/results.pt",
     resources:
@@ -35,6 +36,7 @@ rule lambda_vs_epochs:
 rule linear_regression_ols:
     input:
         script="analysis/linear_regression_ols/run.py",
+        dgp="analysis/ols_dgp.py",
     output:
         results="data/generated/linear_regression_ols/results.pt",
     resources:
@@ -211,6 +213,7 @@ rule ols_full_matrix_recovery:
     Pure CPU (10-d linear regression), so no GPU resources requested."""
     input:
         script="analysis/ols_full_matrix_recovery/run.py",
+        dgp="analysis/ols_dgp.py",
     output:
         results=protected("data/generated/ols_full_matrix_recovery/results.pt"),
     resources:

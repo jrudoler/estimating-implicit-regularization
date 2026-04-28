@@ -2,10 +2,11 @@
 """OLS full-matrix endpoint-recovery experiment.
 
 For a fixed design matrix X, draw many ground-truth weight vectors beta_k
-(seed-controlled), train each (X, y_k = X beta_k) by full-batch GD with a
-callback-selected early stop, and stack the (theta_k, -grad_k) pairs into a
-least-squares system. This recovers the full theoretical regularizer matrix
-Q_t implied by early-stopped GD.
+(seed-controlled), train each noisy regression problem
+(X, y_k = X beta_k + epsilon_k) by full-batch GD with a callback-selected early
+stop, and stack the (theta_k, -grad_k) pairs into a least-squares system. This
+recovers the full theoretical regularizer matrix Q_t implied by early-stopped
+GD.
 
 Outputs (data/generated/ols_full_matrix_recovery/results.pt):
 
@@ -43,6 +44,16 @@ for path in (REPO_ROOT, REPO_ROOT / "src"):
 
 from core.utils import compute_Q_matrix  # noqa: E402
 
+from analysis.ols_dgp import (  # noqa: E402
+    DEFAULT_OLS_BETA_SCALE,
+    DEFAULT_OLS_N,
+    DEFAULT_OLS_NOISE_STD,
+    DEFAULT_OLS_P,
+    DEFAULT_OLS_SEED,
+    make_noisy_linear_response,
+    sample_ols_beta,
+    sample_ols_design,
+)
 from analysis.ols_full_matrix_recovery.pipeline import (  # noqa: E402
     Endpoint,
     callback_stop_step,
@@ -55,13 +66,14 @@ from analysis.ols_full_matrix_recovery.pipeline import (  # noqa: E402
 
 
 # Notebook defaults; exposed via argparse so the rule can override.
-DEFAULT_SEED = 56
-DEFAULT_P = 10
-DEFAULT_N = 1000
+DEFAULT_SEED = DEFAULT_OLS_SEED
+DEFAULT_P = DEFAULT_OLS_P
+DEFAULT_N = DEFAULT_OLS_N
 DEFAULT_EPS = 1e-2
 DEFAULT_MAX_EPOCHS = 2000
 DEFAULT_PATIENCE = 5
 DEFAULT_MIN_DELTA = 1e-3
+DEFAULT_NOISE_STD = DEFAULT_OLS_NOISE_STD
 DEFAULT_NUM_ENDPOINTS = 100
 DEFAULT_NUM_AVG_SEEDS = 5
 SEED_STRIDE = 10_000  # spacing between pools
@@ -76,6 +88,12 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--max-epochs", type=int, default=DEFAULT_MAX_EPOCHS)
     parser.add_argument("--patience", type=int, default=DEFAULT_PATIENCE)
     parser.add_argument("--min-delta", type=float, default=DEFAULT_MIN_DELTA)
+    parser.add_argument(
+        "--noise-std",
+        type=float,
+        default=DEFAULT_NOISE_STD,
+        help="Gaussian observation-noise standard deviation in y = X beta + eps.",
+    )
     parser.add_argument(
         "--num-endpoints",
         type=int,
@@ -99,8 +117,15 @@ def train_endpoint(
     max_epochs: int,
     patience: int,
     min_delta: float,
+    noise_std: float,
+    generator: torch.Generator,
 ) -> Endpoint:
-    y = X @ beta
+    y = make_noisy_linear_response(
+        X,
+        beta,
+        noise_std=noise_std,
+        generator=generator,
+    )
     traj = gd_trajectory(X, y, max_epochs, eps)
     stop_step = callback_stop_step(traj["loss"], patience, min_delta)
     theta_stopped = freeze_after_stop(traj["theta"], stop_step)
@@ -120,8 +145,9 @@ def main() -> None:
     torch.manual_seed(args.seed)
     torch.use_deterministic_algorithms(False)
 
-    # Shared design matrix across all endpoints and pools (only beta varies).
-    X = torch.randn(args.n, args.p)
+    # Shared design matrix across all endpoints and pools (beta and noise vary).
+    design_generator = torch.Generator().manual_seed(args.seed)
+    X = sample_ols_design(n=args.n, p=args.p, generator=design_generator)
 
     theta_pool = torch.empty(args.num_avg_seeds, args.num_endpoints, args.p)
     target_pool = torch.empty(args.num_avg_seeds, args.num_endpoints, args.p)
@@ -136,7 +162,11 @@ def main() -> None:
         seed_offset = pool_idx * SEED_STRIDE
         for ep_idx in range(args.num_endpoints):
             g = torch.Generator().manual_seed(args.seed + 100 + seed_offset + ep_idx)
-            beta = 3.0 * torch.randn(args.p, generator=g)
+            beta = sample_ols_beta(
+                p=args.p,
+                beta_scale=DEFAULT_OLS_BETA_SCALE,
+                generator=g,
+            )
             ep = train_endpoint(
                 X,
                 beta,
@@ -144,6 +174,8 @@ def main() -> None:
                 args.max_epochs,
                 args.patience,
                 args.min_delta,
+                args.noise_std,
+                g,
             )
             theta_pool[pool_idx, ep_idx] = ep.model_theta
             target_pool[pool_idx, ep_idx] = ep.neg_grad_stop
@@ -182,6 +214,7 @@ def main() -> None:
             "max_epochs": args.max_epochs,
             "patience": args.patience,
             "min_delta": args.min_delta,
+            "noise_std": args.noise_std,
             "num_endpoints": args.num_endpoints,
             "num_avg_seeds": args.num_avg_seeds,
             "seed_stride": SEED_STRIDE,

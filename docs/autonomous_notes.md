@@ -12,6 +12,7 @@ Use this file as the default non-manuscript log for autonomous method, implement
 ## 2026-04-28
 
 - Split the paper-DAG OLS figure workflow so [`analysis/lambda_vs_epochs/run.py`](/home/jrudoler/inductive-bias/analysis/lambda_vs_epochs/run.py) and [`analysis/linear_regression_ols/run.py`](/home/jrudoler/inductive-bias/analysis/linear_regression_ols/run.py) generate reusable `.pt` artifacts under `data/generated/`, while the corresponding `plot_*` entrypoints only render PDFs from those artifacts.
+- Added a shared noisy OLS data-generating process in [`analysis/ols_dgp.py`](/home/jrudoler/inductive-bias/analysis/ols_dgp.py) with default `noise_std = 1.0`, and routed the single-endpoint, full-matrix endpoint, and lambda-vs-epochs OLS generators through it. Regenerated the OLS figure artifacts so `\hat{\theta}_{\Lambda}` and `\hat{\theta}` still agree while both differ slightly from the true regression coefficients due to sampling noise.
 
 ## 2026-04-23
 
