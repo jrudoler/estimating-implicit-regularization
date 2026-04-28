@@ -41,7 +41,10 @@ import seaborn as sns
 import torch
 from cmap import Colormap
 from matplotlib.axes import Axes
+from matplotlib.colorbar import Colorbar
+from matplotlib.gridspec import SubplotSpec
 from matplotlib.patches import FancyArrowPatch
+from matplotlib.ticker import FuncFormatter
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 for _path in (REPO_ROOT, REPO_ROOT / "src"):
@@ -129,6 +132,73 @@ def _add_retraining_arrow(ax: Axes) -> None:
     )
 
 
+def _centered_colorbar_axis(
+    fig: plt.Figure, slot: SubplotSpec, *, width_fraction: float = 0.76
+) -> Axes:
+    side_fraction = (1.0 - width_fraction) / 2.0
+    cbar_grid = slot.subgridspec(
+        1,
+        3,
+        width_ratios=[side_fraction, width_fraction, side_fraction],
+        wspace=0.0,
+    )
+    return fig.add_subplot(cbar_grid[0, 1])
+
+
+def _format_cbar_tick(value: float, _pos: int | None) -> str:
+    if np.isclose(value, 0.0, atol=1e-12):
+        return "0"
+    return f"{value:.3g}"
+
+
+def _style_horizontal_colorbar(cbar: Colorbar) -> None:
+    cbar.formatter = FuncFormatter(_format_cbar_tick)
+    cbar.update_ticks()
+    cbar.ax.tick_params(axis="x", labelsize=8, pad=1, length=2.5)
+
+
+def _match_vertical_span(ax: Axes, anchor_ax: Axes) -> None:
+    anchor_box = anchor_ax.get_position()
+    ax_box = ax.get_position()
+    ax.set_position([ax_box.x0, anchor_box.y0, ax_box.width, anchor_box.height])
+
+
+def _add_aligned_weight_axes(
+    fig: plt.Figure,
+    anchor_ax: Axes,
+    slot_ax: Axes,
+    *,
+    n_vectors: int,
+    n_rows: int,
+) -> list[Axes]:
+    fig.canvas.draw()
+    anchor_box = anchor_ax.get_position()
+    slot_box = slot_ax.get_position()
+    fig_width, fig_height = fig.get_size_inches()
+
+    vector_width = anchor_box.height * fig_height / (n_rows * fig_width)
+    gap = 0.18 * vector_width
+    total_width = n_vectors * vector_width + (n_vectors - 1) * gap
+
+    if total_width > slot_box.width:
+        gap = 0.06 * slot_box.width
+        vector_width = (slot_box.width - (n_vectors - 1) * gap) / n_vectors
+        total_width = n_vectors * vector_width + (n_vectors - 1) * gap
+
+    left = slot_box.x0 + (slot_box.width - total_width) / 2.0
+    return [
+        fig.add_axes(
+            [
+                left + idx * (vector_width + gap),
+                anchor_box.y0,
+                vector_width,
+                anchor_box.height,
+            ]
+        )
+        for idx in range(n_vectors)
+    ]
+
+
 def main() -> None:
     args = parse_args()
     if STYLE_PATH.exists():
@@ -180,46 +250,30 @@ def main() -> None:
     fig = plt.figure(figsize=(15.5, 9.0), constrained_layout=False)
     outer = fig.add_gridspec(2, 1, height_ratios=[1.0, 0.85], hspace=0.30)
 
-    # Row 1: A and B are standalone heatmap panels. C is a grouped panel:
-    # single-endpoint Lambda on the left, recovered weights on the right.
+    # Row 1: keep the three Lambda heatmaps as equal sibling panels, then
+    # place the retraining annotation and recovered weights to the right of C.
     row1 = outer[0].subgridspec(
-        2, 3,
-        width_ratios=[1.0, 1.0, 2.12],
-        height_ratios=[1.0, 0.07],
-        wspace=0.12,
-        hspace=0.08,
+        2, 5,
+        width_ratios=[1.0, 1.0, 1.0, 0.62, 0.55],
+        height_ratios=[1.0, 0.045],
+        wspace=0.16,
+        hspace=-0.06,
     )
     ax_A = fig.add_subplot(row1[0, 0])
     ax_B = fig.add_subplot(row1[0, 1])
-    ax_cbar_A = fig.add_subplot(row1[1, 0])
-    ax_cbar_B = fig.add_subplot(row1[1, 1])
-
-    c_panel_spec = row1[:, 2]
-    ax_C_group = fig.add_subplot(c_panel_spec, frameon=False)
-    ax_C_group.set_axis_off()
-    ax_C_group.patch.set_alpha(0.0)
-    ax_C_group.set_zorder(20)
-
-    c_panel = c_panel_spec.subgridspec(
-        2, 3,
-        width_ratios=[1.0, 0.62, 0.55],
-        height_ratios=[1.0, 0.07],
-        wspace=0.08,
-        hspace=0.08,
-    )
-    ax_C = fig.add_subplot(c_panel[0, 0])
-    ax_cbar_C = fig.add_subplot(c_panel[1, 0])
-    ax_retrain = fig.add_subplot(c_panel[0, 1], frameon=False)
+    ax_C = fig.add_subplot(row1[0, 2])
+    ax_cbar_A = _centered_colorbar_axis(fig, row1[1, 0])
+    ax_cbar_B = _centered_colorbar_axis(fig, row1[1, 1])
+    ax_cbar_C = _centered_colorbar_axis(fig, row1[1, 2])
+    ax_retrain = fig.add_subplot(row1[0, 3], frameon=False)
     ax_retrain.set_axis_off()
     ax_retrain.patch.set_alpha(0.0)
     ax_retrain.set_zorder(25)
-    _ax_retrain_spacer = fig.add_subplot(c_panel[1, 1], frameon=False)
+    _ax_retrain_spacer = fig.add_subplot(row1[1, 3], frameon=False)
     _ax_retrain_spacer.set_axis_off()
-    weights_grid = c_panel[0, 2].subgridspec(1, 3, wspace=0.04)
-    ax_w0 = fig.add_subplot(weights_grid[0, 0])
-    ax_w1 = fig.add_subplot(weights_grid[0, 1])
-    ax_w2 = fig.add_subplot(weights_grid[0, 2])
-    ax_cbar_w = fig.add_subplot(c_panel[1, 2])
+    ax_weights_slot = fig.add_subplot(row1[0, 4], frameon=False)
+    ax_weights_slot.set_axis_off()
+    ax_cbar_w = fig.add_subplot(row1[1, 4])
 
     for ax, mat, title, ax_cbar in [
         (ax_A, Q_theory, r"Theoretical $\Lambda$", ax_cbar_A),
@@ -233,7 +287,17 @@ def main() -> None:
         ax.set_yticks([])
         for spine in ax.spines.values():
             spine.set_visible(False)
-        fig.colorbar(im, cax=ax_cbar, orientation="horizontal")
+        cbar = fig.colorbar(im, cax=ax_cbar, orientation="horizontal")
+        _style_horizontal_colorbar(cbar)
+
+    _match_vertical_span(ax_retrain, ax_C)
+    ax_w0, ax_w1, ax_w2 = _add_aligned_weight_axes(
+        fig,
+        ax_C,
+        ax_weights_slot,
+        n_vectors=3,
+        n_rows=len(theta_real),
+    )
 
     norm_w = plt.Normalize(vmin=-vmax_w, vmax=vmax_w)
     for ax, vec, title in [
@@ -245,7 +309,7 @@ def main() -> None:
             np.asarray(vec).reshape(-1, 1),
             cmap=HEATMAP_CMAP,
             norm=norm_w,
-            square=True,
+            square=False,
             cbar=False,
             yticklabels=False,
             xticklabels=False,
@@ -257,7 +321,8 @@ def main() -> None:
 
     sm_w = plt.cm.ScalarMappable(cmap=HEATMAP_CMAP, norm=norm_w)
     sm_w.set_array([])
-    fig.colorbar(sm_w, cax=ax_cbar_w, orientation="horizontal")
+    cbar_w = fig.colorbar(sm_w, cax=ax_cbar_w, orientation="horizontal")
+    _style_horizontal_colorbar(cbar_w)
     _add_retraining_arrow(ax_retrain)
 
     # Row 2: distance curve | lambda vs epochs.
@@ -318,19 +383,18 @@ def main() -> None:
     ax_lvse.grid(True, which="both", alpha=0.3)
     ax_lvse.set_title("Heuristic single-endpoint estimator over training")
 
-    # ax_C_group.text(
-    #     0.0,
-    #     1.02,
-    #     "C",
-    #     transform=ax_C_group.transAxes,
-    #     fontweight="bold",
-    #     fontsize=18,
-    #     va="bottom",
-    #     ha="left",
-    #     clip_on=False,
-    #     zorder=32,
-    # )
-    for ax, letter in [(ax_A, "A"), (ax_B, "B"), (ax_C, "C"), (ax_dist, "D"), (ax_lvse, "E")]:
+    ax_C.text(
+        -0.14,
+        1.02,
+        "C",
+        transform=ax_C.transAxes,
+        fontweight="bold",
+        fontsize=18,
+        va="bottom",
+        ha="left",
+        clip_on=False,
+    )
+    for ax, letter in [(ax_A, "A"), (ax_B, "B"), (ax_dist, "D"), (ax_lvse, "E")]:
         _add_panel_label(fig, ax, letter)
 
     args.out.parent.mkdir(parents=True, exist_ok=True)
