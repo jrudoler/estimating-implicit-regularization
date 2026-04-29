@@ -208,7 +208,7 @@ rule nonlinear_multi_geometry_replicate_ablation:
 
 
 rule ols_full_matrix_recovery:
-    """Train 100 endpoints x 5 pools of OLS GD with callback early stopping;
+    """Train 100 endpoints x 5 pools of OLS GD for a fixed number of iterates t;
     fit the symmetric Q via least squares; save tensors for the plot rule.
     Pure CPU (10-d linear regression), so no GPU resources requested."""
     input:

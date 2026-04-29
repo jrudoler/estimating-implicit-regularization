@@ -78,20 +78,16 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--max-epochs-train",
         type=int,
-        default=500,
-        help="Maximum epochs for the predictive linear model.",
+        default=250,
+        help="Number of gradient descent steps t for the predictive model. "
+        "Training runs for exactly this many epochs (no early stopping); the "
+        "implicit-regularization theory is stated for a fixed iterate count.",
     )
     parser.add_argument(
         "--max-epochs-bias",
         type=int,
         default=5000,
         help="Maximum epochs for the bias estimator.",
-    )
-    parser.add_argument(
-        "--train-patience",
-        type=int,
-        default=5,
-        help="Early-stopping patience for the predictive model.",
     )
     parser.add_argument(
         "--bias-patience",
@@ -133,7 +129,6 @@ def train_predictive_model(
     input_dim: int,
     eps: float,
     max_epochs: int,
-    patience: int,
 ) -> tuple[LinearRegression, int]:
     datamodule = FullBatchDataModule(x, y, num_workers=0)
     model = LinearRegression(
@@ -148,7 +143,6 @@ def train_predictive_model(
         accumulate_grad_batches=1,
         log_every_n_steps=1,
         logger=False,
-        callbacks=[EarlyStopping(monitor="train/loss", patience=patience, mode="min")],
         accelerator="cpu",
         devices=1,
         enable_progress_bar=False,
@@ -222,9 +216,8 @@ def generate_payload(args: argparse.Namespace) -> dict[str, Any]:
         input_dim=args.input_dim,
         eps=args.eps,
         max_epochs=args.max_epochs_train,
-        patience=args.train_patience,
     )
-    LOGGER.info("Predictive model early-stopped at epoch %d", stop_epoch)
+    LOGGER.info("Predictive model trained for %d gradient steps", stop_epoch)
     theta_ols = torch.linalg.lstsq(x, y.unsqueeze(1)).solution.squeeze()
     LOGGER.info(
         "Empirical OLS sampling error ||theta_ols - beta|| = %.3e (noise_std=%.3g)",

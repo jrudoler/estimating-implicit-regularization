@@ -99,8 +99,8 @@ def _add_retraining_arrow(ax: Axes) -> None:
     """Draw the bracketed source-to-recovered-weights annotation for panel C."""
     arrow_color = "#2d3740"
     arrow = FancyArrowPatch(
-        (0.02, 0.58),
-        (0.98, 0.58),
+        (0.02, 0.42),
+        (0.98, 0.42),
         transform=ax.transAxes,
         arrowstyle="fancy",
         connectionstyle="arc3,rad=-0.4",
@@ -114,15 +114,15 @@ def _add_retraining_arrow(ax: Axes) -> None:
     ax.add_patch(arrow)
     ax.text(
         0.50,
-        0.76,
+        0.82,
         "Retrain with \nexplicit regularization",
         transform=ax.transAxes,
         ha="center",
         va="center",
-        fontsize=9.0,
+        fontsize=11.5,
         color=arrow_color,
         bbox={
-            "boxstyle": "round,pad=0.18",
+            "boxstyle": "round,pad=0.22",
             "facecolor": "white",
             "edgecolor": "none",
             "alpha": 0.88,
@@ -213,13 +213,15 @@ def main() -> None:
     Q_theory = lin["Q"].numpy()
     # Single-endpoint estimated diag (full Lambda matrix is diagonal-only).
     Q_single = lin["q_hat_diag"].numpy()
-    # Multi-endpoint full-matrix estimate from pool 0, all 100 endpoints.
+    # Multi-endpoint full-matrix estimate from pool 0, m=p endpoints (the
+    # rank-condition threshold; see panel D).
     from analysis.ols_full_matrix_recovery.pipeline import (
         fit_symmetric_matrix_from_points,
     )
 
+    PANEL_B_M = lin["q_hat_diag"].shape[0]
     Q_multi = fit_symmetric_matrix_from_points(
-        fm["theta_pool"][0], fm["target_pool"][0]
+        fm["theta_pool"][0, :PANEL_B_M], fm["target_pool"][0, :PANEL_B_M]
     ).numpy()
 
     # Weight bars -- single-endpoint experiment.
@@ -276,9 +278,9 @@ def main() -> None:
     ax_cbar_w = fig.add_subplot(row1[1, 4])
 
     for ax, mat, title, ax_cbar in [
-        (ax_A, Q_theory, r"Theoretical $\Lambda$", ax_cbar_A),
-        (ax_B, Q_multi, r"Multi-endpoint $\hat{\Lambda}$", ax_cbar_B),
-        (ax_C, Q_single, r"Single-endpoint $\hat{\Lambda}$", ax_cbar_C),
+        (ax_A, Q_theory, r"Theoretical $\Lambda^{(t)}$", ax_cbar_A),
+        (ax_B, Q_multi, r"Multi-endpoint $\hat{\Lambda}^{(t)}$", ax_cbar_B),
+        (ax_C, Q_single, r"Single-endpoint $\hat{\Lambda}^{(t)}$", ax_cbar_C),
     ]:
         vmax = float(np.abs(mat).max())
         im = ax.imshow(mat, cmap=HEATMAP_CMAP, vmin=-vmax, vmax=vmax, aspect="equal")
@@ -301,7 +303,7 @@ def main() -> None:
 
     norm_w = plt.Normalize(vmin=-vmax_w, vmax=vmax_w)
     for ax, vec, title in [
-        (ax_w0, theta_hat_prime, r"$\hat{\theta}_{\Lambda}$"),
+        (ax_w0, theta_hat_prime, r"$\hat{\theta}^{\Lambda^{(t)}}$"),
         (ax_w1, theta_hat, r"$\hat{\theta}$"),
         (ax_w2, theta_real, r"$\theta$"),
     ]:
@@ -344,11 +346,11 @@ def main() -> None:
         counts, dist_lo, dist_hi, color=line_color, alpha=0.2, label="95% SE"
     )
     ax_dist.set_xlabel("Number of endpoints used")
-    ax_dist.set_ylabel(r"$\| \hat{\Lambda}_m - \Lambda \|$")
-    ax_dist.set_xlim(1, num_endpoints)
+    ax_dist.set_ylabel(r"$\| \hat{\Lambda}^{(t)}_m - \Lambda^{(t)} \|$")
+    ax_dist.set_xlim(1, 20)
+    ax_dist.set_xticks([5, 10, 15, 20])
     ax_dist.grid(alpha=0.3, which="both")
     ax_dist.legend(frameon=False)
-    ax_dist.set_title("Multi-endpoint estimation error")
 
     batlow = Colormap("crameri:batlow").to_mpl()
     c_iter, c_closed, c_theory = batlow(0.2), batlow(0.55), batlow(0.85)
@@ -375,13 +377,12 @@ def main() -> None:
         "--",
         color=c_theory,
         linewidth=1.5,
-        label=r"Theoretical $\mathrm{tr}(\Lambda_t)/p$",
+        label=r"Theoretical $\mathrm{tr}(\Lambda^{(t)})/p$",
     )
     ax_lvse.set_xlabel("Gradient descent epochs $t$")
     ax_lvse.set_ylabel(r"Scalar ridge penalty $\hat{\lambda}_t$")
     ax_lvse.legend(frameon=False, loc="lower left", fontsize=10)
     ax_lvse.grid(True, which="both", alpha=0.3)
-    ax_lvse.set_title("Heuristic single-endpoint estimator over training")
 
     ax_C.text(
         -0.14,

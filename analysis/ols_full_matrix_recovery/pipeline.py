@@ -24,55 +24,15 @@ def loss_grad(X: torch.Tensor, y: torch.Tensor, theta: torch.Tensor) -> torch.Te
     return X.T @ (X @ theta - y) / n
 
 
-def loss_grad_trajectory(
-    X: torch.Tensor, y: torch.Tensor, thetas: torch.Tensor
-) -> torch.Tensor:
-    n = X.shape[0]
-    c = (X.T @ y) / n
-    A = (X.T @ X) / n
-    return thetas @ A.T - c.unsqueeze(0)
-
-
-def mse_loss(X: torch.Tensor, y: torch.Tensor, theta: torch.Tensor) -> torch.Tensor:
-    return (X @ theta - y).square().mean()
-
-
 def gd_trajectory(
     X: torch.Tensor, y: torch.Tensor, steps: int, eps: float
 ) -> dict[str, torch.Tensor]:
     theta = torch.zeros(X.shape[1], dtype=X.dtype)
     thetas = [theta.clone()]
-    losses = [mse_loss(X, y, theta)]
     for _ in range(steps):
         theta = theta - eps * loss_grad(X, y, theta)
         thetas.append(theta.clone())
-        losses.append(mse_loss(X, y, theta))
-    return {"theta": torch.stack(thetas), "loss": torch.stack(losses)}
-
-
-def callback_stop_step(
-    monitored_losses: torch.Tensor, patience: int, min_delta: float
-) -> int:
-    """Lightning-style early-stopping callback over a precomputed loss trace."""
-    best = float("inf")
-    wait = 0
-    for epoch in range(len(monitored_losses) - 1):
-        current = float(monitored_losses[epoch])
-        if current < best - min_delta:
-            best = current
-            wait = 0
-        else:
-            wait += 1
-            if wait >= patience:
-                return epoch + 1
-    return len(monitored_losses) - 1
-
-
-def freeze_after_stop(theta_traj: torch.Tensor, stop_step: int) -> torch.Tensor:
-    frozen = theta_traj.clone()
-    if stop_step + 1 < frozen.shape[0]:
-        frozen[stop_step + 1 :] = frozen[stop_step]
-    return frozen
+    return {"theta": torch.stack(thetas)}
 
 
 @dataclass
