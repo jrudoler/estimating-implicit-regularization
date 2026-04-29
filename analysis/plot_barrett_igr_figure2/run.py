@@ -86,10 +86,10 @@ def main() -> None:
         )
     axes[0].set_xscale("log")
     axes[0].set_yscale("log")
-    xlabel = r"estimated $\hat{\lambda}$" if args.x_quantity == "lambda_hat" else r"theoretical $\lambda = \eta m/4$"
+    xlabel = r"$\hat{\lambda}$" if args.x_quantity == "lambda_hat" else r"Theoretical $\lambda = \eta m/4$"
     axes[0].set_xlabel(xlabel)
-    axes[0].set_ylabel(r"$R_{IG} = \frac{1}{m}\|\nabla E(\theta)\|^2$")
-    axes[0].set_title("(a) Regularization vs $\\hat{\\lambda}$")
+    axes[0].set_ylabel(r"$R_{IG} = \frac{1}{p}\|\nabla E(\theta)\|^2$")
+    # axes[0].set_title("(a) Regularization vs $\\hat{\\lambda}$")
     axes[0].legend(title="# params", loc="lower left", fontsize=8, frameon=False)
     axes[0].grid(True, which="both", alpha=0.25)
 
@@ -110,19 +110,19 @@ def main() -> None:
         )
     axes[1].set_xscale("log")
     axes[1].set_xlabel(xlabel)
-    axes[1].set_ylabel("test accuracy (%)")
-    axes[1].set_title("(b) Test accuracy vs $\\hat{\\lambda}$")
+    axes[1].set_ylabel("Test Accuracy (%)")
+    # axes[1].set_title("Test accuracy vs $\\hat{\\lambda}$")
     axes[1].legend(title="# params", loc="lower right", fontsize=8, frameon=False)
     axes[1].grid(True, which="both", alpha=0.25)
 
     config = payload.get("config", {})
     activation = config.get("activation", "?")
     train_samples = config.get("train_samples", "?")
-    fig.suptitle(
-        f"Barrett & Dherin (2022) Figure 2 reproduction · {activation} MLP · "
-        f"MNIST (n_train={train_samples})",
-        fontsize=12,
-    )
+    # fig.suptitle(
+    #     f"Barrett & Dherin (2022) Figure 2 reproduction · {activation} MLP · "
+    #     f"MNIST (n_train={train_samples})",
+    #     fontsize=12,
+    # )
     fig.tight_layout(rect=[0, 0, 1, 0.95])
 
     args.out.parent.mkdir(parents=True, exist_ok=True)
