@@ -56,9 +56,11 @@ from analysis.ols_dgp import (  # noqa: E402
 )
 from analysis.ols_full_matrix_recovery.pipeline import (  # noqa: E402
     Endpoint,
+    callback_stop_step,
     fit_symmetric_matrix_from_points,
+    freeze_after_stop,
     gd_trajectory,
-    loss_grad,
+    loss_grad_trajectory,
     matrix_relative_distance,
 )
 
@@ -68,7 +70,9 @@ DEFAULT_SEED = DEFAULT_OLS_SEED
 DEFAULT_P = DEFAULT_OLS_P
 DEFAULT_N = DEFAULT_OLS_N
 DEFAULT_EPS = 1e-2
-DEFAULT_STOP_STEP = 250
+DEFAULT_MAX_EPOCHS = 2000
+DEFAULT_PATIENCE = 5
+DEFAULT_MIN_DELTA = 1e-3
 DEFAULT_NOISE_STD = DEFAULT_OLS_NOISE_STD
 DEFAULT_NUM_ENDPOINTS = 100
 DEFAULT_NUM_AVG_SEEDS = 5
@@ -81,14 +85,9 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--p", type=int, default=DEFAULT_P, help="weight dimension")
     parser.add_argument("--n", type=int, default=DEFAULT_N, help="design-matrix rows")
     parser.add_argument("--eps", type=float, default=DEFAULT_EPS, help="GD step size")
-    parser.add_argument(
-        "--stop-step",
-        type=int,
-        default=DEFAULT_STOP_STEP,
-        help="Number of GD iterates t at which every endpoint is read off. "
-        "No early stopping; the implicit-regularization theory is stated for a "
-        "fixed t and we want every endpoint at the same t.",
-    )
+    parser.add_argument("--max-epochs", type=int, default=DEFAULT_MAX_EPOCHS)
+    parser.add_argument("--patience", type=int, default=DEFAULT_PATIENCE)
+    parser.add_argument("--min-delta", type=float, default=DEFAULT_MIN_DELTA)
     parser.add_argument(
         "--noise-std",
         type=float,
@@ -115,7 +114,9 @@ def train_endpoint(
     X: torch.Tensor,
     beta: torch.Tensor,
     eps: float,
-    stop_step: int,
+    max_epochs: int,
+    patience: int,
+    min_delta: float,
     noise_std: float,
     generator: torch.Generator,
 ) -> Endpoint:
@@ -125,14 +126,16 @@ def train_endpoint(
         noise_std=noise_std,
         generator=generator,
     )
-    traj = gd_trajectory(X, y, stop_step, eps)
-    theta_at_stop = traj["theta"][stop_step].clone()
+    traj = gd_trajectory(X, y, max_epochs, eps)
+    stop_step = callback_stop_step(traj["loss"], patience, min_delta)
+    theta_stopped = freeze_after_stop(traj["theta"], stop_step)
+    grad_traj = loss_grad_trajectory(X, y, theta_stopped)
     return Endpoint(
         beta=beta,
         y=y,
         stop_step=stop_step,
-        model_theta=theta_at_stop,
-        neg_grad_stop=-loss_grad(X, y, theta_at_stop),
+        model_theta=traj["theta"][stop_step].clone(),
+        neg_grad_stop=-grad_traj[stop_step],
         Q_theory_stop=compute_Q_matrix(X, stop_step, eps),
     )
 
@@ -168,7 +171,9 @@ def main() -> None:
                 X,
                 beta,
                 args.eps,
-                args.stop_step,
+                args.max_epochs,
+                args.patience,
+                args.min_delta,
                 args.noise_std,
                 g,
             )
@@ -206,7 +211,9 @@ def main() -> None:
             "p": args.p,
             "n": args.n,
             "eps": args.eps,
-            "stop_step": args.stop_step,
+            "max_epochs": args.max_epochs,
+            "patience": args.patience,
+            "min_delta": args.min_delta,
             "noise_std": args.noise_std,
             "num_endpoints": args.num_endpoints,
             "num_avg_seeds": args.num_avg_seeds,

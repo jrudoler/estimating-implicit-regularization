@@ -213,15 +213,13 @@ def main() -> None:
     Q_theory = lin["Q"].numpy()
     # Single-endpoint estimated diag (full Lambda matrix is diagonal-only).
     Q_single = lin["q_hat_diag"].numpy()
-    # Multi-endpoint full-matrix estimate from pool 0, m=p endpoints (the
-    # rank-condition threshold; see panel D).
+    # Multi-endpoint full-matrix estimate from pool 0, all endpoints.
     from analysis.ols_full_matrix_recovery.pipeline import (
         fit_symmetric_matrix_from_points,
     )
 
-    PANEL_B_M = lin["q_hat_diag"].shape[0]
     Q_multi = fit_symmetric_matrix_from_points(
-        fm["theta_pool"][0, :PANEL_B_M], fm["target_pool"][0, :PANEL_B_M]
+        fm["theta_pool"][0], fm["target_pool"][0]
     ).numpy()
 
     # Weight bars -- single-endpoint experiment.
@@ -347,8 +345,7 @@ def main() -> None:
     )
     ax_dist.set_xlabel("Number of endpoints used")
     ax_dist.set_ylabel(r"$\| \hat{\Lambda}^{(t)}_m - \Lambda^{(t)} \|$")
-    ax_dist.set_xlim(1, 20)
-    ax_dist.set_xticks([5, 10, 15, 20])
+    ax_dist.set_xlim(1, num_endpoints)
     ax_dist.grid(alpha=0.3, which="both")
     ax_dist.legend(frameon=False)
 
