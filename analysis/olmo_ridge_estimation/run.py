@@ -34,6 +34,7 @@ DEFAULT_REVISION = "stage1-step1907359-tokens4001B"
 DEFAULT_DATASET_REPO = "allenai/olmo-mix-1124"
 DEFAULT_DATASET_FILE = "data/wiki/wiki-0001.json.gz"
 DEFAULT_HF_HOME = Path("/shared_data0/jrudoler/.cache/huggingface")
+DEFAULT_GRADIENT_ROOT = Path("/shared_data0/jrudoler/inductive-bias/olmo_ridge_estimation")
 DEFAULT_OUTPUT = (
     REPO_ROOT
     / "data"
@@ -180,7 +181,10 @@ def parse_args() -> argparse.Namespace:
         "--gradient-output-dir",
         type=Path,
         default=None,
-        help="Directory for saved gradient shards and manifest.",
+        help=(
+            "Directory for saved gradient shards and manifest. Defaults under "
+            f"{DEFAULT_GRADIENT_ROOT} to avoid the /home quota."
+        ),
     )
     parser.add_argument(
         "--gradient-save-dtype",
@@ -678,7 +682,7 @@ def main() -> None:
     torch.set_float32_matmul_precision("high")
     stats_output = args.stats_output or args.output.with_suffix(".pt")
     gradient_output_dir = args.gradient_output_dir or (
-        args.output.parent / "gradients" / args.output.stem
+        DEFAULT_GRADIENT_ROOT / "gradients" / args.output.stem
     )
     LOGGER.info("Using device=%s dtype=%s HF_HOME=%s", device, torch_dtype, args.hf_home)
 

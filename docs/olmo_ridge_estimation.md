@@ -206,8 +206,12 @@ data/generated/olmo_ridge_estimation/model_grid/<run_id>.json
 stores gradients under
 
 ```text
-data/generated/olmo_ridge_estimation/model_grid/gradients/<run_id>/
+/shared_data0/jrudoler/inductive-bias/olmo_ridge_estimation/model_grid/gradients/<run_id>/
 ```
+
+This is deliberately outside `/home/jrudoler/inductive-bias` because the home
+directory has a much smaller quota. Small JSON and `.pt` summary files live under
+`data/generated/`, but large gradient shards should stay on `/shared_data0`.
 
 The directory contains:
 
@@ -248,7 +252,8 @@ Submit the multi-model grid on standby H200 GPUs:
 bash scripts/submit_llm_ridge_grid.sh
 ```
 
-The default grid includes OLMo 2 1B, OLMo 2 7B, Qwen3 4B Base, Qwen2.5 0.5B,
+The default grid includes OLMo 2 1B at `stage1-step1907359-tokens4001B`,
+OLMo 2 7B at `stage1-step237000-tokens995B`, Qwen3 4B Base, Qwen2.5 0.5B,
 and Qwen2.5 1.5B. Ai2 does not currently expose a public OLMo 2 4B language
 model checkpoint; the Qwen3 4B Base run is the included 4B-scale text-model
 comparison. Set `INCLUDE_GATED_GEMMA=1` to also submit the gated

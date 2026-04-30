@@ -17,7 +17,7 @@ Use this file as the default non-manuscript log for autonomous method, implement
 ## 2026-04-29
 
 - Added an OLMo ridge-estimation pilot in [`analysis/olmo_ridge_estimation/run.py`](/home/jrudoler/inductive-bias/analysis/olmo_ridge_estimation/run.py). It estimates the scalar ridge coefficient under the project convention `R(theta) = lambda ||theta||^2`, using `lambda_hat = -<theta, grad L> / (2 <theta, theta>)`, for `allenai/OLMo-2-0425-1B` at revision `stage1-step1907359-tokens4001B` on only `data/wiki/wiki-0001.json.gz` from `allenai/olmo-mix-1124`. Hugging Face model and dataset downloads are routed through `$HF_HOME`, defaulting to `/shared_data0/jrudoler/.cache/huggingface/`.
-- Extended the OLMo ridge-estimation script to save reusable sharded per-parameter gradients with manifests under `data/generated/olmo_ridge_estimation/model_grid/gradients/<run_id>/`, and added [`scripts/submit_llm_ridge_grid.sh`](/home/jrudoler/inductive-bias/scripts/submit_llm_ridge_grid.sh) for parallel <=7B model runs on standby H200 GPUs.
+- Extended the OLMo ridge-estimation script to save reusable sharded per-parameter gradients with manifests under `/shared_data0/jrudoler/inductive-bias/olmo_ridge_estimation/model_grid/gradients/<run_id>/`, and added [`scripts/submit_llm_ridge_grid.sh`](/home/jrudoler/inductive-bias/scripts/submit_llm_ridge_grid.sh) for parallel <=7B model runs on standby H200 GPUs.
 
 ## 2026-04-23
 
