@@ -48,6 +48,24 @@ rule linear_regression_ols:
         "PYTHONPATH=src uv run python {input.script} --output {output.results}"
 
 
+rule olmo_ridge_estimation:
+    input:
+        script="analysis/olmo_ridge_estimation/run.py",
+    output:
+        json="data/generated/olmo_ridge_estimation/olmo2_1b_stage1_wiki0001_50m.json",
+        pt="data/generated/olmo_ridge_estimation/olmo2_1b_stage1_wiki0001_50m.pt",
+    resources:
+        slurm_partition="standby",
+        runtime=720,
+        mem_mb=128000,
+        cpus_per_task=8,
+        slurm_extra="--gres=gpu:1",
+    shell:
+        "export HF_HOME=${{HF_HOME:-/shared_data0/jrudoler/.cache/huggingface}}; "
+        "PYTHONPATH=src uv run python {input.script} "
+        "--output {output.json} --stats-output {output.pt}"
+
+
 rule barrett_igr_figure2:
     input:
         script="analysis/barrett_igr_figure2/run.py",

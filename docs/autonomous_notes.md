@@ -14,6 +14,10 @@ Use this file as the default non-manuscript log for autonomous method, implement
 - Split the paper-DAG OLS figure workflow so [`analysis/lambda_vs_epochs/run.py`](/home/jrudoler/inductive-bias/analysis/lambda_vs_epochs/run.py) and [`analysis/linear_regression_ols/run.py`](/home/jrudoler/inductive-bias/analysis/linear_regression_ols/run.py) generate reusable `.pt` artifacts under `data/generated/`, while the corresponding `plot_*` entrypoints only render PDFs from those artifacts.
 - Added a shared noisy OLS data-generating process in [`analysis/ols_dgp.py`](/home/jrudoler/inductive-bias/analysis/ols_dgp.py) with default `noise_std = 1.0`, and routed the single-endpoint, full-matrix endpoint, and lambda-vs-epochs OLS generators through it. Regenerated the OLS figure artifacts so `\hat{\theta}_{\Lambda}` and `\hat{\theta}` still agree while both differ slightly from the true regression coefficients due to sampling noise.
 
+## 2026-04-29
+
+- Added an OLMo ridge-estimation pilot in [`analysis/olmo_ridge_estimation/run.py`](/home/jrudoler/inductive-bias/analysis/olmo_ridge_estimation/run.py). It estimates the scalar ridge coefficient under the project convention `R(theta) = lambda ||theta||^2`, using `lambda_hat = -<theta, grad L> / (2 <theta, theta>)`, for `allenai/OLMo-2-0425-1B` at revision `stage1-step1907359-tokens4001B` on only `data/wiki/wiki-0001.json.gz` from `allenai/olmo-mix-1124`. Hugging Face model and dataset downloads are routed through `$HF_HOME`, defaulting to `/shared_data0/jrudoler/.cache/huggingface/`.
+
 ## 2026-04-23
 
 - Slimmed the active project surface to align with the manuscript and retained research trajectory. Added [`docs/paper_figure_inventory.md`](/home/jrudoler/inductive-bias/docs/paper_figure_inventory.md) as the provenance map for all figures currently referenced by [`paper/main.tex`](/home/jrudoler/inductive-bias/paper/main.tex).
