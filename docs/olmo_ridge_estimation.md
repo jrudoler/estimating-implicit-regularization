@@ -62,6 +62,12 @@ The script also reports:
 
 - `lambda_hat_nonnegative`: `max(lambda_hat, 0)` for a nonnegative ridge
   sensitivity check.
+- `lambda_mean_loss`: the same value as `lambda_hat`, expressed relative to
+  mean next-token cross-entropy.
+- `lambda_sum_loss`: `lambda_mean_loss * predicted_tokens`, useful when
+  comparing against a summed-token objective.
+- `weight_decay_equivalent_sum_loss`: `2 * lambda_sum_loss`, the coefficient
+  multiplying `theta` under an AdamW-style decay term.
 - `cosine_alignment`: alignment between `-g` and `theta`.
 - `residual_ratio`: relative norm of `g + 2 * lambda_hat * theta`.
 
@@ -185,6 +191,39 @@ The first run should therefore be interpreted as a sanity-check projection of
 the observed subset gradient onto a ridge direction, not as a complete recovery
 of the full OLMo training objective.
 
+## Saved Gradients
+
+Gradient computation is the expensive part of the experiment. Runs that pass
+`--save-gradients` write reusable per-parameter gradient shards alongside the
+scalar estimates.
+
+By default, a run with output
+
+```text
+data/generated/olmo_ridge_estimation/model_grid/<run_id>.json
+```
+
+stores gradients under
+
+```text
+data/generated/olmo_ridge_estimation/model_grid/gradients/<run_id>/
+```
+
+The directory contains:
+
+- `manifest.json`: model/data context, gradient dtype, shard list, and a mapping
+  from each parameter name to its shard, shape, group, and decay eligibility.
+- `gradients-00000.pt`, `gradients-00001.pt`, ...: torch files containing
+  dictionaries of `{parameter_name: gradient_tensor}`.
+
+The saved tensors are gradients of mean next-token cross-entropy under the
+recorded token budget and data file. To reuse them for another candidate bias
+model, load the same model checkpoint to recover `theta`, load the gradient
+shards for `g`, and evaluate the new regularizer gradient against that fixed
+`(theta, g)` pair. The Hugging Face model id and revision are recorded in the
+manifest, so the parameter names and shapes can be checked against the loaded
+checkpoint before reuse.
+
 ## Commands
 
 Smoke test:
@@ -203,10 +242,21 @@ Full 50M-token run:
 sbatch scripts/run_olmo_ridge_estimation.sbatch
 ```
 
+Submit the multi-model grid on standby H200 GPUs:
+
+```bash
+bash scripts/submit_llm_ridge_grid.sh
+```
+
+The default grid includes OLMo 2 1B, OLMo 2 7B, Qwen3 4B Base, Qwen2.5 0.5B,
+and Qwen2.5 1.5B. Ai2 does not currently expose a public OLMo 2 4B language
+model checkpoint; the Qwen3 4B Base run is the included 4B-scale text-model
+comparison. Set `INCLUDE_GATED_GEMMA=1` to also submit the gated
+`google/gemma-3-1b-pt` job if the local Hugging Face credentials have access.
+
 Snakemake target:
 
 ```bash
 uv run snakemake -s workflow/Snakefile --profile workflow/profiles/slurm \
     data/generated/olmo_ridge_estimation/olmo2_1b_stage1_wiki0001_50m.json
 ```
-

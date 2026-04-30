@@ -43,6 +43,11 @@ DEFAULT_OUTPUT = (
 )
 
 NORM_NAME_PARTS = ("norm", "layernorm", "layer_norm", ".ln", "_ln")
+DTYPE_NAMES: dict[torch.dtype, str] = {
+    torch.float32: "float32",
+    torch.bfloat16: "bfloat16",
+    torch.float16: "float16",
+}
 
 
 @dataclass(frozen=True)
@@ -84,11 +89,17 @@ class ScopeStats:
         )
         return math.sqrt(max(residual_sq, 0.0) / self.grad_sq_norm)
 
-    def to_json_dict(self) -> dict[str, float | int]:
+    def to_json_dict(self, predicted_tokens: int | None = None) -> dict[str, float | int]:
+        lambda_sum_loss = (
+            self.lambda_hat * predicted_tokens if predicted_tokens is not None else float("nan")
+        )
         return {
             **asdict(self),
             "lambda_hat": self.lambda_hat,
             "lambda_hat_nonnegative": self.lambda_hat_nonnegative,
+            "lambda_mean_loss": self.lambda_hat,
+            "lambda_sum_loss": lambda_sum_loss,
+            "weight_decay_equivalent_sum_loss": 2.0 * lambda_sum_loss,
             "cosine_alignment": self.cosine_alignment,
             "residual_ratio": self.residual_ratio,
         }
@@ -161,6 +172,29 @@ def parse_args() -> argparse.Namespace:
         help="Enable model gradient checkpointing to reduce activation memory.",
     )
     parser.add_argument(
+        "--save-gradients",
+        action="store_true",
+        help="Save reusable per-parameter loss gradients after estimation.",
+    )
+    parser.add_argument(
+        "--gradient-output-dir",
+        type=Path,
+        default=None,
+        help="Directory for saved gradient shards and manifest.",
+    )
+    parser.add_argument(
+        "--gradient-save-dtype",
+        default="float32",
+        choices=("float32", "bfloat16", "float16"),
+        help="Dtype used when writing gradient tensors to disk.",
+    )
+    parser.add_argument(
+        "--gradient-shard-max-params",
+        type=int,
+        default=64_000_000,
+        help="Approximate maximum number of scalar gradient entries per shard.",
+    )
+    parser.add_argument(
         "--trust-remote-code",
         action="store_true",
         help="Forward trust_remote_code=True to Hugging Face model/tokenizer loaders.",
@@ -191,6 +225,10 @@ def resolve_torch_dtype(value: str, device: torch.device) -> torch.dtype:
         "bfloat16": torch.bfloat16,
         "float16": torch.float16,
     }[value]
+
+
+def dtype_name(dtype: torch.dtype) -> str:
+    return DTYPE_NAMES.get(dtype, str(dtype).removeprefix("torch."))
 
 
 def iter_jsonl_texts_from_gzip(path: Path) -> Iterator[str]:
@@ -405,6 +443,8 @@ def _scope_stats_from_records(records: Iterable[ParameterRecord]) -> ScopeStats:
 
 def compute_parameter_statistics(
     model: torch.nn.Module,
+    *,
+    predicted_tokens: int | None = None,
 ) -> dict[str, Any]:
     records = unique_named_parameters(model)
     all_stats = _scope_stats_from_records(records)
@@ -415,10 +455,10 @@ def compute_parameter_statistics(
         grouped[record.group].append(record)
 
     return {
-        "all": all_stats.to_json_dict(),
-        "decay_eligible": decay_stats.to_json_dict(),
+        "all": all_stats.to_json_dict(predicted_tokens),
+        "decay_eligible": decay_stats.to_json_dict(predicted_tokens),
         "groups": {
-            group: _scope_stats_from_records(group_records).to_json_dict()
+            group: _scope_stats_from_records(group_records).to_json_dict(predicted_tokens)
             for group, group_records in sorted(grouped.items())
         },
         "parameter_names": {
@@ -427,6 +467,112 @@ def compute_parameter_statistics(
                 record.name for record in records if not record.decay_eligible
             ],
         },
+    }
+
+
+def _write_gradient_shard(
+    *,
+    output_dir: Path,
+    shard_index: int,
+    gradients: dict[str, Tensor],
+) -> dict[str, Any]:
+    shard_name = f"gradients-{shard_index:05d}.pt"
+    shard_path = output_dir / shard_name
+    torch.save({"gradients": gradients}, shard_path)
+    return {
+        "shard_index": shard_index,
+        "path": str(shard_path),
+        "file": shard_name,
+        "num_tensors": len(gradients),
+        "numel": int(sum(tensor.numel() for tensor in gradients.values())),
+    }
+
+
+def save_gradient_shards(
+    *,
+    model: torch.nn.Module,
+    output_dir: Path,
+    save_dtype: torch.dtype,
+    shard_max_params: int,
+    context: Mapping[str, Any],
+) -> dict[str, Any]:
+    """Save per-parameter loss gradients as sharded torch artifacts."""
+    if shard_max_params <= 0:
+        raise ValueError("gradient_shard_max_params must be positive.")
+
+    output_dir.mkdir(parents=True, exist_ok=True)
+    records = unique_named_parameters(model)
+    manifest: dict[str, Any] = {
+        "format": "torch_sharded_parameter_gradients_v1",
+        "save_dtype": dtype_name(save_dtype),
+        "context": dict(context),
+        "shards": [],
+        "parameters": {},
+    }
+
+    shard_index = 0
+    shard_numel = 0
+    shard_gradients: dict[str, Tensor] = {}
+
+    for record in records:
+        parameter = record.parameter
+        if parameter.grad is None:
+            continue
+        if shard_gradients and shard_numel + parameter.numel() > shard_max_params:
+            manifest["shards"].append(
+                _write_gradient_shard(
+                    output_dir=output_dir,
+                    shard_index=shard_index,
+                    gradients=shard_gradients,
+                )
+            )
+            shard_index += 1
+            shard_numel = 0
+            shard_gradients = {}
+
+        grad_cpu = (
+            parameter.grad.detach()
+            .to(device="cpu", dtype=save_dtype)
+            .contiguous()
+        )
+        shard_gradients[record.name] = grad_cpu
+        manifest["parameters"][record.name] = {
+            "shape": list(parameter.shape),
+            "numel": int(parameter.numel()),
+            "parameter_dtype": dtype_name(parameter.dtype),
+            "gradient_dtype": dtype_name(save_dtype),
+            "group": record.group,
+            "decay_eligible": record.decay_eligible,
+            "shard_index": shard_index,
+        }
+        shard_numel += parameter.numel()
+
+    if shard_gradients:
+        manifest["shards"].append(
+            _write_gradient_shard(
+                output_dir=output_dir,
+                shard_index=shard_index,
+                gradients=shard_gradients,
+            )
+        )
+
+    manifest["num_parameters"] = len(manifest["parameters"])
+    manifest["total_numel"] = int(
+        sum(item["numel"] for item in manifest["parameters"].values())
+    )
+    manifest_path = output_dir / "manifest.json"
+    with manifest_path.open("w", encoding="utf-8") as handle:
+        json.dump(manifest, handle, indent=2, sort_keys=True)
+        handle.write("\n")
+    LOGGER.info("Saved gradient manifest %s", manifest_path)
+    return {
+        "manifest": str(manifest_path),
+        "directory": str(output_dir),
+        "save_dtype": dtype_name(save_dtype),
+        "num_shards": len(manifest["shards"]),
+        "num_parameters": manifest["num_parameters"],
+        "total_numel": manifest["total_numel"],
+        "shards": manifest["shards"],
     }
 
 
@@ -483,8 +629,9 @@ def build_payload(
     token_metadata: Mapping[str, int],
     loss_metadata: Mapping[str, float | int],
     parameter_statistics: Mapping[str, Any],
+    gradient_artifact: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
-    return {
+    payload = {
         "config": {
             "model_id": args.model_id,
             "revision": args.revision,
@@ -498,11 +645,15 @@ def build_payload(
             "device": args.device,
             "torch_dtype": args.torch_dtype,
             "gradient_checkpointing": args.gradient_checkpointing,
+            "save_gradients": args.save_gradients,
         },
         "tokens": dict(token_metadata),
         "loss": dict(loss_metadata),
         "ridge_estimates": dict(parameter_statistics),
     }
+    if gradient_artifact is not None:
+        payload["gradient_artifact"] = dict(gradient_artifact)
+    return payload
 
 
 def save_outputs(payload: Mapping[str, Any], output: Path, stats_output: Path) -> None:
@@ -523,8 +674,12 @@ def main() -> None:
     os.environ["HF_HOME"] = str(args.hf_home)
     device = resolve_device(args.device)
     torch_dtype = resolve_torch_dtype(args.torch_dtype, device)
+    gradient_save_dtype = resolve_torch_dtype(args.gradient_save_dtype, torch.device("cpu"))
     torch.set_float32_matmul_precision("high")
     stats_output = args.stats_output or args.output.with_suffix(".pt")
+    gradient_output_dir = args.gradient_output_dir or (
+        args.output.parent / "gradients" / args.output.stem
+    )
     LOGGER.info("Using device=%s dtype=%s HF_HOME=%s", device, torch_dtype, args.hf_home)
 
     tokenizer, model = load_tokenizer_and_model(
@@ -563,13 +718,36 @@ def main() -> None:
         num_workers=args.num_workers,
         device=device,
     )
-    parameter_statistics = compute_parameter_statistics(model)
+    predicted_tokens = int(loss_metadata["predicted_tokens"])
+    parameter_statistics = compute_parameter_statistics(
+        model,
+        predicted_tokens=predicted_tokens,
+    )
+    gradient_artifact = None
+    if args.save_gradients:
+        gradient_artifact = save_gradient_shards(
+            model=model,
+            output_dir=gradient_output_dir,
+            save_dtype=gradient_save_dtype,
+            shard_max_params=args.gradient_shard_max_params,
+            context={
+                "model_id": args.model_id,
+                "revision": args.revision,
+                "dataset_repo": args.dataset_repo,
+                "dataset_file": args.dataset_file,
+                "token_budget": args.token_budget,
+                "sequence_length": args.sequence_length,
+                "predicted_tokens": predicted_tokens,
+                "loss_normalization": "mean_next_token_cross_entropy",
+            },
+        )
     payload = build_payload(
         args=args,
         dataset_path=dataset_path,
         token_metadata=token_metadata,
         loss_metadata=loss_metadata,
         parameter_statistics=parameter_statistics,
+        gradient_artifact=gradient_artifact,
     )
     save_outputs(payload, args.output, stats_output)
 

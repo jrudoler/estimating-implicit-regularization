@@ -54,6 +54,7 @@ rule olmo_ridge_estimation:
     output:
         json="data/generated/olmo_ridge_estimation/olmo2_1b_stage1_wiki0001_50m.json",
         pt="data/generated/olmo_ridge_estimation/olmo2_1b_stage1_wiki0001_50m.pt",
+        gradients=directory("data/generated/olmo_ridge_estimation/gradients/olmo2_1b_stage1_wiki0001_50m"),
     resources:
         slurm_partition="standby",
         runtime=720,
@@ -63,7 +64,8 @@ rule olmo_ridge_estimation:
     shell:
         "export HF_HOME=${{HF_HOME:-/shared_data0/jrudoler/.cache/huggingface}}; "
         "PYTHONPATH=src uv run python {input.script} "
-        "--output {output.json} --stats-output {output.pt}"
+        "--output {output.json} --stats-output {output.pt} "
+        "--save-gradients --gradient-output-dir {output.gradients}"
 
 
 rule barrett_igr_figure2:

@@ -13,6 +13,7 @@ from analysis.olmo_ridge_estimation.run import (
     compute_parameter_statistics,
     iter_jsonl_texts_from_gzip,
     pack_token_blocks,
+    save_gradient_shards,
 )
 
 
@@ -29,6 +30,12 @@ def test_scope_stats_recovers_closed_form_lambda() -> None:
 
     assert stats.lambda_hat == pytest.approx(lam)
     assert stats.lambda_hat_nonnegative == pytest.approx(lam)
+    assert stats.to_json_dict(predicted_tokens=10)["lambda_sum_loss"] == pytest.approx(
+        10 * lam
+    )
+    assert stats.to_json_dict(predicted_tokens=10)[
+        "weight_decay_equivalent_sum_loss"
+    ] == pytest.approx(20 * lam)
     assert stats.cosine_alignment == pytest.approx(1.0)
     assert stats.residual_ratio == pytest.approx(0.0)
 
@@ -87,3 +94,26 @@ def test_iter_jsonl_texts_from_gzip(tmp_path: Path) -> None:
             handle.write(json.dumps(row) + "\n")
 
     assert list(iter_jsonl_texts_from_gzip(path)) == ["alpha", "beta"]
+
+
+def test_save_gradient_shards_writes_manifest(tmp_path: Path) -> None:
+    model = nn.Linear(3, 2)
+    for parameter in model.parameters():
+        parameter.grad = torch.ones_like(parameter)
+
+    artifact = save_gradient_shards(
+        model=model,
+        output_dir=tmp_path / "grads",
+        save_dtype=torch.float32,
+        shard_max_params=4,
+        context={"model_id": "toy"},
+    )
+
+    manifest = json.loads(Path(artifact["manifest"]).read_text())
+    assert manifest["format"] == "torch_sharded_parameter_gradients_v1"
+    assert manifest["num_parameters"] == 2
+    assert manifest["total_numel"] == 8
+    assert len(manifest["shards"]) == 2
+
+    first_shard = torch.load(manifest["shards"][0]["path"], weights_only=False)
+    assert "weight" in first_shard["gradients"]
