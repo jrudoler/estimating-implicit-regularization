@@ -377,15 +377,15 @@ def make_tradeoff_vis_1d(out_path: Path) -> None:
         transform=ax.transData,
     )
     ax.plot(
-        theta[0],
-        y_max,
+        0,
+        1,
         "^",
         color="black",
         ms=7,
         clip_on=False,
         zorder=10,
         markeredgewidth=0,
-        transform=ax.transData,
+        transform=ax.transAxes,
     )
 
     # θ label placed just to the right of the x-axis arrowhead
