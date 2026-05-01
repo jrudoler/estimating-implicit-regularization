@@ -240,7 +240,7 @@ def main() -> None:
     )
 
     Q_multi = fit_symmetric_matrix_from_points(
-        pb["theta_pool"][0], pb["target_pool"][0]
+        pb["theta_pool"][0, :10], pb["target_pool"][0, :10]
     ).numpy()
 
     # Weight bars -- single-endpoint experiment.
