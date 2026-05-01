@@ -27,6 +27,12 @@ def loss_grad(X: torch.Tensor, y: torch.Tensor, theta: torch.Tensor) -> torch.Te
 def loss_grad_trajectory(
     X: torch.Tensor, y: torch.Tensor, thetas: torch.Tensor
 ) -> torch.Tensor:
+    """Vectorised loss gradients for a whole trajectory.
+
+    thetas: [T+1, p] — one row per GD iterate. Returns [T+1, p] where
+    row k is loss_grad(X, y, thetas[k]).  Useful for trajectory visualisation;
+    for a single point prefer calling loss_grad directly.
+    """
     n = X.shape[0]
     c = (X.T @ y) / n
     A = (X.T @ X) / n
@@ -53,7 +59,13 @@ def gd_trajectory(
 def callback_stop_step(
     monitored_losses: torch.Tensor, patience: int, min_delta: float
 ) -> int:
-    """Lightning-style early-stopping callback over a precomputed loss trace."""
+    """Lightning-style early-stopping over a precomputed loss trace.
+
+    Returns the index k such that monitored_losses[k] is the iterate used as
+    the final model — i.e. the last step before patience consecutive steps with
+    no improvement >= min_delta.  Mirrors the behaviour of
+    lightning.pytorch.callbacks.EarlyStopping(mode="min", restore_best_weights=False).
+    """
     best = float("inf")
     wait = 0
     for epoch in range(len(monitored_losses) - 1):
@@ -69,6 +81,12 @@ def callback_stop_step(
 
 
 def freeze_after_stop(theta_traj: torch.Tensor, stop_step: int) -> torch.Tensor:
+    """Return a copy of theta_traj with all iterates after stop_step clamped.
+
+    Useful for visualising what a GD trajectory looks like under early stopping:
+    the trajectory is frozen at stop_step rather than continuing to converge.
+    Not needed for scalar endpoint extraction — index theta_traj[stop_step] directly.
+    """
     frozen = theta_traj.clone()
     if stop_step + 1 < frozen.shape[0]:
         frozen[stop_step + 1 :] = frozen[stop_step]

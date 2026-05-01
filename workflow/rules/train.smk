@@ -208,8 +208,8 @@ rule nonlinear_multi_geometry_replicate_ablation:
 
 
 rule ols_full_matrix_recovery:
-    """Train 100 endpoints x 5 pools of OLS GD with callback early stopping;
-    fit the symmetric Q via least squares; save tensors for the plot rule.
+    """Train 100 endpoints x 5 pools with per-endpoint early stopping (Panel D).
+    Each endpoint stops when its own training loss plateaus, so stop steps vary.
     Pure CPU (10-d linear regression), so no GPU resources requested."""
     input:
         script="analysis/ols_full_matrix_recovery/run.py",
@@ -223,6 +223,32 @@ rule ols_full_matrix_recovery:
         cpus_per_task=2,
     shell:
         "PYTHONPATH=src uv run python {input.script} --output {output.results}"
+
+
+rule ols_full_matrix_recovery_panel_b:
+    """Train 100 endpoints x 5 pools with a fixed stop step equal to the
+    canonical early-stopping epoch from the single-endpoint OLS run (Panel B).
+    All endpoints share the same t so the stacked system Q theta_k = -g_k has
+    a single well-defined Q, making the recovery exact in expectation.
+    Pure CPU (10-d linear regression), so no GPU resources requested."""
+    input:
+        script="analysis/ols_full_matrix_recovery/run.py",
+        dgp="analysis/ols_dgp.py",
+        linear_data="data/generated/linear_regression_ols/results.pt",
+    output:
+        results=protected("data/generated/ols_full_matrix_recovery_panel_b/results.pt"),
+    resources:
+        slurm_partition="whartonstat",
+        runtime=60,
+        mem_mb=8000,
+        cpus_per_task=2,
+    params:
+        stop_step=lambda wildcards, input: __import__("torch").load(
+            input.linear_data, weights_only=False
+        )["config"]["stop_epoch"],
+    shell:
+        "PYTHONPATH=src uv run python {input.script} --output {output.results} "
+        "--stop-step {params.stop_step}"
 
 
 rule nonlinear_power_retrain_geometry:

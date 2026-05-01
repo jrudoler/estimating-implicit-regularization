@@ -103,6 +103,7 @@ rule plot_ols_composite:
         script="analysis/plot_ols_composite/run.py",
         style="clean_fig.mplstyle",
         linear_data="data/generated/linear_regression_ols/results.pt",
+        panel_b_data="data/generated/ols_full_matrix_recovery_panel_b/results.pt",
         full_matrix_data="data/generated/ols_full_matrix_recovery/results.pt",
         lambda_epochs_data="data/generated/lambda_vs_epochs/results.pt",
     output:
@@ -110,6 +111,7 @@ rule plot_ols_composite:
     shell:
         "PYTHONPATH=src uv run python {input.script} "
         "--linear-data {input.linear_data} "
+        "--panel-b-data {input.panel_b_data} "
         "--full-matrix-data {input.full_matrix_data} "
         "--lambda-epochs-data {input.lambda_epochs_data} "
         "--out {output.pdf}"

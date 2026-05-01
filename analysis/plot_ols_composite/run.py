@@ -59,7 +59,20 @@ HEATMAP_CMAP = Colormap("colorcet:CET-CBD1").to_mpl()
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--linear-data", type=Path, required=True)
-    parser.add_argument("--full-matrix-data", type=Path, required=True)
+    parser.add_argument(
+        "--panel-b-data",
+        type=Path,
+        required=True,
+        help="Fixed-t multi-endpoint results (all endpoints at the canonical stop step). "
+        "Used for Panel B heatmap only.",
+    )
+    parser.add_argument(
+        "--full-matrix-data",
+        type=Path,
+        required=True,
+        help="Variable-t multi-endpoint results (per-endpoint early stopping). "
+        "Used for Panel D distance curve only.",
+    )
     parser.add_argument("--lambda-epochs-data", type=Path, required=True)
     parser.add_argument("--out", type=Path, required=True)
     return parser.parse_args()
@@ -206,20 +219,26 @@ def main() -> None:
 
     # --- Load artifacts --------------------------------------------------
     lin = torch.load(args.linear_data, weights_only=False)
-    fm = torch.load(args.full_matrix_data, weights_only=False)
+    pb = torch.load(args.panel_b_data, weights_only=False)   # fixed-t, Panel B
+    fm = torch.load(args.full_matrix_data, weights_only=False)  # variable-t, Panel D
     lve = torch.load(args.lambda_epochs_data, weights_only=False)
+
+    # Canonical stop step shared by Panels A, B, and C.
+    canonical_t = lin["config"]["stop_epoch"]
 
     # Theory (single canonical Q from the linear-regression early-stopped run).
     Q_theory = lin["Q"].numpy()
     # Single-endpoint estimated diag (full Lambda matrix is diagonal-only).
     Q_single = lin["q_hat_diag"].numpy()
-    # Multi-endpoint full-matrix estimate from pool 0, all endpoints.
+    # Panel B: full symmetric Q̂ from the fixed-t pool 0 endpoints.
+    # All endpoints share the canonical stop step so the recovery targets a
+    # single well-defined Q, matching Panel A's theoretical matrix exactly.
     from analysis.ols_full_matrix_recovery.pipeline import (
         fit_symmetric_matrix_from_points,
     )
 
     Q_multi = fit_symmetric_matrix_from_points(
-        fm["theta_pool"][0], fm["target_pool"][0]
+        pb["theta_pool"][0], pb["target_pool"][0]
     ).numpy()
 
     # Weight bars -- single-endpoint experiment.
@@ -276,9 +295,9 @@ def main() -> None:
     ax_cbar_w = fig.add_subplot(row1[1, 4])
 
     for ax, mat, title, ax_cbar in [
-        (ax_A, Q_theory, r"Theoretical $\Lambda^{(t)}$", ax_cbar_A),
-        (ax_B, Q_multi, r"Multi-endpoint $\hat{\Lambda}^{(t)}$", ax_cbar_B),
-        (ax_C, Q_single, r"Single-endpoint $\hat{\Lambda}^{(t)}$", ax_cbar_C),
+        (ax_A, Q_theory, r"$\Lambda^{(t)}$", ax_cbar_A),
+        (ax_B, Q_multi, r"$\hat{\Lambda}_{m}^{(t)}$", ax_cbar_B),
+        (ax_C, Q_single, r"$\mathrm{diag}(\hat{\Lambda}^{(t)})$", ax_cbar_C),
     ]:
         vmax = float(np.abs(mat).max())
         im = ax.imshow(mat, cmap=HEATMAP_CMAP, vmin=-vmax, vmax=vmax, aspect="equal")
@@ -344,7 +363,7 @@ def main() -> None:
         counts, dist_lo, dist_hi, color=line_color, alpha=0.2, label="95% SE"
     )
     ax_dist.set_xlabel("Number of endpoints used")
-    ax_dist.set_ylabel(r"$\| \hat{\Lambda}^{(t)}_m - \Lambda^{(t)} \|$")
+    ax_dist.set_ylabel(r"$\| \hat{\Lambda}^{(t_k)}_m - \bar{\Lambda} \|$")
     ax_dist.set_xlim(1, num_endpoints)
     ax_dist.grid(alpha=0.3, which="both")
     ax_dist.legend(frameon=False)
@@ -376,7 +395,7 @@ def main() -> None:
         linewidth=1.5,
         label=r"Theoretical $\mathrm{tr}(\Lambda^{(t)})/p$",
     )
-    ax_lvse.set_xlabel("Gradient descent epochs $t$")
+    ax_lvse.set_xlabel("Gradient descent steps $t$")
     ax_lvse.set_ylabel(r"Scalar ridge penalty $\hat{\lambda}_t$")
     ax_lvse.legend(frameon=False, loc="lower left", fontsize=10)
     ax_lvse.grid(True, which="both", alpha=0.3)
