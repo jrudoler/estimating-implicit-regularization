@@ -23,6 +23,7 @@ import torch.nn.functional as F
 from cmap import Colormap
 from matplotlib.lines import Line2D
 from mpl_toolkits.mplot3d import Axes3D  # noqa: F401  (registers 3D projection)
+import matplotlib.patheffects as pe
 
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -135,6 +136,268 @@ def make_tradeoff_vis(out_path: Path) -> None:
         Line2D([0], [0], color="grey", lw=4, label="Total objective", alpha=0.8),
     ]
     ax.legend(handles=proxies, loc="upper left")
+
+    fig.tight_layout()
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    fig.savefig(out_path, dpi=300)
+    plt.close(fig)
+
+
+# ----------------------------------------------------------------------
+# Figure 1b: tradeoff-vis-1d.pdf
+# ----------------------------------------------------------------------
+def make_tradeoff_vis_1d(out_path: Path) -> None:
+    """1D version of the tradeoff visualization: L2, MSE, and total objective
+    as curves over a scalar parameter θ, with annotated minima projected to the
+    θ-axis."""
+    # 1D linear model: y = theta_true * x + eps, eps ~ N(0, sigma^2)
+    rng = np.random.default_rng(42)
+    n = 20
+    theta_true = 2.0
+    sigma = 1.8
+    lam = 0.8
+
+    x = rng.standard_normal(n)
+    eps = rng.normal(0, sigma, n)
+    y = theta_true * x + eps
+
+    # Analytic minimizers (closed-form for scalar theta)
+    xx = np.dot(x, x) / n  # empirical second moment of x
+    xy = np.dot(x, y) / n
+    theta_ols = xy / xx  # OLS: minimizes MSE
+    theta_l2_min = 0.0  # L2 always minimized at origin
+    theta_ridge = xy / (xx + lam)  # ridge: minimizes MSE + lambda * theta^2
+
+    # Curve values
+    theta = np.linspace(-0.5, 3.5, 600)
+    residuals = y[:, None] - x[:, None] * theta[None, :]  # (n, 600)
+    mse_vals = np.mean(residuals**2, axis=0)
+    l2_vals = lam * theta**2
+    total_vals = mse_vals + l2_vals
+
+    # Values at minima
+    val_mse = float(np.mean((y - theta_ols * x) ** 2))  # residual variance
+    val_l2 = 0.0
+    val_total = float(np.mean((y - theta_ridge * x) ** 2) + lam * theta_ridge**2)
+
+    # Rename for downstream annotation code
+    theta_mse = theta_ols
+    theta_total = theta_ridge
+
+    color_mse = "tab:red"
+    color_l2 = "tab:blue"
+    color_total = "dimgray"
+
+    fig, ax = plt.subplots(figsize=(6, 4))
+
+    ax.plot(
+        theta,
+        mse_vals,
+        color=color_mse,
+        lw=2,
+        linestyle="--",
+        alpha=0.8,
+        label="MSE loss",
+        zorder=3,
+    )
+    ax.plot(
+        theta,
+        l2_vals,
+        color=color_l2,
+        lw=2,
+        linestyle="--",
+        alpha=0.8,
+        label=r"$\ell_2$ penalty",
+        zorder=3,
+    )
+    ax.plot(
+        theta, total_vals, color=color_total, lw=2.5, label="Total objective", zorder=3
+    )
+
+    y_max = float(np.max(total_vals[theta <= 3.2])) * 1.08
+
+    minima = [
+        (theta_mse, val_mse, color_mse, r"$\hat{\theta}_{\mathrm{OLS}}$"),
+        (theta_l2_min, val_l2, color_l2, r"$\ell_2$ min"),
+        (theta_total, val_total, color_total, r"$\hat{\theta}_{\mathrm{ridge}}$"),
+    ]
+
+    for t_min, v_min, color, label in minima:
+        # Dot on the curve at the minimum
+        ax.plot(
+            t_min,
+            v_min,
+            "o",
+            color=color,
+            ms=8,
+            zorder=7,
+            markeredgecolor="white",
+            markeredgewidth=1,
+        )
+        # Dotted vertical projection line down to axis
+        if v_min > 1e-6:
+            ax.vlines(
+                t_min,
+                0,
+                v_min,
+                linestyles=":",
+                colors=color,
+                lw=1.5,
+                alpha=0.8,
+                zorder=4,
+            )
+        # Dot on the x-axis
+        ax.plot(
+            t_min,
+            0,
+            "o",
+            color=color,
+            ms=8,
+            zorder=7,
+            clip_on=False,
+            markeredgecolor="white",
+            markeredgewidth=1,
+        )
+        # Text label below the axis (outside plot area)
+        ax.annotate(
+            label,
+            xy=(t_min, 0),
+            xytext=(0, -10),
+            textcoords="offset points",
+            color=color,
+            ha="center",
+            va="top",
+            fontsize=11,
+            clip_on=False,
+        )
+
+    # Gradient arrows: unit tangent vectors at theta_ridge, scaled to a fixed
+    # data-coordinate length.  slope = d(L2)/d(theta) = -d(MSE)/d(theta).
+    slope = 2 * lam * theta_total  # = 1.728
+    unit = np.array([1.0, slope]) / np.hypot(1.0, slope)
+    arrow_len = 1.2  # length in data units
+    dx, dy_up = unit * arrow_len  # L2  tangent (up-right)
+    dy_dn = -dy_up  # MSE tangent (down-right)
+
+    l2_at_ridge = lam * theta_total**2
+    mse_at_ridge = float(np.mean((y - theta_total * x) ** 2))
+
+    # import matplotlib.patheffects as pe
+
+    arrow_kw = dict(
+        arrowstyle="-|>",
+        lw=2.0,
+        mutation_scale=12,
+        path_effects=[
+            pe.Stroke(linewidth=4.2, foreground="black"),
+            pe.Normal(),
+        ],
+    )
+
+    ax.annotate(
+        "",
+        xy=(theta_total + dx, l2_at_ridge + dy_up),
+        xytext=(theta_total, l2_at_ridge),
+        arrowprops=dict(color=color_l2, **arrow_kw),
+        zorder=8,
+    )
+
+    ax.annotate(
+        "",
+        xy=(theta_total + dx, mse_at_ridge + dy_dn),
+        xytext=(theta_total, mse_at_ridge),
+        arrowprops=dict(color=color_mse, **arrow_kw),
+        zorder=8,
+    )
+    # Labels at mid-body, offset perpendicular to each arrow
+    mid_x = theta_total + dx * 0.5
+    ax.text(
+        mid_x + 0.08,
+        l2_at_ridge + dy_up * 0.5 - 0.3,
+        r"$\nabla\mathcal{R}$",
+        color=color_l2,
+        fontsize=10,
+        ha="left",
+        va="top",
+    )
+    ax.text(
+        mid_x + 0.08,
+        mse_at_ridge + dy_dn * 0.5 + 0.3,
+        r"$-\nabla\mathcal{L}$",
+        color=color_mse,
+        fontsize=10,
+        ha="left",
+        va="bottom",
+    )
+
+    ax.set_xlabel("")
+    ax.set_ylabel("Loss")
+    ax.set_xlim(theta[0], theta[-1])
+    ax.set_ylim(0, y_max)
+    # Fine-grained grid; hide tick marks and labels
+    ax.set_xticks(np.arange(0, theta[-1] + 0.1, 0.5))
+    ax.set_yticks(np.arange(0, y_max + 1, 2))
+    ax.grid(True, color="#dddddd", linewidth=0.5, zorder=0)
+    ax.tick_params(
+        axis="both", which="both", length=0, labelbottom=False, labelleft=False
+    )
+
+    # Faint vertical marker at θ=0 with label just inside the plot
+    ax.axvline(0, color="#bbbbbb", lw=1.0, zorder=1, alpha=0.6)
+    ax.text(
+        0.052,
+        y_max * 0.02,
+        r"$\theta\!=\!0$",
+        ha="left",
+        va="bottom",
+        fontsize=9,
+        color="#999999",
+    )
+
+    ax.legend(
+        loc="lower left",
+        bbox_to_anchor=(0, 1, 1, 0),
+        ncol=3,
+        frameon=False,
+        fontsize=10,
+        mode="expand",
+        borderaxespad=0,
+    )
+
+    # Arrowheads at the ends of the x and y axes
+    ax.plot(
+        theta[-1],
+        0,
+        ">",
+        color="black",
+        ms=7,
+        clip_on=False,
+        zorder=10,
+        markeredgewidth=0,
+        transform=ax.transData,
+    )
+    ax.plot(
+        theta[0],
+        y_max,
+        "^",
+        color="black",
+        ms=7,
+        clip_on=False,
+        zorder=10,
+        markeredgewidth=0,
+        transform=ax.transData,
+    )
+
+    # θ label placed just to the right of the x-axis arrowhead
+    ax.text(
+        theta[-1] + 0.1,
+        0,
+        r"$\theta$",
+        ha="left",
+        va="center",
+        fontsize=14,
+        clip_on=False,
+    )
 
     fig.tight_layout()
     out_path.parent.mkdir(parents=True, exist_ok=True)
@@ -336,15 +599,31 @@ def make_sgd_vs_full_batch(out_path: Path) -> None:
         full_delta = (-learning_rate * item["full_grad"]).numpy()
         batch_delta = (-learning_rate * item["batch_grad"]).numpy()
         ax.quiver(
-            theta_np[0], theta_np[1], full_delta[0], full_delta[1],
-            angles="xy", scale_units="xy", scale=1,
-            color="red", width=0.006, alpha=0.85, zorder=1,
+            theta_np[0],
+            theta_np[1],
+            full_delta[0],
+            full_delta[1],
+            angles="xy",
+            scale_units="xy",
+            scale=1,
+            color="red",
+            width=0.006,
+            alpha=0.85,
+            zorder=1,
         )
         ax.quiver(
-            theta_np[0], theta_np[1], batch_delta[0], batch_delta[1],
-            angles="xy", scale_units="xy", scale=1,
-            color="lightgray", edgecolor="black",
-            width=0.006, alpha=0.85, zorder=1,
+            theta_np[0],
+            theta_np[1],
+            batch_delta[0],
+            batch_delta[1],
+            angles="xy",
+            scale_units="xy",
+            scale=1,
+            color="lightgray",
+            edgecolor="black",
+            width=0.006,
+            alpha=0.85,
+            zorder=1,
         )
 
     ax.set_xlim(weight_grid.min().item(), weight_grid.max().item())
@@ -368,6 +647,7 @@ def make_sgd_vs_full_batch(out_path: Path) -> None:
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--out-tradeoff", required=True, type=Path)
+    parser.add_argument("--out-tradeoff-1d", required=True, type=Path)
     parser.add_argument("--out-sgd-vs-fb", required=True, type=Path)
     return parser.parse_args()
 
@@ -377,8 +657,11 @@ def main() -> None:
     if STYLE_PATH.exists():
         plt.style.use(str(STYLE_PATH))
 
-    make_tradeoff_vis(args.out_tradeoff)
+    make_tradeoff_vis_1d(args.out_tradeoff)
     print(args.out_tradeoff)
+
+    make_tradeoff_vis(args.out_tradeoff_1d)
+    print(args.out_tradeoff_1d)
 
     make_sgd_vs_full_batch(args.out_sgd_vs_fb)
     print(args.out_sgd_vs_fb)

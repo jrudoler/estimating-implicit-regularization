@@ -78,10 +78,13 @@ rule plot_method_vis:
         style="clean_fig.mplstyle",
     output:
         tradeoff="results/figures/tradeoff-vis.pdf",
+        tradeoff_3d="results/figures/tradeoff-vis-3d.pdf",
         sgd_vs_fb="results/figures/sgd-vs-full-batch.pdf",
     shell:
         "PYTHONPATH=src uv run python {input.script} "
-        "--out-tradeoff {output.tradeoff} --out-sgd-vs-fb {output.sgd_vs_fb}"
+        "--out-tradeoff {output.tradeoff} "
+        "--out-tradeoff-1d {output.tradeoff_3d} "
+        "--out-sgd-vs-fb {output.sgd_vs_fb}"
 
 
 rule plot_linear_regression_ols:

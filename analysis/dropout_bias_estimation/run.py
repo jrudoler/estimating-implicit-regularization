@@ -25,6 +25,14 @@ from core.data import MNISTLightningDataModule
 LOGGER = logging.getLogger(__name__)
 
 
+def _resolve_accelerator() -> str:
+    if torch.cuda.is_available():
+        return "gpu"
+    if hasattr(torch.backends, "mps") and torch.backends.mps.is_available():
+        return "mps"
+    return "cpu"
+
+
 def set_seed(seed: int) -> None:
     torch.manual_seed(seed)
     torch.cuda.manual_seed_all(seed)
@@ -232,7 +240,7 @@ def main() -> None:
                     save_dir="./logs/",
                 )
 
-            accelerator = "gpu" if torch.cuda.is_available() else "cpu"
+            accelerator = _resolve_accelerator()
             devices = 1
 
             checkpoint_callback = ModelCheckpoint(
@@ -319,7 +327,7 @@ def main() -> None:
                 log_model=False,
             )
 
-        accelerator = "gpu" if torch.cuda.is_available() else "cpu"
+        accelerator = _resolve_accelerator()
         devices = 1
 
         bias_trainer = Trainer(
