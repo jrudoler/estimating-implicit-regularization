@@ -98,7 +98,9 @@ def _add_panel_label(fig, ax, letter: str, fontsize: int = 18) -> None:
     except Exception:
         x_frac = 0.0
     ax.text(
-        x_frac, 1.02, letter,
+        x_frac,
+        1.02,
+        letter,
         transform=ax.transAxes,
         fontweight="bold",
         fontsize=fontsize,
@@ -118,7 +120,7 @@ def _add_retraining_arrow(ax: Axes) -> None:
         arrowstyle="fancy",
         connectionstyle="arc3,rad=-0.4",
         mutation_scale=18,
-        linewidth=2.4,
+        linewidth=2.6,
         edgecolor=arrow_color,
         facecolor=arrow_color,
         zorder=30,
@@ -127,12 +129,12 @@ def _add_retraining_arrow(ax: Axes) -> None:
     ax.add_patch(arrow)
     ax.text(
         0.50,
-        0.82,
+        0.65,
         "Retrain with \nexplicit regularization",
         transform=ax.transAxes,
         ha="center",
         va="center",
-        fontsize=11.5,
+        fontsize=14,
         color=arrow_color,
         bbox={
             "boxstyle": "round,pad=0.22",
@@ -190,7 +192,7 @@ def _add_aligned_weight_axes(
     fig_width, fig_height = fig.get_size_inches()
 
     vector_width = anchor_box.height * fig_height / (n_rows * fig_width)
-    gap = 0.18 * vector_width
+    gap = 0.35 * vector_width
     total_width = n_vectors * vector_width + (n_vectors - 1) * gap
 
     if total_width > slot_box.width:
@@ -219,7 +221,7 @@ def main() -> None:
 
     # --- Load artifacts --------------------------------------------------
     lin = torch.load(args.linear_data, weights_only=False)
-    pb = torch.load(args.panel_b_data, weights_only=False)   # fixed-t, Panel B
+    pb = torch.load(args.panel_b_data, weights_only=False)  # fixed-t, Panel B
     fm = torch.load(args.full_matrix_data, weights_only=False)  # variable-t, Panel D
     lve = torch.load(args.lambda_epochs_data, weights_only=False)
 
@@ -263,7 +265,11 @@ def main() -> None:
 
     # --- Composite figure -------------------------------------------------
     vmax_w = float(
-        max(np.abs(theta_real).max(), np.abs(theta_hat).max(), np.abs(theta_hat_prime).max())
+        max(
+            np.abs(theta_real).max(),
+            np.abs(theta_hat).max(),
+            np.abs(theta_hat_prime).max(),
+        )
     )
 
     fig = plt.figure(figsize=(15.5, 9.0), constrained_layout=False)
@@ -272,7 +278,8 @@ def main() -> None:
     # Row 1: keep the three Lambda heatmaps as equal sibling panels, then
     # place the retraining annotation and recovered weights to the right of C.
     row1 = outer[0].subgridspec(
-        2, 5,
+        2,
+        5,
         width_ratios=[1.0, 1.0, 1.0, 0.62, 0.55],
         height_ratios=[1.0, 0.045],
         wspace=0.16,
@@ -318,9 +325,22 @@ def main() -> None:
         n_rows=len(theta_real),
     )
 
+    # Align the weight colorbar to span exactly the three vector axes.
+    w0_pos = ax_w0.get_position()
+    w2_pos = ax_w2.get_position()
+    cbar_w_pos = ax_cbar_w.get_position()
+    ax_cbar_w.set_position(
+        [
+            w0_pos.x0,
+            cbar_w_pos.y0,
+            w2_pos.x1 - w0_pos.x0,
+            cbar_w_pos.height,
+        ]
+    )
+
     norm_w = plt.Normalize(vmin=-vmax_w, vmax=vmax_w)
     for ax, vec, title in [
-        (ax_w0, theta_hat_prime, r"$\hat{\theta}^{\Lambda^{(t)}}$"),
+        (ax_w0, theta_hat_prime, r"$\hat{\theta}^{\Lambda}$"),
         (ax_w1, theta_hat, r"$\hat{\theta}$"),
         (ax_w2, theta_real, r"$\theta$"),
     ]:
@@ -355,18 +375,14 @@ def main() -> None:
         counts,
         dist_mean,
         marker="o",
-        markersize=3,
+        markersize=2,
         color=line_color,
-        label="Mean distance to theory",
     )
-    ax_dist.fill_between(
-        counts, dist_lo, dist_hi, color=line_color, alpha=0.2, label="95% SE"
-    )
-    ax_dist.set_xlabel("Number of endpoints used")
+    ax_dist.fill_between(counts, dist_lo, dist_hi, color=line_color, alpha=0.2)
+    ax_dist.set_xlabel("Number of distinct training endpoints $m$")
     ax_dist.set_ylabel(r"$\| \hat{\Lambda}^{(t_k)}_m - \bar{\Lambda} \|$")
     ax_dist.set_xlim(1, num_endpoints)
     ax_dist.grid(alpha=0.3, which="both")
-    ax_dist.legend(frameon=False)
 
     batlow = Colormap("crameri:batlow").to_mpl()
     c_iter, c_closed, c_theory = batlow(0.2), batlow(0.55), batlow(0.85)
@@ -376,7 +392,7 @@ def main() -> None:
         "o-",
         color=c_iter,
         markersize=6,
-        label=r"Iterative $\hat{\lambda}_t$ (gradient matching)",
+        label=r"Iterative $\hat{\lambda}_t$",
     )
     ax_lvse.loglog(
         epoch_grid,
