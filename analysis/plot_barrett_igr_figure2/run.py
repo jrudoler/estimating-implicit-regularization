@@ -18,6 +18,9 @@ import numpy as np
 import torch
 from cmap import Colormap
 
+# use style file for consistent figure aesthetics across analyses
+plt.style.use(str(Path(__file__).resolve().parents[2] / "clean_fig.mplstyle"))
+
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 RESULTS_FIGURES_DIR = REPO_ROOT / "results" / "figures"
@@ -78,7 +81,9 @@ def main() -> None:
 
     xs = np.array([r[args.x_quantity] for r in results], dtype=float)
     lambda_hat = np.array([r["lambda_hat"] for r in results], dtype=float)
-    lambda_theoretical = np.array([r["lambda_theoretical"] for r in results], dtype=float)
+    lambda_theoretical = np.array(
+        [r["lambda_theoretical"] for r in results], dtype=float
+    )
     r_ig = np.array([r["r_ig"] for r in results], dtype=float)
     test_acc = np.array([r["best_test_acc"] for r in results], dtype=float)
     num_params = np.array([r["num_params"] for r in results], dtype=int)
@@ -88,8 +93,7 @@ def main() -> None:
     unique_params = sorted(np.unique(num_params).tolist())
     cmap = Colormap("crameri:batlow").to_mpl()
     param_to_color = {
-        m: cmap(i / max(1, len(unique_params) - 1))
-        for i, m in enumerate(unique_params)
+        m: cmap(i / max(1, len(unique_params) - 1)) for i, m in enumerate(unique_params)
     }
 
     fig, axes = plt.subplots(1, 3, figsize=(14.5, 4.3))
@@ -119,11 +123,15 @@ def main() -> None:
         )
     axes[0].set_xscale("log")
     axes[0].set_yscale("log")
-    xlabel = r"$\hat{\lambda}$" if args.x_quantity == "lambda_hat" else r"Theoretical $\lambda = \eta m/4$"
-    axes[0].set_xlabel(xlabel)
-    axes[0].set_ylabel(r"$R_{IG} = \frac{1}{p}\|\nabla E(\theta)\|^2$")
+    xlabel = (
+        r"$\hat{\lambda}$"
+        if args.x_quantity == "lambda_hat"
+        else r"Theoretical $\lambda = \eta m/4$"
+    )
+    axes[0].set_xlabel(xlabel, fontsize=16)
+    axes[0].set_ylabel(r"$R_{IG} = \frac{1}{p}\|\nabla E(\theta)\|^2$", fontsize=16)
     # axes[0].set_title("(a) Regularization vs $\\hat{\\lambda}$")
-    axes[0].legend(title="# params", loc="lower left", fontsize=8, frameon=False)
+    axes[0].legend(title="# params", loc="lower left", fontsize=10, frameon=False)
     axes[0].grid(True, which="both", alpha=0.25)
 
     # Panel (b): test accuracy vs lambda
@@ -150,10 +158,10 @@ def main() -> None:
             linewidth=1.0,
         )
     axes[1].set_xscale("log")
-    axes[1].set_xlabel(xlabel)
-    axes[1].set_ylabel("Test Accuracy (%)")
+    axes[1].set_xlabel(xlabel, fontsize=16)
+    axes[1].set_ylabel("Test Accuracy (%)", fontsize=16)
     # axes[1].set_title("Test accuracy vs $\\hat{\\lambda}$")
-    axes[1].legend(title="# params", loc="lower right", fontsize=8, frameon=False)
+    axes[1].legend(title="# params", loc="lower right", fontsize=10, frameon=False)
     axes[1].grid(True, which="both", alpha=0.25)
 
     # Panel (c): estimated lambda vs Barrett analytic lambda.
@@ -165,8 +173,8 @@ def main() -> None:
     for m in unique_params:
         mask = num_params == m
         axes[2].scatter(
-            lambda_theoretical[mask],
             lambda_hat[mask],
+            lambda_theoretical[mask],
             color=param_to_color[m],
             s=26,
             alpha=0.75,
@@ -175,8 +183,8 @@ def main() -> None:
         )
     axes[2].set_xscale("log")
     axes[2].set_yscale("log")
-    axes[2].set_xlabel(r"Theoretical $\lambda = \eta p/4$")
-    axes[2].set_ylabel(r"$\hat{\lambda}$")
+    axes[2].set_xlabel(r"$\hat{\lambda}$", fontsize=16)
+    axes[2].set_ylabel(r"Theoretical $\lambda = \eta p/4$", fontsize=16)
     axes[2].grid(True, which="both", alpha=0.25)
 
     config = payload.get("config", {})

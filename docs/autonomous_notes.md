@@ -12,7 +12,7 @@ Use this file as the default non-manuscript log for autonomous method, implement
 ## 2026-05-04
 
 - Made the active script-backed paper figure exports use tight PDF bounding boxes with minimal padding, and reduced the native height of [`analysis/plot_elasticnet_recovery/run.py`](/Users/jrudoler/inductive-bias/analysis/plot_elasticnet_recovery/run.py) so Figure 3 keeps the same manuscript width while occupying less vertical space without TeX-side scaling or warping.
-- Updated [`analysis/plot_dropout_bias_ridge_panel/run.py`](/Users/jrudoler/inductive-bias/analysis/plot_dropout_bias_ridge_panel/run.py) to give the shared dropout-rate x-axis label more clearance and to use horizontal `Depth ...` and `Width ...` facet labels.
+- Updated [`analysis/plot_dropout_bias_ridge_panel/run.py`](/Users/jrudoler/inductive-bias/analysis/plot_dropout_bias_ridge_panel/run.py) to give the shared dropout-rate x-axis label more clearance, use horizontal `Depth ...` and `Width ...` facet labels, reduce facet-title size, place row titles near the rightmost panels without occluding data, move the colorbar closer, and slightly enlarge the shared axis labels.
 
 ## 2026-04-28
 
