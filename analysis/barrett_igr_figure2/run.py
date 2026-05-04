@@ -1,19 +1,21 @@
 #!/usr/bin/env python3
-"""Reproduction of Barrett & Dherin (2022) Figure 2.
+"""Barrett & Dherin (2022) Figure 2-style known-coefficient recovery.
 
-Trains MLPs on MNIST across a grid of (learning_rate, width). For each trained
-model, records at the time of maximum test accuracy:
+Trains tanh MLPs on MNIST across a Barrett-style grid of (learning_rate,
+width). For each trained model that reaches the train-accuracy threshold,
+records at the time of maximum test accuracy:
   - R_IG = (1/p) * ||grad L||^2 on full train set (Barrett's definition)
   - lambda_hat via the trajectory flow-ref estimator (our contribution)
   - lambda_theoretical = h * p / 4 (Barrett's analytic prediction)
   - max test accuracy
 
-Writes one .pt file; analysis/barrett_igr_figure2_plot.py produces the figure.
+Writes one .pt file; analysis/plot_barrett_igr_figure2/run.py produces the
+paper figure.
 
-Unlike experiments/barrett_igr_trajectory.py which sweeps for theoretical
-recovery, this script follows Barrett's Figure 2 protocol: it trains deep nets
-to solve the task and reports the implicit-regularization quantity at the
-max-test-accuracy iterate.
+This is not a full validation of Barrett's generalization claims. The paper
+uses this setting as a calibration target: Barrett derives lambda = eta * p / 4,
+and our estimator should recover that known coefficient from trajectory
+deviations.
 """
 
 from __future__ import annotations
@@ -25,8 +27,6 @@ import logging
 import sys
 from itertools import product
 from pathlib import Path
-from typing import Sequence
-
 import torch
 from torch import nn, Tensor
 from torch.nn.utils import parameters_to_vector, vector_to_parameters
@@ -49,7 +49,9 @@ LOGGER = logging.getLogger(__name__)
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
-        "--out", type=Path, default=REPO_ROOT / "results" / "barrett_igr_figure2.pt"
+        "--out",
+        type=Path,
+        default=REPO_ROOT / "data" / "generated" / "barrett_igr_figure2" / "results.pt",
     )
     parser.add_argument("--mnist-root", type=Path, default=REPO_ROOT / "data" / "raw")
     parser.add_argument("--train-samples", type=int, default=10000)
@@ -60,17 +62,23 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--widths",
         type=str,
-        default="32,64,128,256",
-        help="Comma-separated hidden widths; architecture is [w, w, w] (3 hidden layers).",
+        default="50,100,200,400,800,1600",
+        help="Comma-separated hidden widths, matching Barrett's Figure 2 grid.",
     )
     parser.add_argument(
         "--learning-rates",
         type=str,
-        default="0.003,0.01,0.03,0.1",
+        default="0.0005,0.001,0.005,0.01,0.05,0.1,0.5",
     )
-    parser.add_argument("--seeds", type=str, default="0,1")
-    parser.add_argument("--epochs", type=int, default=15)
+    parser.add_argument("--seeds", type=str, default="0")
+    parser.add_argument("--epochs", type=int, default=50)
     parser.add_argument("--batch-size", type=int, default=128)
+    parser.add_argument(
+        "--num-hidden-layers",
+        type=int,
+        default=5,
+        help="Number of hidden layers; Barrett uses a 5-layer MLP.",
+    )
     parser.add_argument(
         "--eval-every",
         type=int,
@@ -85,12 +93,27 @@ def parse_args() -> argparse.Namespace:
         "Barrett requires 100%; we relax since small-width tanh nets may not reach 100% on subsamples.",
     )
     parser.add_argument(
+        "--allow-threshold-fallback",
+        action="store_true",
+        help="If set, include runs that never reach the train-accuracy threshold "
+        "by falling back to the overall max-test-accuracy epoch. By default, "
+        "threshold failures are saved but excluded from fitted/plot data, which "
+        "matches Barrett's exclusion of non-fitting networks more closely.",
+    )
+    parser.add_argument(
+        "--probe-samples",
+        type=int,
+        default=2048,
+        help="Number of training examples used for R_IG and lambda_hat probes. "
+        "Use 0 or a value >= train-samples for the full training subset.",
+    )
+    parser.add_argument(
         "--estimator-steps",
         type=int,
-        default=30,
+        default=5,
         help="Number of full-batch GD steps to run from max-test-acc state for the lambda estimator.",
     )
-    parser.add_argument("--flow-k", type=int, default=20)
+    parser.add_argument("--flow-k", type=int, default=10)
     parser.add_argument(
         "--reference-method",
         choices=("euler", "rk4"),
@@ -158,7 +181,8 @@ def load_mnist(
 
 def build_mlp(
     input_dim: int,
-    widths: Sequence[int],
+    width: int,
+    num_hidden_layers: int,
     num_classes: int,
     activation: str,
     dtype: torch.dtype,
@@ -166,10 +190,10 @@ def build_mlp(
     act = {"relu": nn.ReLU, "tanh": nn.Tanh, "gelu": nn.GELU}[activation]
     layers: list[nn.Module] = []
     prev = input_dim
-    for w in widths:
-        layers.append(nn.Linear(prev, w, bias=False).to(dtype))
+    for _ in range(num_hidden_layers):
+        layers.append(nn.Linear(prev, width, bias=False).to(dtype))
         layers.append(act())
-        prev = w
+        prev = width
     layers.append(nn.Linear(prev, num_classes).to(dtype))
     return nn.Sequential(*layers)
 
@@ -298,7 +322,8 @@ def run_one(
 
     model = build_mlp(
         input_dim=train_features.shape[1],
-        widths=[width, width, width],
+        width=width,
+        num_hidden_layers=args.num_hidden_layers,
         num_classes=10,
         activation=args.activation,
         dtype=dtype,
@@ -358,16 +383,41 @@ def run_one(
                 k: v.detach().clone() for k, v in model.state_dict().items()
             }
 
-    # Barrett's protocol: max test acc with train acc >= threshold. If no eval
-    # epoch passes the threshold, fall back to max test acc unconditionally.
+    # Barrett's protocol: max test acc among models that fit the training data.
+    # We use a relaxed threshold for tanh, but by default exclude threshold
+    # failures instead of silently mixing undertrained runs into the plot.
     threshold = args.train_acc_threshold
     candidates = [h for h in history if h["epoch"] > 0 and h["train_acc"] >= threshold]
     used_fallback = False
     if candidates:
         best = max(candidates, key=lambda h: h["test_acc"])
     else:
-        used_fallback = True
         best = max((h for h in history if h["epoch"] > 0), key=lambda h: h["test_acc"])
+        if not args.allow_threshold_fallback:
+            LOGGER.warning(
+                "w=%d eta=%.3g seed=%d did not hit train_acc>=%.2f; excluding from probes",
+                width,
+                eta,
+                seed,
+                threshold,
+            )
+            return {
+                "width": width,
+                "eta": eta,
+                "seed": seed,
+                "num_params": num_params,
+                "lambda_theoretical": eta * num_params / 4.0,
+                "best_epoch": best["epoch"],
+                "best_train_acc": best["train_acc"],
+                "best_test_acc": best["test_acc"],
+                "used_fallback": False,
+                "included": False,
+                "exclusion_reason": f"train_acc_below_{threshold:.3f}",
+                "history": history,
+                "activation": args.activation,
+                "num_hidden_layers": args.num_hidden_layers,
+            }
+        used_fallback = True
         LOGGER.warning(
             "w=%d eta=%.3g seed=%d did not hit train_acc>=%.2f; using max test-acc state",
             width,
@@ -377,14 +427,24 @@ def run_one(
         )
     best_epoch = best["epoch"]
     best_test = best["test_acc"]
+    best_train = best["train_acc"]
     best_state = saved_states[best_epoch]
 
     # Restore max-test-acc state for R_IG + lambda estimation.
     model.load_state_dict(best_state)
 
-    # R_IG = (1/m) * ||grad L||^2 on full train set.
+    probe_features = train_features
+    probe_targets = train_targets
+    if 0 < args.probe_samples < train_features.shape[0]:
+        gen = torch.Generator().manual_seed(seed + 991)
+        idx = torch.randperm(train_features.shape[0], generator=gen)[: args.probe_samples]
+        idx = idx.to(train_features.device)
+        probe_features = train_features.index_select(0, idx)
+        probe_targets = train_targets.index_select(0, idx)
+
+    # R_IG = (1/m) * ||grad L||^2 on the probe loss.
     flat_grad, flat_hvp = compute_full_batch_grad_and_hvp(
-        model, loss_fn, train_features, train_targets
+        model, loss_fn, probe_features, probe_targets
     )
     r_ig = float(flat_grad.pow(2).sum() / num_params)
     grad_norm_sq = float(flat_grad.pow(2).sum())
@@ -395,8 +455,8 @@ def run_one(
     est = estimate_lambda_flow_ref(
         model=model,
         loss_fn=loss_fn,
-        features=train_features,
-        targets=train_targets,
+        features=probe_features,
+        targets=probe_targets,
         eta=est_eta,
         num_steps=args.estimator_steps,
         flow_k=args.flow_k,
@@ -416,11 +476,15 @@ def run_one(
         "grad_norm_sq": grad_norm_sq,
         "hg_norm_best": hg_norm,
         "best_epoch": best_epoch,
+        "best_train_acc": best_train,
         "best_test_acc": best_test,
         "used_fallback": used_fallback,
+        "included": True,
+        "probe_samples": int(probe_features.shape[0]),
         "estimator_eta": est_eta,
         "history": history,
         "activation": args.activation,
+        "num_hidden_layers": args.num_hidden_layers,
     }
 
 
@@ -466,12 +530,14 @@ def main() -> None:
             res = run_one(args, train_ds, test_ds, width, eta, seed, device, dtype)
             results.append(res)
             LOGGER.info(
-                "  -> lambda_hat=%.3g lambda_theory=%.3g R_IG=%.3e test_acc=%.4f resid=%.3g",
-                res["lambda_hat"],
+                "  -> included=%s lambda_hat=%s lambda_theory=%.3g R_IG=%s train_acc=%.4f test_acc=%.4f resid=%s",
+                res.get("included", True),
+                f"{res['lambda_hat']:.3g}" if "lambda_hat" in res else "NA",
                 res["lambda_theoretical"],
-                res["r_ig"],
+                f"{res['r_ig']:.3e}" if "r_ig" in res else "NA",
+                res.get("best_train_acc", float("nan")),
                 res["best_test_acc"],
-                res["residual_ratio"],
+                f"{res['residual_ratio']:.3g}" if "residual_ratio" in res else "NA",
             )
         except Exception as e:
             LOGGER.exception(
