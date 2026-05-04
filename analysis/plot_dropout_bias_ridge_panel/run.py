@@ -28,6 +28,12 @@ STYLE_PATH = REPO_ROOT / "clean_fig.mplstyle"
 DEFAULT_OUTPUT = RESULTS_FIGURES_DIR / "dropout_bias_ridge_panel.pdf"
 
 
+def _format_facet_value(value: object) -> str:
+    if isinstance(value, float) and value.is_integer():
+        return str(int(value))
+    return str(value)
+
+
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__, allow_abbrev=False)
     parser.add_argument(
@@ -138,7 +144,7 @@ def build_figure(summary_df) -> plt.Figure:
         row="depth",
         sharex=True,
         sharey=True,
-        margin_titles=True,
+        margin_titles=False,
         height=2.5,
         aspect=1,
     )
@@ -149,7 +155,29 @@ def build_figure(summary_df) -> plt.Figure:
         hue="train_bias/loss",
     )
 
-    colorbar_axis = grid.figure.add_axes([1.05, 0.1, 0.02, 0.8])
+    grid.set_titles("")
+    grid.figure.subplots_adjust(
+        bottom=0.18,
+        top=0.90,
+        right=0.84,
+        hspace=0.14,
+        wspace=0.16,
+    )
+    for ax, width in zip(grid.axes[0], grid.col_names):
+        ax.set_title(f"Width {_format_facet_value(width)}", pad=8)
+    for row_index, depth in enumerate(grid.row_names):
+        grid.axes[row_index, -1].text(
+            1.06,
+            0.5,
+            f"Depth {_format_facet_value(depth)}",
+            transform=grid.axes[row_index, -1].transAxes,
+            rotation=0,
+            ha="left",
+            va="center",
+            fontsize=mpl.rcParams["axes.titlesize"],
+        )
+
+    colorbar_axis = grid.figure.add_axes([0.95, 0.18, 0.025, 0.72])
     norm = mpl.colors.Normalize(
         vmin=summary_df["train_bias/loss"].min(),
         vmax=summary_df["train_bias/loss"].max(),
@@ -162,7 +190,7 @@ def build_figure(summary_df) -> plt.Figure:
     colorbar.set_label("Loss from fitting regularizer")
 
     grid.set_axis_labels("", "")
-    grid.figure.supxlabel("Dropout rate", y=0.02)
+    grid.figure.supxlabel("Dropout rate", y=0.025)
     grid.figure.supylabel(r"Estimated ridge penalty $\hat{\lambda}$")
     grid.tick_params(axis="x", rotation=45)
     return grid.figure
@@ -190,7 +218,7 @@ def main() -> None:
 
     figure = build_figure(summary_df)
     args.output.parent.mkdir(parents=True, exist_ok=True)
-    figure.savefig(args.output, dpi=args.dpi, bbox_inches="tight")
+    figure.savefig(args.output, dpi=args.dpi, bbox_inches="tight", pad_inches=0.02)
     plt.close(figure)
     LOGGER.info("Saved %s", args.output)
 

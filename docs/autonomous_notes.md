@@ -9,6 +9,11 @@ Use this file as the default non-manuscript log for autonomous method, implement
 - Promote durable results into a more specific doc in `docs/` when the workstream becomes substantial.
 - For analysis plotting, default to a single `PDF` output unless the user explicitly requests an additional export format.
 
+## 2026-05-04
+
+- Made the active script-backed paper figure exports use tight PDF bounding boxes with minimal padding, and reduced the native height of [`analysis/plot_elasticnet_recovery/run.py`](/Users/jrudoler/inductive-bias/analysis/plot_elasticnet_recovery/run.py) so Figure 3 keeps the same manuscript width while occupying less vertical space without TeX-side scaling or warping.
+- Updated [`analysis/plot_dropout_bias_ridge_panel/run.py`](/Users/jrudoler/inductive-bias/analysis/plot_dropout_bias_ridge_panel/run.py) to give the shared dropout-rate x-axis label more clearance and to use horizontal `Depth ...` and `Width ...` facet labels.
+
 ## 2026-04-28
 
 - Split the paper-DAG OLS figure workflow so [`analysis/lambda_vs_epochs/run.py`](/home/jrudoler/inductive-bias/analysis/lambda_vs_epochs/run.py) and [`analysis/linear_regression_ols/run.py`](/home/jrudoler/inductive-bias/analysis/linear_regression_ols/run.py) generate reusable `.pt` artifacts under `data/generated/`, while the corresponding `plot_*` entrypoints only render PDFs from those artifacts.

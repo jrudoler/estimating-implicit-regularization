@@ -431,7 +431,7 @@ def main() -> None:
         _add_panel_label(fig, ax, letter)
 
     args.out.parent.mkdir(parents=True, exist_ok=True)
-    fig.savefig(args.out, bbox_inches="tight")
+    fig.savefig(args.out, bbox_inches="tight", pad_inches=0.02)
     plt.close(fig)
     print(f"Saved {args.out}")
 

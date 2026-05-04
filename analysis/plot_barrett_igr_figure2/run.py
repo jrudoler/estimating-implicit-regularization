@@ -188,7 +188,7 @@ def main() -> None:
     fig.tight_layout(rect=[0, 0, 1, 0.95])
 
     args.out.parent.mkdir(parents=True, exist_ok=True)
-    fig.savefig(args.out)
+    fig.savefig(args.out, bbox_inches="tight", pad_inches=0.02)
     print(f"Saved {args.out}")
     excluded = len(all_results) - len(results)
     ratio = lambda_hat / lambda_theoretical

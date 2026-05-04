@@ -113,7 +113,7 @@ def main() -> None:
     fig.tight_layout(rect=[0, 0, 1, 0.92])
 
     args.out.parent.mkdir(parents=True, exist_ok=True)
-    fig.savefig(args.out)
+    fig.savefig(args.out, bbox_inches="tight", pad_inches=0.02)
     print(f"Saved {args.out}")
     for i, path in enumerate(args.results):
         payload = torch.load(path, weights_only=False)
