@@ -48,6 +48,43 @@ rule linear_regression_ols:
         "PYTHONPATH=src uv run python {input.script} --output {output.results}"
 
 
+rule linear_regression_ols_noisy:
+    """Same DGP/training as linear_regression_ols but with noise_std=10 (vs default 1).
+    Used as the baseline for the appendix bootstrap experiments: bootstrap recovery
+    requires sufficient OLS sampling variance (which scales as sigma/sqrt(n)) for
+    bootstrap-induced theta variability to span the symmetric-matrix space."""
+    input:
+        script="analysis/linear_regression_ols/run.py",
+        dgp="analysis/ols_dgp.py",
+    output:
+        results="data/generated/linear_regression_ols_noisy/results.pt",
+    resources:
+        slurm_partition="whartonstat",
+        runtime=120,
+        mem_mb=8000,
+        cpus_per_task=2,
+    shell:
+        "PYTHONPATH=src uv run python {input.script} --noise-std 10.0 --output {output.results}"
+
+
+rule ols_bootstrap_sigma_sweep:
+    """Sweep observation-noise sigma at fixed t and m=num_endpoints, recording
+    bootstrap full-matrix recovery distance to theory.  Powers Panel F of the
+    appendix bootstrap figure.  Pure CPU."""
+    input:
+        script="analysis/ols_bootstrap_sigma_sweep/run.py",
+        dgp="analysis/ols_dgp.py",
+    output:
+        results=protected("data/generated/ols_bootstrap_sigma_sweep/results.pt"),
+    resources:
+        slurm_partition="whartonstat",
+        runtime=60,
+        mem_mb=8000,
+        cpus_per_task=2,
+    shell:
+        "PYTHONPATH=src uv run python {input.script} --output {output.results}"
+
+
 rule barrett_igr_figure2:
     input:
         script="analysis/barrett_igr_figure2/run.py",
@@ -248,6 +285,51 @@ rule ols_full_matrix_recovery_panel_b:
         )["config"]["stop_epoch"],
     shell:
         "PYTHONPATH=src uv run python {input.script} --output {output.results} "
+        "--stop-step {params.stop_step}"
+
+
+rule ols_bootstrap_recovery:
+    """Bootstrap endpoint recovery: 100 resamples x 10 pools with per-endpoint
+    early stopping (Panel D analog).  Each endpoint resamples rows of the
+    original (X, y) with replacement rather than drawing a new ground-truth beta.
+    Uses the noisier (sigma=3) baseline; bootstrap requires sufficient OLS
+    sampling variance to be identifiable. Pure CPU (10-d linear regression)."""
+    input:
+        script="analysis/ols_bootstrap_recovery/run.py",
+        linear_data="data/generated/linear_regression_ols_noisy/results.pt",
+    output:
+        results=protected("data/generated/ols_bootstrap_recovery/results.pt"),
+    resources:
+        slurm_partition="whartonstat",
+        runtime=60,
+        mem_mb=8000,
+        cpus_per_task=2,
+    shell:
+        "PYTHONPATH=src uv run python {input.script} "
+        "--linear-data {input.linear_data} --output {output.results}"
+
+
+rule ols_bootstrap_recovery_panel_b:
+    """Fixed-stop-step variant of the bootstrap recovery (used for Panels B and C).
+    All bootstrap endpoints share the canonical stop step from the noisy single-
+    endpoint baseline so Q_theory is well-defined. Pure CPU."""
+    input:
+        script="analysis/ols_bootstrap_recovery/run.py",
+        linear_data="data/generated/linear_regression_ols_noisy/results.pt",
+    output:
+        results=protected("data/generated/ols_bootstrap_recovery_panel_b/results.pt"),
+    resources:
+        slurm_partition="whartonstat",
+        runtime=60,
+        mem_mb=8000,
+        cpus_per_task=2,
+    params:
+        stop_step=lambda wildcards, input: __import__("torch").load(
+            input.linear_data, weights_only=False
+        )["config"]["stop_epoch"],
+    shell:
+        "PYTHONPATH=src uv run python {input.script} "
+        "--linear-data {input.linear_data} --output {output.results} "
         "--stop-step {params.stop_step}"
 
 

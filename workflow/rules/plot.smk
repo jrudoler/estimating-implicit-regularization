@@ -134,6 +134,25 @@ rule plot_ols_full_matrix_recovery:
         "--out-recovery {output.recovery} --out-distance {output.distance}"
 
 
+rule plot_ols_bootstrap_composite:
+    input:
+        script="analysis/plot_ols_bootstrap_composite/run.py",
+        style="clean_fig.mplstyle",
+        linear_data="data/generated/linear_regression_ols_noisy/results.pt",
+        bootstrap_panel_b_data="data/generated/ols_bootstrap_recovery_panel_b/results.pt",
+        bootstrap_full_data="data/generated/ols_bootstrap_recovery/results.pt",
+        sigma_sweep_data="data/generated/ols_bootstrap_sigma_sweep/results.pt",
+    output:
+        pdf="results/figures/ols_bootstrap_composite.pdf",
+    shell:
+        "PYTHONPATH=src uv run python {input.script} "
+        "--linear-data {input.linear_data} "
+        "--bootstrap-panel-b-data {input.bootstrap_panel_b_data} "
+        "--bootstrap-full-data {input.bootstrap_full_data} "
+        "--sigma-sweep-data {input.sigma_sweep_data} "
+        "--out {output.pdf}"
+
+
 rule stage_preserved_figure:
     input:
         src="data/provided/paper_assets/{fig_id}.{ext}",
