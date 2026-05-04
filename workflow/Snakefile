@@ -58,7 +58,6 @@ PAPER_FIGURES = [
     "results/figures/elasticnet_recovery_mean_se.pdf",
     "results/figures/dropout_bias_ridge_panel.pdf",
     "results/figures/barrett_igr_figure2.pdf",
-    "results/figures/barrett_igr_long_horizon.pdf",
     "results/figures/ols_composite.pdf",
     "results/figures/ols_bootstrap_composite.pdf",
 ]

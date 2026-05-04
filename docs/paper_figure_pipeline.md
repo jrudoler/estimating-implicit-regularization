@@ -201,6 +201,12 @@ It is meant to answer three questions clearly:
   - `analysis/barrett_igr_figure2/run.py`
 - Expected intermediate result:
   - `data/generated/barrett_igr_figure2/results.pt`
+- Active protocol:
+  - five-hidden-layer `tanh` MLPs on MNIST
+  - widths `50,100,200,400,800,1600`
+  - learning rates `0.0005,0.001,0.005,0.01,0.05,0.1,0.5`
+  - relaxed train-accuracy threshold `0.9`; threshold failures are saved but
+    excluded from the fitted figure by default
 - Maintained plotter:
   - `analysis/plot_barrett_igr_figure2/run.py`
 - Canonical output:
@@ -209,26 +215,6 @@ It is meant to answer three questions clearly:
   - `paper/figures/barrett_igr_figure2.pdf`
 - Build command:
   - `uv run snakemake -s workflow/Snakefile --cores 4 results/figures/barrett_igr_figure2.pdf`
-
-### 8. `barrett_igr_long_horizon.pdf`
-
-- Figure id:
-  - `barrett_igr_long_horizon`
-- Upstream experiment:
-  - `analysis/barrett_igr_long_horizon/run.py`
-- Expected intermediate results:
-  - `data/generated/barrett_igr_long_horizon/synth_eta001.pt`
-  - `data/generated/barrett_igr_long_horizon/synth_eta003.pt`
-  - `data/generated/barrett_igr_long_horizon/mnist_tanh_eta001.pt`
-  - `data/generated/barrett_igr_long_horizon/mnist_relu_eta001.pt`
-- Maintained plotter:
-  - `analysis/plot_barrett_igr_long_horizon/run.py`
-- Canonical output:
-  - `results/figures/barrett_igr_long_horizon.pdf`
-- Staged manuscript copy:
-  - `paper/figures/barrett_igr_long_horizon.pdf`
-- Build command:
-  - `uv run snakemake -s workflow/Snakefile --cores 4 results/figures/barrett_igr_long_horizon.pdf`
 
 ## Additional Reproducible Paper-Figure Components
 
@@ -260,7 +246,6 @@ These are not currently direct `paper/main.tex` includes, but they are part of t
 - `lambda_vs_epochs`
 - `dropout_bias_ridge_panel`
 - `barrett_igr_figure2`
-- `barrett_igr_long_horizon`
 
 ### Preserved manuscript assets with automation around them
 

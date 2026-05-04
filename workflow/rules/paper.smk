@@ -18,7 +18,6 @@ rule stage_all_paper_figures:
         "paper/figures/elasticnet_recovery_mean_se.pdf",
         "paper/figures/dropout_bias_ridge_panel.pdf",
         "paper/figures/barrett_igr_figure2.pdf",
-        "paper/figures/barrett_igr_long_horizon.pdf",
         "paper/figures/ols_composite.pdf",
         "paper/figures/ols_bootstrap_composite.pdf",
 
