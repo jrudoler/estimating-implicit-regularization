@@ -183,67 +183,6 @@ rule barrett_igr_long_horizon_mnist_relu:
         "--double-precision {params.device} --save {output.pt}"
 
 
-rule barrett_igr_trajectory:
-    input:
-        script="analysis/barrett_igr_trajectory/run.py",
-    output:
-        results=protected("data/generated/barrett_igr_trajectory/results.pt"),
-    params:
-        device=device_arg(),
-    resources:
-        slurm_partition="whartonstat",
-        runtime=240,
-        mem_mb=32000,
-        cpus_per_task=4,
-        slurm_extra="--gres=gpu:1",
-    shell:
-        "PYTHONPATH=src uv run python {input.script} {params.device} --output {output.results}"
-
-
-rule nonlinear_multi_geometry_suite:
-    input:
-        script="analysis/nonlinear_multi_geometry_suite/run.py",
-    output:
-        manifest=protected("data/generated/nonlinear_multi_geometry_suite/manifest.json"),
-    params:
-        out_dir="data/generated/nonlinear_multi_geometry_suite",
-        fig_dir="results/figures/nonlinear_multi_geometry_suite",
-    resources:
-        slurm_partition="whartonstat",
-        runtime=240,
-        mem_mb=32000,
-        cpus_per_task=4,
-        slurm_extra="--gres=gpu:1",
-    shell:
-        "PYTHONPATH=src uv run python {input.script} "
-        "--n-samples 256 --input-dim 12 --depth 2 --width 32 "
-        "--max-epochs 350 --patience 60 --n-replicates 8 "
-        "--estimation-max-epochs 2500 --estimation-patience 250 "
-        "--target-gradient-scale 0.3 "
-        "--output-dir {params.out_dir} --figure-dir {params.fig_dir} "
-        "--manifest {output.manifest}"
-
-
-rule nonlinear_multi_geometry_replicate_ablation:
-    input:
-        script="analysis/nonlinear_multi_geometry_replicate_ablation/run.py",
-    output:
-        manifest=protected("data/generated/nonlinear_multi_geometry_replicate_ablation/manifest.json"),
-    params:
-        out_dir="data/generated/nonlinear_multi_geometry_replicate_ablation",
-        fig_dir="results/figures/nonlinear_multi_geometry_replicate_ablation",
-    resources:
-        slurm_partition="whartonstat",
-        runtime=240,
-        mem_mb=32000,
-        cpus_per_task=4,
-        slurm_extra="--gres=gpu:1",
-    shell:
-        "PYTHONPATH=src uv run python {input.script} "
-        "--output-dir {params.out_dir} --figure-dir {params.fig_dir} "
-        "--manifest {output.manifest}"
-
-
 rule ols_full_matrix_recovery:
     """Train 100 endpoints x 5 pools with per-endpoint early stopping (Panel D).
     Each endpoint stops when its own training loss plateaus, so stop steps vary.
@@ -333,16 +272,3 @@ rule ols_bootstrap_recovery_panel_b:
         "--stop-step {params.stop_step}"
 
 
-rule nonlinear_power_retrain_geometry:
-    input:
-        script="analysis/nonlinear_power_retrain_geometry/run.py",
-    output:
-        results=protected("data/generated/nonlinear_power_retrain_geometry/results.json"),
-    resources:
-        slurm_partition="whartonstat",
-        runtime=240,
-        mem_mb=32000,
-        cpus_per_task=4,
-        slurm_extra="--gres=gpu:1",
-    shell:
-        "PYTHONPATH=src uv run python {input.script} --output {output.results}"
