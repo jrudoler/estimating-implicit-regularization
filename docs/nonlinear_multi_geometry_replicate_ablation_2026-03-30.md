@@ -2,26 +2,26 @@
 
 ## Setup
 
-- Script: [experiments/nonlinear_multi_geometry_replicate_ablation.py](/home/jrudoler/inductive-bias/experiments/nonlinear_multi_geometry_replicate_ablation.py)
-- Launcher: [scripts/nonlinear_multi_geometry_replicate_ablation.slurm](/home/jrudoler/inductive-bias/scripts/nonlinear_multi_geometry_replicate_ablation.slurm)
+- Script: [experiments/nonlinear_multi_geometry_replicate_ablation.py](experiments/nonlinear_multi_geometry_replicate_ablation.py)
+- Launcher: [scripts/nonlinear_multi_geometry_replicate_ablation.slurm](scripts/nonlinear_multi_geometry_replicate_ablation.slurm)
 - Data/model defaults matched the earlier GPU suite: `n_samples=256`, `input_dim=12`, `depth=2`, `width=32`, `max_epochs=350`, `patience=60`, `target_gradient_scale=0.3`.
 - Resampling mode was `bootstrap`. Each fit uses the full-data solution plus `n_replicates` additional bootstrap retrains.
 - Requested counts were `1, 10, 50, 100, 1000` for five cases. The `multi_l1_l2_nuclear` case was rerun with `1, 10, 50, 100` only after the `n=1000` solve turned out to be disproportionately expensive relative to the information gained.
 
 ## Aggregate Artifacts
 
-- Aggregate summary CSV: [summary.csv](/home/jrudoler/inductive-bias/logs/phase2/nonlinear_multi_geometry_replicate_ablation_gpu_scale03/summary.csv)
-- Aggregate component CSV: [component_recovery.csv](/home/jrudoler/inductive-bias/logs/phase2/nonlinear_multi_geometry_replicate_ablation_gpu_scale03/component_recovery.csv)
-- Aggregate figure: [summary.pdf](/home/jrudoler/inductive-bias/figures/nonlinear_multi_geometry_replicate_ablation_gpu_scale03/summary.pdf)
+- Aggregate summary CSV: [summary.csv](logs/phase2/nonlinear_multi_geometry_replicate_ablation_gpu_scale03/summary.csv)
+- Aggregate component CSV: [component_recovery.csv](logs/phase2/nonlinear_multi_geometry_replicate_ablation_gpu_scale03/component_recovery.csv)
+- Aggregate figure: [summary.pdf](figures/nonlinear_multi_geometry_replicate_ablation_gpu_scale03/summary.pdf)
 
 Per-case figures:
 
-- [single_l2.pdf](/home/jrudoler/inductive-bias/figures/nonlinear_multi_geometry_replicate_ablation_single_l2_gpu_scale03/single_l2.pdf)
-- [single_l1.pdf](/home/jrudoler/inductive-bias/figures/nonlinear_multi_geometry_replicate_ablation_single_l1_gpu_scale03/single_l1.pdf)
-- [single_nuclear.pdf](/home/jrudoler/inductive-bias/figures/nonlinear_multi_geometry_replicate_ablation_single_nuclear_gpu_scale03/single_nuclear.pdf)
-- [multi_l1_l2.pdf](/home/jrudoler/inductive-bias/figures/nonlinear_multi_geometry_replicate_ablation_multi_l1_l2_gpu_scale03/multi_l1_l2.pdf)
-- [multi_l2_nuclear.pdf](/home/jrudoler/inductive-bias/figures/nonlinear_multi_geometry_replicate_ablation_multi_l2_nuclear_gpu_scale03/multi_l2_nuclear.pdf)
-- [multi_l1_l2_nuclear.pdf](/home/jrudoler/inductive-bias/figures/nonlinear_multi_geometry_replicate_ablation_multi_l1_l2_nuclear_gpu_scale03/multi_l1_l2_nuclear.pdf)
+- [single_l2.pdf](figures/nonlinear_multi_geometry_replicate_ablation_single_l2_gpu_scale03/single_l2.pdf)
+- [single_l1.pdf](figures/nonlinear_multi_geometry_replicate_ablation_single_l1_gpu_scale03/single_l1.pdf)
+- [single_nuclear.pdf](figures/nonlinear_multi_geometry_replicate_ablation_single_nuclear_gpu_scale03/single_nuclear.pdf)
+- [multi_l1_l2.pdf](figures/nonlinear_multi_geometry_replicate_ablation_multi_l1_l2_gpu_scale03/multi_l1_l2.pdf)
+- [multi_l2_nuclear.pdf](figures/nonlinear_multi_geometry_replicate_ablation_multi_l2_nuclear_gpu_scale03/multi_l2_nuclear.pdf)
+- [multi_l1_l2_nuclear.pdf](figures/nonlinear_multi_geometry_replicate_ablation_multi_l1_l2_nuclear_gpu_scale03/multi_l1_l2_nuclear.pdf)
 
 ## Main Result
 

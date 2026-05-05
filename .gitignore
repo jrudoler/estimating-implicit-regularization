@@ -28,3 +28,14 @@ __pycache__/
 *.pyc
 *.cpython*
 .venv/
+
+# Local IDE / editor configuration
+.vscode/
+
+# Claude Code local state (settings.local.json is already user-ignored;
+# also drop NFS lockfile leftovers and any future per-user state).
+.claude/.nfs*
+
+# Smoketest checkpoint outputs (regenerated locally; the .ckpt blobs embed
+# absolute paths, so they should not be committed).
+tests/smoketest_checkpoints/*.ckpt

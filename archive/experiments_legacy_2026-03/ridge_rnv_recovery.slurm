@@ -1,5 +1,5 @@
 #!/bin/bash
-#SBATCH --partition=whartonstat
+#SBATCH --partition=gpu
 #SBATCH --job-name=ridge_rnv_recovery
 #SBATCH --gres=gpu:1
 #SBATCH --cpus-per-task=4
@@ -17,5 +17,5 @@ echo "Node: $(hostname)"
 echo "GPU: $(nvidia-smi --query-gpu=name --format=csv,noheader 2>/dev/null || echo 'N/A')"
 echo ""
 
-cd /home/jrudoler/inductive-bias
+cd <repo-root>
 uv run python experiments/ridge_rnv_recovery_test.py

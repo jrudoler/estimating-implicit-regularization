@@ -10,11 +10,11 @@ by fitting one global `lambda` and one global `p` from a collection of retrained
 
 ## What Was Added
 
-- `SmoothedPowerBias` in [`src/core/bias.py`](/home/jrudoler/inductive-bias/src/core/bias.py)
+- `SmoothedPowerBias` in [`src/core/bias.py`](src/core/bias.py)
   - supports fixed or trainable `lambda`
   - supports fixed or trainable global exponent `p`
   - exposes an analytic parameter-gradient formula for efficient fitting
-- [`experiments/nonlinear_power_retrain_geometry.py`](/home/jrudoler/inductive-bias/experiments/nonlinear_power_retrain_geometry.py)
+- [`experiments/nonlinear_power_retrain_geometry.py`](experiments/nonlinear_power_retrain_geometry.py)
   - trains nonlinear ReLU regressors with a fixed smoothed-power regularizer
   - retrains on bootstrap resamples
   - stacks the resulting solutions and target gradients

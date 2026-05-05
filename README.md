@@ -11,7 +11,7 @@ The central idea is a gradient-matching formulation of implicit regularization. 
 
 ## Research Focus
 
-The manuscript in [`paper/`](/home/jrudoler/inductive-bias/paper) frames the project around a simple inverse problem:
+The manuscript in [`paper/`](paper) frames the project around a simple inverse problem:
 
 - train a predictive model with some algorithm or architectural choice
 - compute the predictive loss gradient at the learned solution
@@ -46,7 +46,7 @@ See [science-repo-skill.md](science-repo-skill.md) for the canonical description
 ## Getting started
 
 ```bash
-git clone --recurse-submodules git@github.com:jrudoler/inductive-bias.git
+git clone --recurse-submodules <PARENT_REPO_URL>
 cd inductive-bias
 bash scripts/bootstrap.sh
 ```

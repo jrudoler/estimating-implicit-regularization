@@ -10,8 +10,8 @@ This note summarizes the synthetic identifiability work completed after the stru
 
 - Structured synthetic ReLU identifiability study for norm-based regularizers.
 - Multi-output linear matrix-spectrum control experiment:
-  - [matrix_spectrum_identifiability.py](/home/jrudoler/inductive-bias/experiments/matrix_spectrum_identifiability.py)
-  - [run_matrix_spectrum_pairs.py](/home/jrudoler/inductive-bias/experiments/run_matrix_spectrum_pairs.py)
+  - [matrix_spectrum_identifiability.py](experiments/matrix_spectrum_identifiability.py)
+  - [run_matrix_spectrum_pairs.py](experiments/run_matrix_spectrum_pairs.py)
 - Additional bias families exposed through the shared bias factory:
   - `stable_rank`
   - `spectral_entropy`
@@ -78,7 +78,7 @@ This experiment also logs:
 
 This pair now shows the expected identifiability trend in the multi-output linear control.
 
-From [matrix_spectrum_pairs_summary.md](/home/jrudoler/inductive-bias/logs/phase2/matrix_spectrum_pairs_summary.md):
+From [matrix_spectrum_pairs_summary.md](logs/phase2/matrix_spectrum_pairs_summary.md):
 
 - `ridge__nuclear_norm`, `identity`
   - cosine `1.0000`
@@ -153,8 +153,8 @@ Bug that was found:
 Fix:
 
 - Updated MSE target-gradient scaling in:
-  - [estimators.py](/home/jrudoler/inductive-bias/src/core/estimators.py)
-  - [function_class_identifiability.py](/home/jrudoler/inductive-bias/experiments/function_class_identifiability.py)
+  - [estimators.py](src/core/estimators.py)
+  - [function_class_identifiability.py](experiments/function_class_identifiability.py)
 
 Effect of the fix:
 
@@ -178,17 +178,17 @@ The current evidence supports the following:
 
 Primary code:
 
-- [matrix_spectrum_identifiability.py](/home/jrudoler/inductive-bias/experiments/matrix_spectrum_identifiability.py)
-- [run_matrix_spectrum_pairs.py](/home/jrudoler/inductive-bias/experiments/run_matrix_spectrum_pairs.py)
-- [estimators.py](/home/jrudoler/inductive-bias/src/core/estimators.py)
-- [function_class_identifiability.py](/home/jrudoler/inductive-bias/experiments/function_class_identifiability.py)
+- [matrix_spectrum_identifiability.py](experiments/matrix_spectrum_identifiability.py)
+- [run_matrix_spectrum_pairs.py](experiments/run_matrix_spectrum_pairs.py)
+- [estimators.py](src/core/estimators.py)
+- [function_class_identifiability.py](experiments/function_class_identifiability.py)
 
 Primary outputs:
 
-- [matrix_spectrum_pairs.csv](/home/jrudoler/inductive-bias/logs/phase2/matrix_spectrum_pairs.csv)
-- [matrix_spectrum_pairs_summary.md](/home/jrudoler/inductive-bias/logs/phase2/matrix_spectrum_pairs_summary.md)
-- [structured_ridge_nuclear_matrix_large.csv](/home/jrudoler/inductive-bias/logs/phase2/structured_ridge_nuclear_matrix_large.csv)
-- [structured_ridge_nuclear_summary_large.md](/home/jrudoler/inductive-bias/logs/phase2/structured_ridge_nuclear_summary_large.md)
+- [matrix_spectrum_pairs.csv](logs/phase2/matrix_spectrum_pairs.csv)
+- [matrix_spectrum_pairs_summary.md](logs/phase2/matrix_spectrum_pairs_summary.md)
+- [structured_ridge_nuclear_matrix_large.csv](logs/phase2/structured_ridge_nuclear_matrix_large.csv)
+- [structured_ridge_nuclear_summary_large.md](logs/phase2/structured_ridge_nuclear_summary_large.md)
 
 ## Suggested Next Steps
 

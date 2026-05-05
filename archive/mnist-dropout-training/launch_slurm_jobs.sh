@@ -6,7 +6,7 @@
 #SBATCH --time=01:00:00
 #SBATCH --mem=4G
 #SBATCH --cpus-per-task=2
-#SBATCH --partition=whartonstat
+#SBATCH --partition=gpu
 #SBATCH -G 1
 
 # Use yq to extract parameters for the current array task

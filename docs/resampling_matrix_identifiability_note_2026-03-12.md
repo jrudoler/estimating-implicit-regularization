@@ -56,7 +56,7 @@ When the columns of \(A(w)\) are nearly collinear, small perturbations in \(b\) 
 
 File:
 
-- [matrix_spectrum_resampling.py](/home/jrudoler/inductive-bias/experiments/matrix_spectrum_resampling.py)
+- [matrix_spectrum_resampling.py](experiments/matrix_spectrum_resampling.py)
 
 In that experiment:
 
@@ -207,7 +207,7 @@ That is the correct mathematical mechanism by which retraining on resamples coul
 
 File:
 
-- [matrix_spectrum_resampling_retrain.py](/home/jrudoler/inductive-bias/experiments/matrix_spectrum_resampling_retrain.py)
+- [matrix_spectrum_resampling_retrain.py](experiments/matrix_spectrum_resampling_retrain.py)
 
 The first version trained each replicate model on a resample \(D_r\), then evaluated the gradient equation on that same \(D_r\).
 
@@ -343,11 +343,11 @@ That is a much sharper requirement than simple target-noise reduction.
 ## 9. Most Relevant Files
 
 - Fixed-weight target-resampling experiment:
-  - [matrix_spectrum_resampling.py](/home/jrudoler/inductive-bias/experiments/matrix_spectrum_resampling.py)
+  - [matrix_spectrum_resampling.py](experiments/matrix_spectrum_resampling.py)
 - Retrain-per-resample experiment:
-  - [matrix_spectrum_resampling_retrain.py](/home/jrudoler/inductive-bias/experiments/matrix_spectrum_resampling_retrain.py)
+  - [matrix_spectrum_resampling_retrain.py](experiments/matrix_spectrum_resampling_retrain.py)
 - Fixed-weight spikiness sweep:
-  - [matrix_resampling_spikiness_sweep_small.csv](/home/jrudoler/inductive-bias/logs/phase2/matrix_resampling_spikiness_sweep_small.csv)
+  - [matrix_resampling_spikiness_sweep_small.csv](logs/phase2/matrix_resampling_spikiness_sweep_small.csv)
 - Retrain-per-resample pilot results were run ad hoc from the CLI and are currently reflected in terminal logs rather than a dedicated CSV artifact.
 
 ## 10. Recommended Next Experiment

@@ -1,11 +1,11 @@
 #!/bin/bash
-#SBATCH --partition=whartonstat
+#SBATCH --partition=gpu
 #SBATCH --job-name=structured_rn_large
 #SBATCH --gres=gpu:1
 #SBATCH --cpus-per-task=4
 #SBATCH --mem=32G
 #SBATCH --time=04:00:00
-#SBATCH --chdir=/home/jrudoler/inductive-bias
+#SBATCH --chdir=<repo-root>
 #SBATCH --output=logs/slurm/%x-%j.log
 #SBATCH --error=logs/slurm/%x-%j.log
 

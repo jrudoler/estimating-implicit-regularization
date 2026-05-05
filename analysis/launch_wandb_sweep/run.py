@@ -46,7 +46,7 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument("--n-agents", type=int, default=8, help="Number of sbatch agents to submit.")
     parser.add_argument("--sweep-ids-file", required=True, type=Path, help="YAML file to update with the new sweep ID.")
-    parser.add_argument("--partition", default="whartonstat", help="SLURM partition.")
+    parser.add_argument("--partition", default="gpu", help="SLURM partition.")
     parser.add_argument("--repo-root", default=str(Path.cwd()), help="--chdir value for sbatch.")
     parser.add_argument("--no-wait", action="store_true", help="Fire-and-forget; do not sbatch --wait.")
     return parser.parse_args()

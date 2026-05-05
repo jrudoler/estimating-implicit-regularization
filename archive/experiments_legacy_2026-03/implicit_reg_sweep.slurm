@@ -6,9 +6,9 @@
 #SBATCH --time=06:00:00
 #SBATCH --mem=32G
 #SBATCH --cpus-per-task=6
-#SBATCH --partition=whartonstat
+#SBATCH --partition=gpu
 #SBATCH --gres=gpu:1
-#SBATCH --chdir=/home/jrudoler/inductive-bias
+#SBATCH --chdir=<repo-root>
 
 set -euo pipefail
 

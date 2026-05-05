@@ -13,13 +13,13 @@ The study fits the geometry directly by recovering one `(lambda, p)` pair per ac
 
 ## Artifacts
 
-- Preferred nonlinear retrain outputs: [`logs/phase2/nonlinear_multi_geometry_suite_gpu_scale03`](/home/jrudoler/inductive-bias/logs/phase2/nonlinear_multi_geometry_suite_gpu_scale03)
-- Preferred nonlinear figures: [`figures/nonlinear_multi_geometry_suite_gpu_scale03`](/home/jrudoler/inductive-bias/figures/nonlinear_multi_geometry_suite_gpu_scale03)
-- Local baseline retrain outputs: [`logs/phase2/nonlinear_multi_geometry_suite_scale03`](/home/jrudoler/inductive-bias/logs/phase2/nonlinear_multi_geometry_suite_scale03)
-- Local baseline figures: [`figures/nonlinear_multi_geometry_suite_scale03`](/home/jrudoler/inductive-bias/figures/nonlinear_multi_geometry_suite_scale03)
-- Exact sanity outputs: [`logs/phase2/nonlinear_multi_geometry_exact_sanity_scale03`](/home/jrudoler/inductive-bias/logs/phase2/nonlinear_multi_geometry_exact_sanity_scale03)
-- Exact sanity figures: [`figures/nonlinear_multi_geometry_exact_sanity_scale03`](/home/jrudoler/inductive-bias/figures/nonlinear_multi_geometry_exact_sanity_scale03)
-- Slurm launcher: [`scripts/nonlinear_multi_geometry_suite.slurm`](/home/jrudoler/inductive-bias/scripts/nonlinear_multi_geometry_suite.slurm)
+- Preferred nonlinear retrain outputs: [`logs/phase2/nonlinear_multi_geometry_suite_gpu_scale03`](logs/phase2/nonlinear_multi_geometry_suite_gpu_scale03)
+- Preferred nonlinear figures: [`figures/nonlinear_multi_geometry_suite_gpu_scale03`](figures/nonlinear_multi_geometry_suite_gpu_scale03)
+- Local baseline retrain outputs: [`logs/phase2/nonlinear_multi_geometry_suite_scale03`](logs/phase2/nonlinear_multi_geometry_suite_scale03)
+- Local baseline figures: [`figures/nonlinear_multi_geometry_suite_scale03`](figures/nonlinear_multi_geometry_suite_scale03)
+- Exact sanity outputs: [`logs/phase2/nonlinear_multi_geometry_exact_sanity_scale03`](logs/phase2/nonlinear_multi_geometry_exact_sanity_scale03)
+- Exact sanity figures: [`figures/nonlinear_multi_geometry_exact_sanity_scale03`](figures/nonlinear_multi_geometry_exact_sanity_scale03)
+- Slurm launcher: [`scripts/nonlinear_multi_geometry_suite.slurm`](scripts/nonlinear_multi_geometry_suite.slurm)
 
 ## Nonlinear Suite
 
@@ -57,7 +57,7 @@ Configuration:
 - `n_replicates=8`
 - `target_gradient_scale=0.3`
 
-Case summary from [`component_recovery.csv`](/home/jrudoler/inductive-bias/logs/phase2/nonlinear_multi_geometry_suite_gpu_scale03/component_recovery.csv):
+Case summary from [`component_recovery.csv`](logs/phase2/nonlinear_multi_geometry_suite_gpu_scale03/component_recovery.csv):
 
 - `single_l2`: cosine `0.9393`, residual `0.3431`, mean lambda relative error `0.2582`, mean `p` absolute error `0.1524`
 - `single_l1`: cosine `0.7900`, residual `0.6132`, mean lambda relative error `0.1831`, mean `p` absolute error `0.1330`
@@ -79,7 +79,7 @@ Interpretation:
 
 The exact sanity sweep uses random parameter vectors with target gradients produced directly by the same component family, then fits the estimator back to those exact gradients.
 
-Case summary from [`component_recovery.csv`](/home/jrudoler/inductive-bias/logs/phase2/nonlinear_multi_geometry_exact_sanity_scale03/component_recovery.csv):
+Case summary from [`component_recovery.csv`](logs/phase2/nonlinear_multi_geometry_exact_sanity_scale03/component_recovery.csv):
 
 - `single_l2`: cosine `1.0000`, residual `6.9e-06`
 - `single_l1`: cosine `1.0000`, residual `2.6e-04`
