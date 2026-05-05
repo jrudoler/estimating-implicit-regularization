@@ -128,8 +128,8 @@ def main() -> None:
         if args.x_quantity == "lambda_hat"
         else r"Theoretical $\lambda = \eta m/4$"
     )
-    axes[0].set_xlabel(xlabel, fontsize=16)
-    axes[0].set_ylabel(r"$R_{IG} = \frac{1}{p}\|\nabla E(\theta)\|^2$", fontsize=16)
+    axes[0].set_xlabel(xlabel, fontsize=18)
+    axes[0].set_ylabel(r"$R_{IG} = \frac{1}{p}\|\nabla E(\theta)\|^2$", fontsize=18)
     # axes[0].set_title("(a) Regularization vs $\\hat{\\lambda}$")
     axes[0].legend(title="# params", loc="lower left", fontsize=10, frameon=False)
     axes[0].grid(True, which="both", alpha=0.25)
@@ -158,10 +158,10 @@ def main() -> None:
             linewidth=1.0,
         )
     axes[1].set_xscale("log")
-    axes[1].set_xlabel(xlabel, fontsize=16)
-    axes[1].set_ylabel("Test Accuracy (%)", fontsize=16)
+    axes[1].set_xlabel(xlabel, fontsize=18)
+    axes[1].set_ylabel("Test Accuracy (%)", fontsize=18)
     # axes[1].set_title("Test accuracy vs $\\hat{\\lambda}$")
-    axes[1].legend(title="# params", loc="lower right", fontsize=10, frameon=False)
+    axes[1].legend(title="# params", loc="lower right", fontsize=12, frameon=False)
     axes[1].grid(True, which="both", alpha=0.25)
 
     # Panel (c): estimated lambda vs Barrett analytic lambda.
@@ -183,8 +183,8 @@ def main() -> None:
         )
     axes[2].set_xscale("log")
     axes[2].set_yscale("log")
-    axes[2].set_xlabel(r"$\hat{\lambda}$", fontsize=16)
-    axes[2].set_ylabel(r"Theoretical $\lambda = \eta p/4$", fontsize=16)
+    axes[2].set_xlabel(r"$\hat{\lambda}$", fontsize=18)
+    axes[2].set_ylabel(r"Theoretical $\lambda = \eta p/4$", fontsize=18)
     axes[2].grid(True, which="both", alpha=0.25)
 
     config = payload.get("config", {})
