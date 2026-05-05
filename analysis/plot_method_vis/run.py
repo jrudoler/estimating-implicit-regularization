@@ -139,7 +139,7 @@ def make_tradeoff_vis(out_path: Path) -> None:
 
     fig.tight_layout()
     out_path.parent.mkdir(parents=True, exist_ok=True)
-    fig.savefig(out_path, dpi=300)
+    fig.savefig(out_path, dpi=300, bbox_inches="tight", pad_inches=0.02)
     plt.close(fig)
 
 
@@ -401,7 +401,7 @@ def make_tradeoff_vis_1d(out_path: Path) -> None:
 
     fig.tight_layout()
     out_path.parent.mkdir(parents=True, exist_ok=True)
-    fig.savefig(out_path, dpi=300)
+    fig.savefig(out_path, dpi=300, bbox_inches="tight", pad_inches=0.02)
     plt.close(fig)
 
 
@@ -637,7 +637,7 @@ def make_sgd_vs_full_batch(out_path: Path) -> None:
 
     fig.tight_layout()
     out_path.parent.mkdir(parents=True, exist_ok=True)
-    fig.savefig(out_path, dpi=300, bbox_inches="tight")
+    fig.savefig(out_path, dpi=300, bbox_inches="tight", pad_inches=0.02)
     plt.close(fig)
 
 

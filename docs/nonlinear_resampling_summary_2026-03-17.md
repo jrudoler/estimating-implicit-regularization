@@ -6,14 +6,14 @@ Date: 2026-03-17
 
 This note summarizes the first resampling experiment run on the structured nonlinear teacher-student pipeline in:
 
-- [function_class_identifiability.py](/home/jrudoler/inductive-bias/experiments/function_class_identifiability.py)
+- [function_class_identifiability.py](experiments/function_class_identifiability.py)
 
 The main question was whether the fixed-weight stacked shared-lambda estimator helps in nonlinear settings where single-dataset recovery is already poor.
 
 ## What Was Added
 
 - Nonlinear fixed-weight resampling experiment:
-  - [nonlinear_resampling_identifiability.py](/home/jrudoler/inductive-bias/experiments/nonlinear_resampling_identifiability.py)
+  - [nonlinear_resampling_identifiability.py](experiments/nonlinear_resampling_identifiability.py)
 
 This mirrors the matrix fixed-weight resampling study:
 

@@ -6,7 +6,7 @@ Usage:
     uv run python list_wandb_run_ids.py <entity>/<project>/<sweep_id> [state]
 
 Example:
-    uv run python list_wandb_run_ids.py dobriban-wharton-dobriban/fancy-sweep-300 failed
+    uv run python list_wandb_run_ids.py <entity>/<project>/<sweep_id> failed
 """
 
 import sys

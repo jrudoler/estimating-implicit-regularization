@@ -6,7 +6,7 @@
 #SBATCH --time=01:00:00
 #SBATCH --mem=16G
 #SBATCH --cpus-per-task=2
-#SBATCH --partition=whartonstat
+#SBATCH --partition=gpu
 #SBATCH --gres=gpu:1
 
 # Check for sweep ID

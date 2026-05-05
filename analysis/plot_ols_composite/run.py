@@ -83,7 +83,7 @@ def _se95(x: torch.Tensor) -> torch.Tensor:
     return 1.96 * x.std(dim=0, unbiased=True) / float(np.sqrt(n))
 
 
-def _add_panel_label(fig, ax, letter: str, fontsize: int = 18) -> None:
+def _add_panel_label(fig, ax, letter: str, fontsize: int = 20) -> None:
     """Bold panel label anchored to the top-left of the full subplot tight bbox.
 
     Uses get_tightbbox so the label aligns with the outermost left edge of the
@@ -169,7 +169,7 @@ def _format_cbar_tick(value: float, _pos: int | None) -> str:
 def _style_horizontal_colorbar(cbar: Colorbar) -> None:
     cbar.formatter = FuncFormatter(_format_cbar_tick)
     cbar.update_ticks()
-    cbar.ax.tick_params(axis="x", labelsize=8, pad=1, length=2.5)
+    cbar.ax.tick_params(axis="x", labelsize=12, pad=1, length=2.5)
 
 
 def _match_vertical_span(ax: Axes, anchor_ax: Axes) -> None:
@@ -308,7 +308,7 @@ def main() -> None:
     ]:
         vmax = float(np.abs(mat).max())
         im = ax.imshow(mat, cmap=HEATMAP_CMAP, vmin=-vmax, vmax=vmax, aspect="equal")
-        ax.set_title(title)
+        ax.set_title(title, fontsize=18)
         ax.set_xticks([])
         ax.set_yticks([])
         for spine in ax.spines.values():
@@ -356,7 +356,7 @@ def main() -> None:
             linewidths=0.5,
             linecolor="k",
         )
-        ax.set_title(title, fontsize=14)
+        ax.set_title(title, fontsize=18)
 
     sm_w = plt.cm.ScalarMappable(cmap=HEATMAP_CMAP, norm=norm_w)
     sm_w.set_array([])
@@ -379,8 +379,8 @@ def main() -> None:
         color=line_color,
     )
     ax_dist.fill_between(counts, dist_lo, dist_hi, color=line_color, alpha=0.2)
-    ax_dist.set_xlabel("Number of distinct training endpoints $m$")
-    ax_dist.set_ylabel(r"$\| \hat{\Lambda}^{(t_k)}_m - \bar{\Lambda} \|$")
+    ax_dist.set_xlabel("Number of distinct training endpoints $m$", fontsize=16)
+    ax_dist.set_ylabel(r"$\| \hat{\Lambda}^{(t_k)}_m - \bar{\Lambda} \|$", fontsize=16)
     ax_dist.set_xlim(1, num_endpoints)
     ax_dist.grid(alpha=0.3, which="both")
 
@@ -411,9 +411,9 @@ def main() -> None:
         linewidth=1.5,
         label=r"Theoretical $\mathrm{tr}(\Lambda^{(t)})/p$",
     )
-    ax_lvse.set_xlabel("Gradient descent steps $t$")
-    ax_lvse.set_ylabel(r"Scalar ridge penalty $\hat{\lambda}_t$")
-    ax_lvse.legend(frameon=False, loc="lower left", fontsize=10)
+    ax_lvse.set_xlabel("Gradient descent steps $t$", fontsize=16)
+    ax_lvse.set_ylabel(r"Scalar ridge penalty $\hat{\lambda}_t$", fontsize=16)
+    ax_lvse.legend(frameon=False, loc="lower left", fontsize=12)
     ax_lvse.grid(True, which="both", alpha=0.3)
 
     ax_C.text(
@@ -422,16 +422,16 @@ def main() -> None:
         "C",
         transform=ax_C.transAxes,
         fontweight="bold",
-        fontsize=18,
+        fontsize=20,
         va="bottom",
         ha="left",
         clip_on=False,
     )
     for ax, letter in [(ax_A, "A"), (ax_B, "B"), (ax_dist, "D"), (ax_lvse, "E")]:
-        _add_panel_label(fig, ax, letter)
+        _add_panel_label(fig, ax, letter, fontsize=20)
 
     args.out.parent.mkdir(parents=True, exist_ok=True)
-    fig.savefig(args.out, bbox_inches="tight")
+    fig.savefig(args.out, bbox_inches="tight", pad_inches=0.02)
     plt.close(fig)
     print(f"Saved {args.out}")
 

@@ -12,17 +12,17 @@ This file is meant to preserve context for follow-on work in Codex CLI.
 
 ## Current Repository State
 
-- Main repo: `/home/jrudoler/inductive-bias`
+- Main repo: `<repo-root>`
 - Main branch: `main`
 - Main repo status at handoff: clean
-- Bootstrap worktree: `/home/jrudoler/inductive-bias-bootstrap`
+- Bootstrap worktree: `<repo-root>-bootstrap`
 - Bootstrap branch: `bootstrap-resampling`
 - Latest bootstrap commit seen during handoff: `34f4591` (`Enable gradient-based identifiability metrics in bootstrap recovery.`)
 
 There is also an active Slurm array sweep:
 
-- Sweep ID: `jhrudoler-penn/inductive-bias-bootstrap/bvx8c05t`
-- W&B URL: <https://wandb.ai/jhrudoler-penn/inductive-bias-bootstrap/sweeps/bvx8c05t>
+- Sweep ID: `<wandb-entity>/inductive-bias-bootstrap/bvx8c05t`
+- W&B URL: `<https://wandb.ai/<wandb-entity>/inductive-bias-bootstrap/sweeps/bvx8c05t>`
 - Slurm array job: `46011`
 - Concurrency cap: `%6` GPU tasks at a time
 

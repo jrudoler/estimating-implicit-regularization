@@ -182,7 +182,7 @@ def plot_lineplot(
 ) -> None:
     style_path = REPO_ROOT / "clean_fig.mplstyle"
     plt.style.use(str(style_path))
-    fig, axes = plt.subplots(1, 2, figsize=(10, 4.5), constrained_layout=True)
+    fig, axes = plt.subplots(1, 2, figsize=(10, 3.2), constrained_layout=True)
 
     _plot_panel(
         axes[0],
@@ -208,7 +208,7 @@ def plot_lineplot(
     )
 
     out_path.parent.mkdir(parents=True, exist_ok=True)
-    fig.savefig(out_path, format="pdf", bbox_inches="tight", pad_inches=0.1)
+    fig.savefig(out_path, format="pdf", bbox_inches="tight", pad_inches=0.02)
     plt.close(fig)
 
 

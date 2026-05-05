@@ -52,7 +52,7 @@ Current paper jumps from linear OLS to "neural nets stuff." Suggested flow:
 ### 5. Experimental directions worth pursuing
 
 - **Stationarity gap analysis:** The docs consistently identify approximate stationarity as the bottleneck. A controlled experiment measuring stationarity residual vs. recovery error across training durations would quantify this and give practitioners guidance on when the method is reliable.
-- **Scale up architectures:** Current experiments use depth-2, width-32 nets on 12-dim input. A modest scale-up (e.g., small ConvNet, wider MLP) would strengthen the "practical" claim. Maps to the Konrad note in the paper about fitting big models like ViT or small LLMs.
+- **Scale up architectures:** Current experiments use depth-2, width-32 nets on 12-dim input. A modest scale-up (e.g., small ConvNet, wider MLP) would strengthen the "practical" claim. Maps to the inline note in the paper about fitting big models like ViT or small LLMs.
 - **Retrain validation (mode 2):** Section 3.3 defines retrain-with-estimated-regularizer as a validation mode, but the nonlinear experiments don't do this. Showing that a network retrained with the estimated BER produces similar predictions would be a compelling end-to-end validation.
 
 ### 6. Framing / positioning

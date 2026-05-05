@@ -18,8 +18,8 @@ latency-wait: 60
 printshellcmds: true
 
 default-resources:
-  slurm_partition: whartonstat
-  slurm_account: ""         # most PSLE clusters don't need an account
+  slurm_partition: gpu
+  slurm_account: ""         # most clusters do not need an account
   runtime: 120              # minutes
   mem_mb: 16000
   cpus_per_task: 4
