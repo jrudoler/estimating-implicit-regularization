@@ -101,7 +101,8 @@ rule barrett_igr_figure2:
         slurm_extra="--gres=gpu:1",
     shell:
         "PYTHONPATH=src uv run python {input.script} {params.device} "
-        "--train-samples 10000 --test-samples 5000 --probe-samples 2048 "
+        "--train-samples 10000 --val-samples 1000 --test-samples 5000 "
+        "--probe-samples 2048 "
         "--widths 50,100,200,400,800,1600 "
         "--learning-rates 0.0005,0.001,0.005,0.01,0.05,0.1,0.5 "
         "--seeds 0 --epochs 50 --num-hidden-layers 5 "
