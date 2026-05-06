@@ -129,7 +129,9 @@ def main() -> None:
         else r"Theoretical $\lambda = \eta m/4$"
     )
     axes[0].set_xlabel(xlabel, fontsize=18)
-    axes[0].set_ylabel(r"$R_{IG} = \frac{1}{p}\|\nabla E(\theta)\|^2$", fontsize=18)
+    axes[0].set_ylabel(
+        r"$R_{IG} = \frac{1}{p}\|\nabla \mathcal{L}(\theta)\|^2$", fontsize=18
+    )
     # axes[0].set_title("(a) Regularization vs $\\hat{\\lambda}$")
     axes[0].legend(title="# params", loc="lower left", fontsize=10, frameon=False)
     axes[0].grid(True, which="both", alpha=0.25)
