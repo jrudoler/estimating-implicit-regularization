@@ -17,8 +17,15 @@ results/
 saved_models/
 checkpoints/
 dummy/
-notebooks/artifacts/
 artifacts/
+
+# Untracked scratch/legacy directories (kept locally for history but not
+# part of the published repo). docs/ historically held LLM working notes;
+# notebooks/ has been superseded by analysis/<name>/run.py modules;
+# archive/ is dated snapshots of legacy experiments and notebooks.
+docs/
+notebooks/
+archive/
 
 # Snakemake state
 .snakemake/
@@ -34,7 +41,7 @@ __pycache__/
 
 # Claude Code local state (settings.local.json is already user-ignored;
 # also drop NFS lockfile leftovers and any future per-user state).
-.claude/.nfs*
+.claude/
 
 # Smoketest checkpoint outputs (regenerated locally; the .ckpt blobs embed
 # absolute paths, so they should not be committed).
