@@ -1,6 +1,6 @@
-# Inductive Bias Estimation
+# Estimating implicit regularization
 
-This repository contains the code for **A Framework for Estimating the Implicit Regularization Effect of Learning Algorithms**. The project studies how to empirically recover and compare hypothesized inductive biases by treating a trained model as if it were the solution to a regularized learning problem, then matching the gradient of a candidate regularizer to the residual gradient of the predictive loss.
+This repository contains the code for **Estimating Implicit Regularization in Deep Learning**. The project studies how to empirically recover and compare hypothesized inductive biases by treating a trained model as if it were the solution to a regularized learning problem, then matching the gradient of a candidate regularizer to the residual gradient of the predictive loss.
 
 The central idea is a gradient-matching formulation of implicit regularization. Given trained weights and data, the code estimates regularizer parameters that best explain the observed training residuals. This lets the project do several things in one framework:
 
