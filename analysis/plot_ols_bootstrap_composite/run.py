@@ -110,13 +110,32 @@ def main() -> None:
         m: fit_symmetric_matrix_from_points(thetas[:m], targets[:m]).numpy()
         for m in PANEL_MS
     }
-    counts = np.arange(1, thetas.shape[0] + 1)
-    dist_curve = np.array([
-        np.linalg.norm(
-            fit_symmetric_matrix_from_points(thetas[:m], targets[:m]).numpy() - Q_theory
+
+    # Distance curve across pools: for each pool, prepend the same canonical
+    # (theta, target) so m=1 is "original dataset only" in every replicate,
+    # then take that pool's first num_endpoints-1 bootstrap resamples.
+    num_pools, num_endpoints_per_pool, _ = pb["theta_pool"].shape
+    counts = np.arange(1, num_endpoints_per_pool + 1)
+    dist_curves = np.empty((num_pools, num_endpoints_per_pool))
+    for pool_idx in range(num_pools):
+        thetas_p = torch.cat(
+            [theta_canonical.unsqueeze(0),
+             pb["theta_pool"][pool_idx, : num_endpoints_per_pool - 1]],
+            dim=0,
         )
-        for m in counts
-    ])
+        targets_p = torch.cat(
+            [target_canonical.unsqueeze(0),
+             pb["target_pool"][pool_idx, : num_endpoints_per_pool - 1]],
+            dim=0,
+        )
+        for m in counts:
+            Q_m = fit_symmetric_matrix_from_points(thetas_p[:m], targets_p[:m]).numpy()
+            dist_curves[pool_idx, m - 1] = np.linalg.norm(Q_m - Q_theory)
+
+    dist_mean = dist_curves.mean(axis=0)
+    dist_se = dist_curves.std(axis=0, ddof=1) / np.sqrt(num_pools)
+    dist_lo = np.clip(dist_mean - 1.96 * dist_se, 1e-12, None)
+    dist_hi = dist_mean + 1.96 * dist_se
 
     sweep_sigmas = sweep["sigmas"].numpy()
     sweep_dist_pool = sweep["distances"].numpy()
@@ -164,13 +183,14 @@ def main() -> None:
     ax_m = fig.add_subplot(row2[0, 0])
     ax_s = fig.add_subplot(row2[0, 1])
 
-    ax_m.semilogy(counts, dist_curve, "o-", color=line_color, markersize=3)
+    ax_m.semilogy(counts, dist_mean, "o-", color=line_color, markersize=3)
+    ax_m.fill_between(counts, dist_lo, dist_hi, color=line_color, alpha=0.2)
     ax_m.axhline(Qt_norm, ls="--", color="gray",
                  label=r"$\|\Lambda^{(t)}\|_F$ (zero-baseline)")
     for m, lab in zip(PANEL_MS, ["B", "C", "D"]):
-        ax_m.scatter([m], [dist_curve[m - 1]], s=85, color=marker_color, zorder=5,
+        ax_m.scatter([m], [dist_mean[m - 1]], s=85, color=marker_color, zorder=5,
                      edgecolor="white", linewidth=1.4)
-        ax_m.annotate(lab, xy=(m, dist_curve[m - 1]),
+        ax_m.annotate(lab, xy=(m, dist_mean[m - 1]),
                       xytext=(8, 8), textcoords="offset points",
                       fontsize=12, fontweight="bold", color=marker_color)
     ax_m.set_xlabel(r"number of endpoints $m$ (1 canonical + $m{-}1$ bootstrap)")
