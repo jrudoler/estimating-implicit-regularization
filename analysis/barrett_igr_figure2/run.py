@@ -55,6 +55,14 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument("--mnist-root", type=Path, default=REPO_ROOT / "data" / "raw")
     parser.add_argument("--train-samples", type=int, default=10000)
+    parser.add_argument(
+        "--val-samples",
+        type=int,
+        default=1000,
+        help="Held-out validation slice drawn disjointly from the MNIST training "
+        "split. Used for checkpoint selection (Figure 6) so that test accuracy "
+        "is independent of the selection criterion.",
+    )
     parser.add_argument("--test-samples", type=int, default=5000)
     parser.add_argument(
         "--activation", choices=("relu", "tanh", "gelu"), default="tanh"
@@ -153,22 +161,28 @@ def resolve_dtype(args: argparse.Namespace, device: torch.device) -> torch.dtype
 
 
 def load_mnist(
-    root: Path, train_samples: int, test_samples: int, seed: int, dtype: torch.dtype
-) -> tuple[TensorDataset, TensorDataset]:
+    root: Path,
+    train_samples: int,
+    val_samples: int,
+    test_samples: int,
+    seed: int,
+    dtype: torch.dtype,
+) -> tuple[TensorDataset, TensorDataset, TensorDataset]:
+    """Return disjoint (train, val, test) tensor datasets from MNIST.
+
+    Train and val are drawn from a single permutation of the MNIST training
+    split: the first `train_samples` indices for train, the next `val_samples`
+    for val. This keeps the train subsample identical to the prior
+    train-only protocol (same seed) and guarantees val is disjoint from train.
+    Test is sampled independently from the MNIST test split.
+    """
     from torchvision import datasets, transforms
 
     transform = transforms.Compose(
         [transforms.ToTensor(), transforms.Normalize((0.1307,), (0.3081,))]
     )
 
-    def _subsample(split_train: bool, n: int) -> TensorDataset:
-        ds = datasets.MNIST(
-            root=root, train=split_train, download=False, transform=transform
-        )
-        if n < len(ds):
-            gen = torch.Generator().manual_seed(seed + (0 if split_train else 1))
-            idx = torch.randperm(len(ds), generator=gen)[:n].tolist()
-            ds = Subset(ds, idx)
+    def _materialize(ds) -> TensorDataset:
         loader = DataLoader(ds, batch_size=min(2048, len(ds)))
         xs, ys = [], []
         for images, labels in loader:
@@ -176,7 +190,38 @@ def load_mnist(
             ys.append(labels)
         return TensorDataset(torch.cat(xs).to(dtype), torch.cat(ys).long())
 
-    return _subsample(True, train_samples), _subsample(False, test_samples)
+    train_full = datasets.MNIST(
+        root=root, train=True, download=False, transform=transform
+    )
+    test_full = datasets.MNIST(
+        root=root, train=False, download=False, transform=transform
+    )
+
+    if train_samples + val_samples > len(train_full):
+        raise ValueError(
+            f"train_samples ({train_samples}) + val_samples ({val_samples}) "
+            f"exceeds MNIST train size ({len(train_full)}); cannot draw a "
+            "disjoint validation slice."
+        )
+
+    gen_tr = torch.Generator().manual_seed(seed + 0)
+    perm = torch.randperm(len(train_full), generator=gen_tr).tolist()
+    train_idx = perm[:train_samples]
+    val_idx = perm[train_samples : train_samples + val_samples]
+    assert set(train_idx).isdisjoint(set(val_idx))
+
+    if test_samples < len(test_full):
+        gen_te = torch.Generator().manual_seed(seed + 1)
+        test_idx = torch.randperm(len(test_full), generator=gen_te)[:test_samples].tolist()
+        test_ds = Subset(test_full, test_idx)
+    else:
+        test_ds = test_full
+
+    return (
+        _materialize(Subset(train_full, train_idx)),
+        _materialize(Subset(train_full, val_idx)),
+        _materialize(test_ds),
+    )
 
 
 def build_mlp(
@@ -304,6 +349,7 @@ def estimate_lambda_flow_ref(
 def run_one(
     args: argparse.Namespace,
     train_ds: TensorDataset,
+    val_ds: TensorDataset,
     test_ds: TensorDataset,
     width: int,
     eta: float,
@@ -316,6 +362,9 @@ def run_one(
     train_features, train_targets = train_ds.tensors
     train_features = train_features.to(device)
     train_targets = train_targets.to(device)
+    val_features, val_targets = val_ds.tensors
+    val_features = val_features.to(device)
+    val_targets = val_targets.to(device)
     test_features, test_targets = test_ds.tensors
     test_features = test_features.to(device)
     test_targets = test_targets.to(device)
@@ -347,8 +396,16 @@ def run_one(
 
     # Initial eval.
     train_acc = evaluate(model, train_features, train_targets)
+    val_acc = evaluate(model, val_features, val_targets)
     test_acc = evaluate(model, test_features, test_targets)
-    history.append({"epoch": 0, "train_acc": train_acc, "test_acc": test_acc})
+    history.append(
+        {
+            "epoch": 0,
+            "train_acc": train_acc,
+            "val_acc": val_acc,
+            "test_acc": test_acc,
+        }
+    )
 
     for epoch in range(1, args.epochs + 1):
         model.train()
@@ -366,33 +423,41 @@ def run_one(
 
         if epoch % args.eval_every == 0 or epoch == args.epochs:
             train_acc = evaluate(model, train_features, train_targets)
+            val_acc = evaluate(model, val_features, val_targets)
             test_acc = evaluate(model, test_features, test_targets)
             history.append(
-                {"epoch": epoch, "train_acc": train_acc, "test_acc": test_acc}
+                {
+                    "epoch": epoch,
+                    "train_acc": train_acc,
+                    "val_acc": val_acc,
+                    "test_acc": test_acc,
+                }
             )
             LOGGER.info(
-                "w=%d eta=%.3g seed=%d epoch=%d train_acc=%.4f test_acc=%.4f",
+                "w=%d eta=%.3g seed=%d epoch=%d train_acc=%.4f val_acc=%.4f test_acc=%.4f",
                 width,
                 eta,
                 seed,
                 epoch,
                 train_acc,
+                val_acc,
                 test_acc,
             )
             saved_states[epoch] = {
                 k: v.detach().clone() for k, v in model.state_dict().items()
             }
 
-    # Barrett's protocol: max test acc among models that fit the training data.
-    # We use a relaxed threshold for tanh, but by default exclude threshold
-    # failures instead of silently mixing undertrained runs into the plot.
+    # Departing slightly from Barrett: select the snapshot with highest
+    # *validation* accuracy among models that fit the training data, so the
+    # test accuracy reported in Figure 6 is independent of the selection
+    # criterion. The train-acc gate uses train accuracy (no test leakage).
     threshold = args.train_acc_threshold
     candidates = [h for h in history if h["epoch"] > 0 and h["train_acc"] >= threshold]
     used_fallback = False
     if candidates:
-        best = max(candidates, key=lambda h: h["test_acc"])
+        best = max(candidates, key=lambda h: h["val_acc"])
     else:
-        best = max((h for h in history if h["epoch"] > 0), key=lambda h: h["test_acc"])
+        best = max((h for h in history if h["epoch"] > 0), key=lambda h: h["val_acc"])
         if not args.allow_threshold_fallback:
             LOGGER.warning(
                 "w=%d eta=%.3g seed=%d did not hit train_acc>=%.2f; excluding from probes",
@@ -409,6 +474,7 @@ def run_one(
                 "lambda_theoretical": eta * num_params / 4.0,
                 "best_epoch": best["epoch"],
                 "best_train_acc": best["train_acc"],
+                "best_val_acc": best["val_acc"],
                 "best_test_acc": best["test_acc"],
                 "used_fallback": False,
                 "included": False,
@@ -427,10 +493,11 @@ def run_one(
         )
     best_epoch = best["epoch"]
     best_test = best["test_acc"]
+    best_val = best["val_acc"]
     best_train = best["train_acc"]
     best_state = saved_states[best_epoch]
 
-    # Restore max-test-acc state for R_IG + lambda estimation.
+    # Restore the val-selected state for R_IG + lambda estimation.
     model.load_state_dict(best_state)
 
     probe_features = train_features
@@ -477,6 +544,7 @@ def run_one(
         "hg_norm_best": hg_norm,
         "best_epoch": best_epoch,
         "best_train_acc": best_train,
+        "best_val_acc": best_val,
         "best_test_acc": best_test,
         "used_fallback": used_fallback,
         "included": True,
@@ -516,8 +584,13 @@ def main() -> None:
     seeds = [int(x) for x in args.seeds.split(",")]
 
     # Load MNIST once; reuse across runs (seed affects subsample ordering minimally).
-    train_ds, test_ds = load_mnist(
-        args.mnist_root, args.train_samples, args.test_samples, seed=0, dtype=dtype
+    train_ds, val_ds, test_ds = load_mnist(
+        args.mnist_root,
+        args.train_samples,
+        args.val_samples,
+        args.test_samples,
+        seed=0,
+        dtype=dtype,
     )
 
     results: list[dict] = []
@@ -527,15 +600,18 @@ def main() -> None:
             "[%d/%d] width=%d eta=%.4g seed=%d", i, len(combos), width, eta, seed
         )
         try:
-            res = run_one(args, train_ds, test_ds, width, eta, seed, device, dtype)
+            res = run_one(
+                args, train_ds, val_ds, test_ds, width, eta, seed, device, dtype
+            )
             results.append(res)
             LOGGER.info(
-                "  -> included=%s lambda_hat=%s lambda_theory=%.3g R_IG=%s train_acc=%.4f test_acc=%.4f resid=%s",
+                "  -> included=%s lambda_hat=%s lambda_theory=%.3g R_IG=%s train_acc=%.4f val_acc=%.4f test_acc=%.4f resid=%s",
                 res.get("included", True),
                 f"{res['lambda_hat']:.3g}" if "lambda_hat" in res else "NA",
                 res["lambda_theoretical"],
                 f"{res['r_ig']:.3e}" if "r_ig" in res else "NA",
                 res.get("best_train_acc", float("nan")),
+                res.get("best_val_acc", float("nan")),
                 res["best_test_acc"],
                 f"{res['residual_ratio']:.3g}" if "residual_ratio" in res else "NA",
             )
