@@ -37,11 +37,11 @@ paper/           submodule; `paper/figures/` staged by the workflow
 workflow/
   Snakefile
   rules/         common, wandb, train, plot, paper
-  profiles/slurm SBATCH profile for cluster execution
+  profiles/      local/ (cores=4, dev defaults) and slurm/ (sbatch executor)
 config/          sweeps.yaml (account-neutral W&B sweep manifest)
 ```
 
-See [science-repo-skill.md](science-repo-skill.md) for the canonical description of the layout and [docs/paper_figure_pipeline.md](docs/paper_figure_pipeline.md) for the figure-by-figure provenance map.
+See [science-repo-skill.md](science-repo-skill.md) for the canonical description of the layout. The figure-by-figure provenance is also encoded in the Snakemake DAG itself: each `analysis/<rule>/run.py` declares its inputs and outputs, and `workflow/rules/{train,plot,paper}.smk` wires them together.
 
 ## Getting started
 
@@ -61,10 +61,15 @@ uv sync --group dev
 
 ## Workflow
 
-Every step runs through Snakemake. The top-level targets are:
+Every step runs through Snakemake. The top-level targets, defined in [workflow/Snakefile](workflow/Snakefile), are:
+
+- `figures` — every paper-bound figure under `results/figures/`.
+- `paper` — `paper/main.pdf` (depends on staged figures and runs `latexmk`).
+- `all` — alias for `paper`.
 
 ```bash
-# Plot-only: rebuild every paper figure from existing data/generated/ snapshots.
+# Rebuild every paper figure. Snakemake reuses existing data/generated/ snapshots
+# and only re-runs upstream rules (training, W&B pulls) for outputs that are missing.
 uv run snakemake -s workflow/Snakefile --cores 4 figures
 
 # Full end-to-end via SLURM: train, pull W&B snapshots, plot, latexmk -> paper/main.pdf
@@ -87,7 +92,7 @@ Experiment-backed figures are split into `data/generated/<analysis>/` data rules
 1. Decide whether the output is an intermediate (`data/generated/`) or a final result (`results/`).
 2. For experiment-backed figures, create a data script that writes `data/generated/<analysis>/...` and a separate `analysis/plot_<analysis>/run.py` that reads those artifacts and writes `results/figures/...`.
 3. Move reusable logic into `src/core/`.
-4. Add the rule to [workflow/rules/train.smk](workflow/rules/train.smk) or [workflow/rules/plot.smk](workflow/rules/plot.smk).
+4. Add the rule to [workflow/rules/train.smk](workflow/rules/train.smk) (training) or [workflow/rules/plot.smk](workflow/rules/plot.smk) (plotting). For sweep-driven analyses, the snapshot/launch rules in [workflow/rules/wandb.smk](workflow/rules/wandb.smk) are reused via the analysis name.
 5. If the analysis consumes W&B runs, add the sweep config to [config/sweeps.yaml](config/sweeps.yaml) and store personal sweep IDs in `config/sweeps.local.yaml`.
 
 ### W&B sweeps
@@ -142,16 +147,18 @@ uv run snakemake -s workflow/Snakefile --cores 4 \
 uv run snakemake -s workflow/Snakefile --cores 4 figures
 ```
 
-### SLURM
+### Local vs SLURM
 
-SLURM is optional. Training rules declare their cluster resources inline via `resources:` blocks in [workflow/rules/train.smk](workflow/rules/train.smk) (partition, runtime, mem_mb, cpus_per_task, `slurm_extra="--gres=gpu:1"`). Cheap rules (plotting, W&B pulls, staging, latexmk) are listed under `localrules:` in [workflow/Snakefile](workflow/Snakefile) and always run on the submitting host.
+Two profiles ship under [workflow/profiles/](workflow/profiles):
+
+- `local/` — `cores: 4` plus dev-friendly defaults (`keep-incomplete`, `printshellcmds`). Use for development on a workstation; training rules run wherever the shell sees a device.
+- `slurm/` — submits one sbatch job per rule via `snakemake-executor-plugin-slurm`. Training rules declare cluster resources inline via `resources:` blocks in [workflow/rules/train.smk](workflow/rules/train.smk) (partition, runtime, mem_mb, cpus_per_task, `slurm_extra="--gres=gpu:1"`). Cheap rules (plotting, W&B pulls, staging, latexmk) are listed under `localrules:` in [workflow/Snakefile](workflow/Snakefile) and always run on the submitting host.
 
 ```bash
-# Run everything locally (training rules will use whichever CUDA device the shell sees, or CPU).
-uv run snakemake -s workflow/Snakefile --cores 4 figures
+# Run everything locally; training rules autodetect CUDA -> MPS -> CPU.
+uv run snakemake -s workflow/Snakefile --profile workflow/profiles/local figures
 
-# Submit training rules to SLURM via the snakemake-executor-plugin-slurm
-# profile; cheap rules stay local automatically.
+# Submit training rules to SLURM; cheap rules stay local automatically.
 uv run snakemake -s workflow/Snakefile --profile workflow/profiles/slurm paper
 ```
 
@@ -187,14 +194,15 @@ The flag threads through to every training rule via [workflow/rules/common.smk](
 
 ### Paper assembly
 
-- The manuscript is the submodule at [`paper/`](paper). The workflow writes canonical final figures to `results/figures/` and stages manuscript copies into `paper/figures/`, which is what `\includegraphics{figures/<fig>}` in `paper/main.tex` resolves to.
-- Changes to `paper/main.tex` include paths are manuscript submodule changes; make them from inside `paper/` and commit/push that repository separately.
-- `paper_pdf` depends on every figure having been staged, so `uv run snakemake -s workflow/Snakefile paper` will stage figures first and then run `latexmk`.
+The manuscript is the submodule at [`paper/`](paper). The workflow writes canonical final figures to `results/figures/` and stages manuscript copies into `paper/figures/` (what `\includegraphics{figures/<fig>}` in `paper/main.tex` resolves to). `paper_pdf` depends on every figure having been staged, so `uv run snakemake -s workflow/Snakefile paper` stages figures first and then runs `latexmk`.
+
+Operationally treat the submodule as separate: the parent repo only writes `paper/figures/` and bumps the submodule pointer. Edits to `paper/main.tex` or any hand-authored LaTeX are submodule commits — make and push them from inside `paper/`.
 
 ## Core library
 
 - [`src/core/bias.py`](src/core/bias.py): candidate regularizers and bias parameterizations
 - [`src/core/estimators.py`](src/core/estimators.py): Lightning-based gradient-matching estimators
+- [`src/core/igr_trajectory.py`](src/core/igr_trajectory.py): trajectory-based estimator for the Barrett--Dherin implicit gradient regularizer
 - [`src/core/models.py`](src/core/models.py): predictive models (MNIST MLPs, small linear/nonlinear nets)
 - [`src/core/data.py`](src/core/data.py): datamodules and dataset loaders
 - [`src/core/wandb_utils.py`](src/core/wandb_utils.py): W&B API helpers used by `pull_wandb_sweep`
@@ -205,11 +213,3 @@ The flag threads through to every training rule via [workflow/rules/common.smk](
 ```bash
 PYTHONPATH=src uv run pytest tests/
 ```
-
-## Manuscript workflow
-
-The manuscript lives in the separate git submodule at [`paper/`](paper). Treat it as operationally separate from the parent repo:
-
-- read it freely as context during coding tasks
-- the workflow writes into `paper/figures/`; commits for that subtree happen inside the submodule
-- `paper/main.tex` and hand-authored LaTeX are still read-only unless manuscript changes are explicitly requested

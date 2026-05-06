@@ -1,10 +1,5 @@
 #!/usr/bin/env python3
-"""Method-visualization figures: tradeoff surface + SGD-vs-full-batch landscape.
-
-Ported from the corresponding cells of notebooks/method-vis.ipynb so that
-Snakemake doesn't have to exec notebook cells. The notebook is still useful as
-an exploration surface; it just isn't the source of truth for these figures.
-"""
+"""Method-visualization figures: tradeoff surface + SGD-vs-full-batch landscape."""
 
 from __future__ import annotations
 

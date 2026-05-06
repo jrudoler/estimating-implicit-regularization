@@ -21,10 +21,8 @@ Outputs (data/generated/ols_full_matrix_recovery/results.pt):
     vis_y_first:      [N]   y_k for that endpoint
     vis_theta_first:  [P]   model_theta after callback stop for that endpoint
 
-Reproduces the figure pair in
-notebooks/linear-regression-trajectory.ipynb (section "Full-matrix endpoint
-recovery from independent seeds") with the parameter Q estimated from all
-NUM_FULL_MATRIX_ENDPOINTS endpoints rather than a 10-endpoint subset.
+Estimates Q from all NUM_FULL_MATRIX_ENDPOINTS endpoints rather than a
+10-endpoint subset, used for the full-matrix endpoint-recovery panels.
 """
 
 from __future__ import annotations

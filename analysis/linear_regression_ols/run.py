@@ -49,7 +49,7 @@ def parse_args() -> argparse.Namespace:
         "--seed",
         type=int,
         default=DEFAULT_OLS_SEED,
-        help="Random seed matching notebooks/linear-regression.ipynb.",
+        help="Random seed for the OLS DGP.",
     )
     parser.add_argument(
         "--input-dim",
