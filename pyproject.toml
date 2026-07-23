@@ -7,8 +7,8 @@ requires-python = "~=3.12.0"
 readme = "README.md"
 dependencies = [
     "torch>=2.6.0,<3",
-    "lightning>=2.5.0.post0,<3",
-    "wandb>=0.19.8,<0.20",
+    "lightning==2.6.1",
+    "wandb>=0.19.8,<0.26.2",
     "numpy>=2.2.3,<3",
     "seaborn>=0.13.2,<0.14",
     "ipykernel>=6.29.5,<7",
@@ -24,7 +24,6 @@ dependencies = [
     "torchopt>=0.7.3,<0.8",
     "optree>=0.17.0,<0.18",
     "huggingface-hub[cli]>=0.35.3,<0.36",
-    "lightning-lite>=1.8.6,<2",
     "ffmpeg>=1.4",
     "ipympl>=0.9.8",
     "torchvision>=0.24.0",
@@ -38,16 +37,18 @@ build-backend = "uv_build"
 
 [tool.uv]
 package = true
-
-[tool.uv.build-backend]
-namespace = true
+environments = [
+    "sys_platform == 'darwin'",
+    "sys_platform == 'linux'",
+]
 
 [tool.uv.sources]
+lightning = { git = "https://github.com/Lightning-AI/pytorch-lightning.git", tag = "2.6.1" }
 torch = [
-    { index = "pytorch-cu128", marker = "platform_system == 'Linux'" }
+    { index = "pytorch-cu128", marker = "sys_platform == 'linux'" }
 ]
 torchvision = [
-    { index = "pytorch-cu128", marker = "platform_system == 'Linux'" }
+    { index = "pytorch-cu128", marker = "sys_platform == 'linux'" }
 ]
 
 [[tool.uv.index]]

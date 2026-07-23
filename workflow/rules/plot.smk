@@ -60,42 +60,19 @@ rule plot_barrett_igr_long_horizon:
         "--out {output.pdf}"
 
 
-rule plot_lambda_vs_epochs:
-    input:
-        script="analysis/plot_lambda_vs_epochs/run.py",
-        style="clean_fig.mplstyle",
-        results="data/generated/lambda_vs_epochs/results.pt",
-    output:
-        pdf="results/figures/lambda_vs_epochs.pdf",
-    shell:
-        "PYTHONPATH=src uv run python {input.script} "
-        "--input {input.results} --out {output.pdf}"
-
-
 rule plot_method_vis:
     input:
         script="analysis/plot_method_vis/run.py",
         style="clean_fig.mplstyle",
     output:
         tradeoff="results/figures/tradeoff-vis.pdf",
+        tradeoff_3d="results/figures/tradeoff-vis-3d.pdf",
         sgd_vs_fb="results/figures/sgd-vs-full-batch.pdf",
     shell:
         "PYTHONPATH=src uv run python {input.script} "
-        "--out-tradeoff {output.tradeoff} --out-sgd-vs-fb {output.sgd_vs_fb}"
-
-
-rule plot_linear_regression_ols:
-    input:
-        script="analysis/plot_linear_regression_ols/run.py",
-        style="clean_fig.mplstyle",
-        results="data/generated/linear_regression_ols/results.pt",
-    output:
-        lambda_cmp="results/figures/Lambda_comparison-ols.pdf",
-        pred_weights="results/figures/predictive_weights_comparison_ols.pdf",
-    shell:
-        "PYTHONPATH=src uv run python {input.script} "
-        "--input {input.results} "
-        "--lambda-out {output.lambda_cmp} --weights-out {output.pred_weights}"
+        "--out-tradeoff {output.tradeoff} "
+        "--out-tradeoff-1d {output.tradeoff_3d} "
+        "--out-sgd-vs-fb {output.sgd_vs_fb}"
 
 
 rule plot_ols_composite:
@@ -103,6 +80,7 @@ rule plot_ols_composite:
         script="analysis/plot_ols_composite/run.py",
         style="clean_fig.mplstyle",
         linear_data="data/generated/linear_regression_ols/results.pt",
+        panel_b_data="data/generated/ols_full_matrix_recovery_panel_b/results.pt",
         full_matrix_data="data/generated/ols_full_matrix_recovery/results.pt",
         lambda_epochs_data="data/generated/lambda_vs_epochs/results.pt",
     output:
@@ -110,23 +88,29 @@ rule plot_ols_composite:
     shell:
         "PYTHONPATH=src uv run python {input.script} "
         "--linear-data {input.linear_data} "
+        "--panel-b-data {input.panel_b_data} "
         "--full-matrix-data {input.full_matrix_data} "
         "--lambda-epochs-data {input.lambda_epochs_data} "
         "--out {output.pdf}"
 
 
-rule plot_ols_full_matrix_recovery:
+rule plot_ols_bootstrap_composite:
     input:
-        script="analysis/plot_ols_full_matrix_recovery/run.py",
+        script="analysis/plot_ols_bootstrap_composite/run.py",
         style="clean_fig.mplstyle",
-        results="data/generated/ols_full_matrix_recovery/results.pt",
+        linear_data="data/generated/linear_regression_ols_noisy/results.pt",
+        bootstrap_panel_b_data="data/generated/ols_bootstrap_recovery_panel_b/results.pt",
+        bootstrap_full_data="data/generated/ols_bootstrap_recovery/results.pt",
+        sigma_sweep_data="data/generated/ols_bootstrap_sigma_sweep/results.pt",
     output:
-        recovery="results/figures/ols_full_matrix_recovery.pdf",
-        distance="results/figures/ols_full_matrix_distance_to_theory.pdf",
+        pdf="results/figures/ols_bootstrap_composite.pdf",
     shell:
         "PYTHONPATH=src uv run python {input.script} "
-        "--input {input.results} "
-        "--out-recovery {output.recovery} --out-distance {output.distance}"
+        "--linear-data {input.linear_data} "
+        "--bootstrap-panel-b-data {input.bootstrap_panel_b_data} "
+        "--bootstrap-full-data {input.bootstrap_full_data} "
+        "--sigma-sweep-data {input.sigma_sweep_data} "
+        "--out {output.pdf}"
 
 
 rule plot_llm_ridge_model_grid:

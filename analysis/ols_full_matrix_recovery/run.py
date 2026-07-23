@@ -21,10 +21,8 @@ Outputs (data/generated/ols_full_matrix_recovery/results.pt):
     vis_y_first:      [N]   y_k for that endpoint
     vis_theta_first:  [P]   model_theta after callback stop for that endpoint
 
-Reproduces the figure pair in
-notebooks/linear-regression-trajectory.ipynb (section "Full-matrix endpoint
-recovery from independent seeds") with the parameter Q estimated from all
-NUM_FULL_MATRIX_ENDPOINTS endpoints rather than a 10-endpoint subset.
+Estimates Q from all NUM_FULL_MATRIX_ENDPOINTS endpoints rather than a
+10-endpoint subset, used for the full-matrix endpoint-recovery panels.
 """
 
 from __future__ import annotations
@@ -56,6 +54,7 @@ from analysis.ols_dgp import (  # noqa: E402
 )
 from analysis.ols_full_matrix_recovery.pipeline import (  # noqa: E402
     Endpoint,
+    callback_stop_step,
     fit_symmetric_matrix_from_points,
     gd_trajectory,
     loss_grad,
@@ -68,10 +67,12 @@ DEFAULT_SEED = DEFAULT_OLS_SEED
 DEFAULT_P = DEFAULT_OLS_P
 DEFAULT_N = DEFAULT_OLS_N
 DEFAULT_EPS = 1e-2
-DEFAULT_STOP_STEP = 250
+DEFAULT_MAX_EPOCHS = 2000
+DEFAULT_PATIENCE = 5
+DEFAULT_MIN_DELTA = 1e-3
 DEFAULT_NOISE_STD = DEFAULT_OLS_NOISE_STD
 DEFAULT_NUM_ENDPOINTS = 100
-DEFAULT_NUM_AVG_SEEDS = 5
+DEFAULT_NUM_AVG_SEEDS = 10
 SEED_STRIDE = 10_000  # spacing between pools
 
 
@@ -82,12 +83,22 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--n", type=int, default=DEFAULT_N, help="design-matrix rows")
     parser.add_argument("--eps", type=float, default=DEFAULT_EPS, help="GD step size")
     parser.add_argument(
-        "--stop-step",
+        "--max-epochs",
         type=int,
-        default=DEFAULT_STOP_STEP,
-        help="Number of GD iterates t at which every endpoint is read off. "
-        "No early stopping; the implicit-regularization theory is stated for a "
-        "fixed t and we want every endpoint at the same t.",
+        default=DEFAULT_MAX_EPOCHS,
+        help="Maximum GD steps per endpoint before forced termination.",
+    )
+    parser.add_argument(
+        "--patience",
+        type=int,
+        default=DEFAULT_PATIENCE,
+        help="Early-stopping patience: stop after this many steps with no improvement.",
+    )
+    parser.add_argument(
+        "--min-delta",
+        type=float,
+        default=DEFAULT_MIN_DELTA,
+        help="Minimum loss decrease to count as an improvement for early stopping.",
     )
     parser.add_argument(
         "--noise-std",
@@ -107,6 +118,14 @@ def parse_args() -> argparse.Namespace:
         default=DEFAULT_NUM_AVG_SEEDS,
         help="independent pools of beta seeds (averaged for the SE band)",
     )
+    parser.add_argument(
+        "--stop-step",
+        type=int,
+        default=None,
+        help="Fix every endpoint's stop step to this value instead of using early "
+        "stopping.  Use this for Panel B, where all endpoints must share the same t "
+        "so the stacked system Q theta_k = -g_k has a single well-defined Q.",
+    )
     parser.add_argument("--output", type=Path, required=True)
     return parser.parse_args()
 
@@ -115,9 +134,12 @@ def train_endpoint(
     X: torch.Tensor,
     beta: torch.Tensor,
     eps: float,
-    stop_step: int,
+    max_epochs: int,
+    patience: int,
+    min_delta: float,
     noise_std: float,
     generator: torch.Generator,
+    stop_step_override: int | None = None,
 ) -> Endpoint:
     y = make_noisy_linear_response(
         X,
@@ -125,20 +147,30 @@ def train_endpoint(
         noise_std=noise_std,
         generator=generator,
     )
-    traj = gd_trajectory(X, y, stop_step, eps)
-    theta_at_stop = traj["theta"][stop_step].clone()
+    traj = gd_trajectory(X, y, max_epochs, eps)
+    if stop_step_override is not None:
+        stop_step = stop_step_override
+    else:
+        stop_step = callback_stop_step(traj["loss"], patience, min_delta)
+    theta_stop = traj["theta"][stop_step]
     return Endpoint(
         beta=beta,
         y=y,
         stop_step=stop_step,
-        model_theta=theta_at_stop,
-        neg_grad_stop=-loss_grad(X, y, theta_at_stop),
+        model_theta=theta_stop.clone(),
+        neg_grad_stop=-loss_grad(X, y, theta_stop),
         Q_theory_stop=compute_Q_matrix(X, stop_step, eps),
     )
 
 
 def main() -> None:
     args = parse_args()
+    fixed_t = args.stop_step  # None → variable early stopping; int → Panel-B fixed-t mode
+    if fixed_t is not None and fixed_t > args.max_epochs:
+        raise ValueError(
+            f"--stop-step {fixed_t} exceeds --max-epochs {args.max_epochs}; "
+            "increase --max-epochs so the trajectory reaches the fixed step."
+        )
     torch.manual_seed(args.seed)
     torch.use_deterministic_algorithms(False)
 
@@ -168,9 +200,12 @@ def main() -> None:
                 X,
                 beta,
                 args.eps,
-                args.stop_step,
+                args.max_epochs,
+                args.patience,
+                args.min_delta,
                 args.noise_std,
                 g,
+                stop_step_override=fixed_t,
             )
             theta_pool[pool_idx, ep_idx] = ep.model_theta
             target_pool[pool_idx, ep_idx] = ep.neg_grad_stop
@@ -184,9 +219,16 @@ def main() -> None:
             f"trained {args.num_endpoints} endpoints"
         )
 
-    # Median theoretical Q within each pool (the "visual" theory target shown
-    # next to the Q estimate).
-    Q_theory_pool = torch.quantile(Q_points_pool, 0.5, dim=1)  # [pools, p, p]
+    if fixed_t is not None:
+        # All endpoints stopped at the same t, so Q_theory is identical across
+        # endpoints within each pool — just take the first.
+        Q_theory_pool = Q_points_pool[:, 0, :, :]  # [pools, p, p]
+    else:
+        # Variable early stopping: each endpoint has its own Q(t_k).  Use the
+        # per-pool median as the comparison target for the distance curve (Panel D).
+        # This is valid when variance in stop steps is small; see comment in
+        # app_experiment_details.tex for the scientific justification.
+        Q_theory_pool = torch.quantile(Q_points_pool, 0.5, dim=1)  # [pools, p, p]
 
     # Distance-to-theory curves: refit Q with the first m endpoints for
     # m = 1..num_endpoints, measure ||Q_m - Q_theory_pool|| per pool.
@@ -206,11 +248,14 @@ def main() -> None:
             "p": args.p,
             "n": args.n,
             "eps": args.eps,
-            "stop_step": args.stop_step,
+            "max_epochs": args.max_epochs,
+            "patience": args.patience,
+            "min_delta": args.min_delta,
             "noise_std": args.noise_std,
             "num_endpoints": args.num_endpoints,
             "num_avg_seeds": args.num_avg_seeds,
             "seed_stride": SEED_STRIDE,
+            "fixed_t": fixed_t,  # None = variable early stopping (Panel D); int = Panel B
         },
         "X": X,
         "theta_pool": theta_pool,

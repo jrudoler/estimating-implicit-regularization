@@ -1,19 +1,21 @@
 #!/usr/bin/env python3
-"""Reproduction of Barrett & Dherin (2022) Figure 2.
+"""Barrett & Dherin (2022) Figure 2-style known-coefficient recovery.
 
-Trains MLPs on MNIST across a grid of (learning_rate, width). For each trained
-model, records at the time of maximum test accuracy:
+Trains tanh MLPs on MNIST across a Barrett-style grid of (learning_rate,
+width). For each trained model that reaches the train-accuracy threshold,
+records at the time of maximum test accuracy:
   - R_IG = (1/p) * ||grad L||^2 on full train set (Barrett's definition)
   - lambda_hat via the trajectory flow-ref estimator (our contribution)
   - lambda_theoretical = h * p / 4 (Barrett's analytic prediction)
   - max test accuracy
 
-Writes one .pt file; analysis/barrett_igr_figure2_plot.py produces the figure.
+Writes one .pt file; analysis/plot_barrett_igr_figure2/run.py produces the
+paper figure.
 
-Unlike experiments/barrett_igr_trajectory.py which sweeps for theoretical
-recovery, this script follows Barrett's Figure 2 protocol: it trains deep nets
-to solve the task and reports the implicit-regularization quantity at the
-max-test-accuracy iterate.
+This is not a full validation of Barrett's generalization claims. The paper
+uses this setting as a calibration target: Barrett derives lambda = eta * p / 4,
+and our estimator should recover that known coefficient from trajectory
+deviations.
 """
 
 from __future__ import annotations
@@ -25,8 +27,6 @@ import logging
 import sys
 from itertools import product
 from pathlib import Path
-from typing import Sequence
-
 import torch
 from torch import nn, Tensor
 from torch.nn.utils import parameters_to_vector, vector_to_parameters
@@ -49,10 +49,20 @@ LOGGER = logging.getLogger(__name__)
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
-        "--out", type=Path, default=REPO_ROOT / "results" / "barrett_igr_figure2.pt"
+        "--out",
+        type=Path,
+        default=REPO_ROOT / "data" / "generated" / "barrett_igr_figure2" / "results.pt",
     )
     parser.add_argument("--mnist-root", type=Path, default=REPO_ROOT / "data" / "raw")
     parser.add_argument("--train-samples", type=int, default=10000)
+    parser.add_argument(
+        "--val-samples",
+        type=int,
+        default=1000,
+        help="Held-out validation slice drawn disjointly from the MNIST training "
+        "split. Used for checkpoint selection (Figure 6) so that test accuracy "
+        "is independent of the selection criterion.",
+    )
     parser.add_argument("--test-samples", type=int, default=5000)
     parser.add_argument(
         "--activation", choices=("relu", "tanh", "gelu"), default="tanh"
@@ -60,17 +70,23 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--widths",
         type=str,
-        default="32,64,128,256",
-        help="Comma-separated hidden widths; architecture is [w, w, w] (3 hidden layers).",
+        default="50,100,200,400,800,1600",
+        help="Comma-separated hidden widths, matching Barrett's Figure 2 grid.",
     )
     parser.add_argument(
         "--learning-rates",
         type=str,
-        default="0.003,0.01,0.03,0.1",
+        default="0.0005,0.001,0.005,0.01,0.05,0.1,0.5",
     )
-    parser.add_argument("--seeds", type=str, default="0,1")
-    parser.add_argument("--epochs", type=int, default=15)
+    parser.add_argument("--seeds", type=str, default="0")
+    parser.add_argument("--epochs", type=int, default=50)
     parser.add_argument("--batch-size", type=int, default=128)
+    parser.add_argument(
+        "--num-hidden-layers",
+        type=int,
+        default=5,
+        help="Number of hidden layers; Barrett uses a 5-layer MLP.",
+    )
     parser.add_argument(
         "--eval-every",
         type=int,
@@ -85,12 +101,27 @@ def parse_args() -> argparse.Namespace:
         "Barrett requires 100%; we relax since small-width tanh nets may not reach 100% on subsamples.",
     )
     parser.add_argument(
+        "--allow-threshold-fallback",
+        action="store_true",
+        help="If set, include runs that never reach the train-accuracy threshold "
+        "by falling back to the overall max-test-accuracy epoch. By default, "
+        "threshold failures are saved but excluded from fitted/plot data, which "
+        "matches Barrett's exclusion of non-fitting networks more closely.",
+    )
+    parser.add_argument(
+        "--probe-samples",
+        type=int,
+        default=2048,
+        help="Number of training examples used for R_IG and lambda_hat probes. "
+        "Use 0 or a value >= train-samples for the full training subset.",
+    )
+    parser.add_argument(
         "--estimator-steps",
         type=int,
-        default=30,
+        default=5,
         help="Number of full-batch GD steps to run from max-test-acc state for the lambda estimator.",
     )
-    parser.add_argument("--flow-k", type=int, default=20)
+    parser.add_argument("--flow-k", type=int, default=10)
     parser.add_argument(
         "--reference-method",
         choices=("euler", "rk4"),
@@ -130,22 +161,28 @@ def resolve_dtype(args: argparse.Namespace, device: torch.device) -> torch.dtype
 
 
 def load_mnist(
-    root: Path, train_samples: int, test_samples: int, seed: int, dtype: torch.dtype
-) -> tuple[TensorDataset, TensorDataset]:
+    root: Path,
+    train_samples: int,
+    val_samples: int,
+    test_samples: int,
+    seed: int,
+    dtype: torch.dtype,
+) -> tuple[TensorDataset, TensorDataset, TensorDataset]:
+    """Return disjoint (train, val, test) tensor datasets from MNIST.
+
+    Train and val are drawn from a single permutation of the MNIST training
+    split: the first `train_samples` indices for train, the next `val_samples`
+    for val. This keeps the train subsample identical to the prior
+    train-only protocol (same seed) and guarantees val is disjoint from train.
+    Test is sampled independently from the MNIST test split.
+    """
     from torchvision import datasets, transforms
 
     transform = transforms.Compose(
         [transforms.ToTensor(), transforms.Normalize((0.1307,), (0.3081,))]
     )
 
-    def _subsample(split_train: bool, n: int) -> TensorDataset:
-        ds = datasets.MNIST(
-            root=root, train=split_train, download=False, transform=transform
-        )
-        if n < len(ds):
-            gen = torch.Generator().manual_seed(seed + (0 if split_train else 1))
-            idx = torch.randperm(len(ds), generator=gen)[:n].tolist()
-            ds = Subset(ds, idx)
+    def _materialize(ds) -> TensorDataset:
         loader = DataLoader(ds, batch_size=min(2048, len(ds)))
         xs, ys = [], []
         for images, labels in loader:
@@ -153,12 +190,44 @@ def load_mnist(
             ys.append(labels)
         return TensorDataset(torch.cat(xs).to(dtype), torch.cat(ys).long())
 
-    return _subsample(True, train_samples), _subsample(False, test_samples)
+    train_full = datasets.MNIST(
+        root=root, train=True, download=False, transform=transform
+    )
+    test_full = datasets.MNIST(
+        root=root, train=False, download=False, transform=transform
+    )
+
+    if train_samples + val_samples > len(train_full):
+        raise ValueError(
+            f"train_samples ({train_samples}) + val_samples ({val_samples}) "
+            f"exceeds MNIST train size ({len(train_full)}); cannot draw a "
+            "disjoint validation slice."
+        )
+
+    gen_tr = torch.Generator().manual_seed(seed + 0)
+    perm = torch.randperm(len(train_full), generator=gen_tr).tolist()
+    train_idx = perm[:train_samples]
+    val_idx = perm[train_samples : train_samples + val_samples]
+    assert set(train_idx).isdisjoint(set(val_idx))
+
+    if test_samples < len(test_full):
+        gen_te = torch.Generator().manual_seed(seed + 1)
+        test_idx = torch.randperm(len(test_full), generator=gen_te)[:test_samples].tolist()
+        test_ds = Subset(test_full, test_idx)
+    else:
+        test_ds = test_full
+
+    return (
+        _materialize(Subset(train_full, train_idx)),
+        _materialize(Subset(train_full, val_idx)),
+        _materialize(test_ds),
+    )
 
 
 def build_mlp(
     input_dim: int,
-    widths: Sequence[int],
+    width: int,
+    num_hidden_layers: int,
     num_classes: int,
     activation: str,
     dtype: torch.dtype,
@@ -166,10 +235,10 @@ def build_mlp(
     act = {"relu": nn.ReLU, "tanh": nn.Tanh, "gelu": nn.GELU}[activation]
     layers: list[nn.Module] = []
     prev = input_dim
-    for w in widths:
-        layers.append(nn.Linear(prev, w, bias=False).to(dtype))
+    for _ in range(num_hidden_layers):
+        layers.append(nn.Linear(prev, width, bias=False).to(dtype))
         layers.append(act())
-        prev = w
+        prev = width
     layers.append(nn.Linear(prev, num_classes).to(dtype))
     return nn.Sequential(*layers)
 
@@ -280,6 +349,7 @@ def estimate_lambda_flow_ref(
 def run_one(
     args: argparse.Namespace,
     train_ds: TensorDataset,
+    val_ds: TensorDataset,
     test_ds: TensorDataset,
     width: int,
     eta: float,
@@ -292,13 +362,17 @@ def run_one(
     train_features, train_targets = train_ds.tensors
     train_features = train_features.to(device)
     train_targets = train_targets.to(device)
+    val_features, val_targets = val_ds.tensors
+    val_features = val_features.to(device)
+    val_targets = val_targets.to(device)
     test_features, test_targets = test_ds.tensors
     test_features = test_features.to(device)
     test_targets = test_targets.to(device)
 
     model = build_mlp(
         input_dim=train_features.shape[1],
-        widths=[width, width, width],
+        width=width,
+        num_hidden_layers=args.num_hidden_layers,
         num_classes=10,
         activation=args.activation,
         dtype=dtype,
@@ -322,8 +396,16 @@ def run_one(
 
     # Initial eval.
     train_acc = evaluate(model, train_features, train_targets)
+    val_acc = evaluate(model, val_features, val_targets)
     test_acc = evaluate(model, test_features, test_targets)
-    history.append({"epoch": 0, "train_acc": train_acc, "test_acc": test_acc})
+    history.append(
+        {
+            "epoch": 0,
+            "train_acc": train_acc,
+            "val_acc": val_acc,
+            "test_acc": test_acc,
+        }
+    )
 
     for epoch in range(1, args.epochs + 1):
         model.train()
@@ -341,33 +423,67 @@ def run_one(
 
         if epoch % args.eval_every == 0 or epoch == args.epochs:
             train_acc = evaluate(model, train_features, train_targets)
+            val_acc = evaluate(model, val_features, val_targets)
             test_acc = evaluate(model, test_features, test_targets)
             history.append(
-                {"epoch": epoch, "train_acc": train_acc, "test_acc": test_acc}
+                {
+                    "epoch": epoch,
+                    "train_acc": train_acc,
+                    "val_acc": val_acc,
+                    "test_acc": test_acc,
+                }
             )
             LOGGER.info(
-                "w=%d eta=%.3g seed=%d epoch=%d train_acc=%.4f test_acc=%.4f",
+                "w=%d eta=%.3g seed=%d epoch=%d train_acc=%.4f val_acc=%.4f test_acc=%.4f",
                 width,
                 eta,
                 seed,
                 epoch,
                 train_acc,
+                val_acc,
                 test_acc,
             )
             saved_states[epoch] = {
                 k: v.detach().clone() for k, v in model.state_dict().items()
             }
 
-    # Barrett's protocol: max test acc with train acc >= threshold. If no eval
-    # epoch passes the threshold, fall back to max test acc unconditionally.
+    # Departing slightly from Barrett: select the snapshot with highest
+    # *validation* accuracy among models that fit the training data, so the
+    # test accuracy reported in Figure 6 is independent of the selection
+    # criterion. The train-acc gate uses train accuracy (no test leakage).
     threshold = args.train_acc_threshold
     candidates = [h for h in history if h["epoch"] > 0 and h["train_acc"] >= threshold]
     used_fallback = False
     if candidates:
-        best = max(candidates, key=lambda h: h["test_acc"])
+        best = max(candidates, key=lambda h: h["val_acc"])
     else:
+        best = max((h for h in history if h["epoch"] > 0), key=lambda h: h["val_acc"])
+        if not args.allow_threshold_fallback:
+            LOGGER.warning(
+                "w=%d eta=%.3g seed=%d did not hit train_acc>=%.2f; excluding from probes",
+                width,
+                eta,
+                seed,
+                threshold,
+            )
+            return {
+                "width": width,
+                "eta": eta,
+                "seed": seed,
+                "num_params": num_params,
+                "lambda_theoretical": eta * num_params / 4.0,
+                "best_epoch": best["epoch"],
+                "best_train_acc": best["train_acc"],
+                "best_val_acc": best["val_acc"],
+                "best_test_acc": best["test_acc"],
+                "used_fallback": False,
+                "included": False,
+                "exclusion_reason": f"train_acc_below_{threshold:.3f}",
+                "history": history,
+                "activation": args.activation,
+                "num_hidden_layers": args.num_hidden_layers,
+            }
         used_fallback = True
-        best = max((h for h in history if h["epoch"] > 0), key=lambda h: h["test_acc"])
         LOGGER.warning(
             "w=%d eta=%.3g seed=%d did not hit train_acc>=%.2f; using max test-acc state",
             width,
@@ -377,14 +493,25 @@ def run_one(
         )
     best_epoch = best["epoch"]
     best_test = best["test_acc"]
+    best_val = best["val_acc"]
+    best_train = best["train_acc"]
     best_state = saved_states[best_epoch]
 
-    # Restore max-test-acc state for R_IG + lambda estimation.
+    # Restore the val-selected state for R_IG + lambda estimation.
     model.load_state_dict(best_state)
 
-    # R_IG = (1/m) * ||grad L||^2 on full train set.
+    probe_features = train_features
+    probe_targets = train_targets
+    if 0 < args.probe_samples < train_features.shape[0]:
+        gen = torch.Generator().manual_seed(seed + 991)
+        idx = torch.randperm(train_features.shape[0], generator=gen)[: args.probe_samples]
+        idx = idx.to(train_features.device)
+        probe_features = train_features.index_select(0, idx)
+        probe_targets = train_targets.index_select(0, idx)
+
+    # R_IG = (1/m) * ||grad L||^2 on the probe loss.
     flat_grad, flat_hvp = compute_full_batch_grad_and_hvp(
-        model, loss_fn, train_features, train_targets
+        model, loss_fn, probe_features, probe_targets
     )
     r_ig = float(flat_grad.pow(2).sum() / num_params)
     grad_norm_sq = float(flat_grad.pow(2).sum())
@@ -395,8 +522,8 @@ def run_one(
     est = estimate_lambda_flow_ref(
         model=model,
         loss_fn=loss_fn,
-        features=train_features,
-        targets=train_targets,
+        features=probe_features,
+        targets=probe_targets,
         eta=est_eta,
         num_steps=args.estimator_steps,
         flow_k=args.flow_k,
@@ -416,11 +543,16 @@ def run_one(
         "grad_norm_sq": grad_norm_sq,
         "hg_norm_best": hg_norm,
         "best_epoch": best_epoch,
+        "best_train_acc": best_train,
+        "best_val_acc": best_val,
         "best_test_acc": best_test,
         "used_fallback": used_fallback,
+        "included": True,
+        "probe_samples": int(probe_features.shape[0]),
         "estimator_eta": est_eta,
         "history": history,
         "activation": args.activation,
+        "num_hidden_layers": args.num_hidden_layers,
     }
 
 
@@ -452,8 +584,13 @@ def main() -> None:
     seeds = [int(x) for x in args.seeds.split(",")]
 
     # Load MNIST once; reuse across runs (seed affects subsample ordering minimally).
-    train_ds, test_ds = load_mnist(
-        args.mnist_root, args.train_samples, args.test_samples, seed=0, dtype=dtype
+    train_ds, val_ds, test_ds = load_mnist(
+        args.mnist_root,
+        args.train_samples,
+        args.val_samples,
+        args.test_samples,
+        seed=0,
+        dtype=dtype,
     )
 
     results: list[dict] = []
@@ -463,15 +600,20 @@ def main() -> None:
             "[%d/%d] width=%d eta=%.4g seed=%d", i, len(combos), width, eta, seed
         )
         try:
-            res = run_one(args, train_ds, test_ds, width, eta, seed, device, dtype)
+            res = run_one(
+                args, train_ds, val_ds, test_ds, width, eta, seed, device, dtype
+            )
             results.append(res)
             LOGGER.info(
-                "  -> lambda_hat=%.3g lambda_theory=%.3g R_IG=%.3e test_acc=%.4f resid=%.3g",
-                res["lambda_hat"],
+                "  -> included=%s lambda_hat=%s lambda_theory=%.3g R_IG=%s train_acc=%.4f val_acc=%.4f test_acc=%.4f resid=%s",
+                res.get("included", True),
+                f"{res['lambda_hat']:.3g}" if "lambda_hat" in res else "NA",
                 res["lambda_theoretical"],
-                res["r_ig"],
+                f"{res['r_ig']:.3e}" if "r_ig" in res else "NA",
+                res.get("best_train_acc", float("nan")),
+                res.get("best_val_acc", float("nan")),
                 res["best_test_acc"],
-                res["residual_ratio"],
+                f"{res['residual_ratio']:.3g}" if "residual_ratio" in res else "NA",
             )
         except Exception as e:
             LOGGER.exception(

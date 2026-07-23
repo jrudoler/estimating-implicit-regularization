@@ -26,6 +26,16 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 RESULTS_FIGURES_DIR = REPO_ROOT / "results" / "figures"
 STYLE_PATH = REPO_ROOT / "clean_fig.mplstyle"
 DEFAULT_OUTPUT = RESULTS_FIGURES_DIR / "dropout_bias_ridge_panel.pdf"
+FACET_LABEL_SIZE = 13
+SHARED_AXIS_LABEL_SIZE = 15
+DEPTH_LABEL_X = 0.725
+COLORBAR_X = 0.9
+
+
+def _format_facet_value(value: object) -> str:
+    if isinstance(value, float) and value.is_integer():
+        return str(int(value))
+    return str(value)
 
 
 def parse_args() -> argparse.Namespace:
@@ -115,7 +125,13 @@ def load_dropout_summary_from_wandb(
 
 
 def filter_dropout_summary(summary_df):
-    required_columns = {"width", "depth", "dropout", "estimated_ridge", "train_bias/loss"}
+    required_columns = {
+        "width",
+        "depth",
+        "dropout",
+        "estimated_ridge",
+        "train_bias/loss",
+    }
     missing_columns = sorted(required_columns - set(summary_df.columns))
     if missing_columns:
         raise KeyError(
@@ -138,7 +154,7 @@ def build_figure(summary_df) -> plt.Figure:
         row="depth",
         sharex=True,
         sharey=True,
-        margin_titles=True,
+        margin_titles=False,
         height=2.5,
         aspect=1,
     )
@@ -149,7 +165,36 @@ def build_figure(summary_df) -> plt.Figure:
         hue="train_bias/loss",
     )
 
-    colorbar_axis = grid.figure.add_axes([1.05, 0.1, 0.02, 0.8])
+    grid.set_titles("")
+    grid.figure.subplots_adjust(
+        bottom=0.14,
+        top=0.90,
+        right=0.82,
+        hspace=0.14,
+        wspace=0.16,
+    )
+    for ax, width in zip(grid.axes[0], grid.col_names):
+        ax.set_title(
+            f"Width {_format_facet_value(width)}",
+            pad=6,
+            fontsize=FACET_LABEL_SIZE,
+            color="gray",
+            alpha=0.9,
+        )
+    for row_index, depth in enumerate(grid.row_names):
+        last_axis_position = grid.axes[row_index, -1].get_position()
+        grid.figure.text(
+            DEPTH_LABEL_X,
+            0.5 * (last_axis_position.y0 + last_axis_position.y1),
+            f"Depth {_format_facet_value(depth)}",
+            ha="left",
+            va="center",
+            fontsize=FACET_LABEL_SIZE,
+            color="gray",
+            alpha=0.9,
+        )
+
+    colorbar_axis = grid.figure.add_axes([COLORBAR_X, 0.18, 0.025, 0.72])
     norm = mpl.colors.Normalize(
         vmin=summary_df["train_bias/loss"].min(),
         vmax=summary_df["train_bias/loss"].max(),
@@ -162,9 +207,18 @@ def build_figure(summary_df) -> plt.Figure:
     colorbar.set_label("Loss from fitting regularizer")
 
     grid.set_axis_labels("", "")
-    grid.figure.supxlabel("Dropout rate", y=0.02)
-    grid.figure.supylabel(r"Estimated ridge penalty $\hat{\lambda}$")
-    grid.tick_params(axis="x", rotation=45)
+    grid.figure.supxlabel("Dropout rate", y=0.025, fontsize=SHARED_AXIS_LABEL_SIZE)
+    grid.figure.supylabel(
+        r"Estimated ridge penalty $\hat{\lambda}$",
+        fontsize=SHARED_AXIS_LABEL_SIZE,
+    )
+    # grid.tick_params(axis="x", rotation=45, labelsize=1)
+    from matplotlib.ticker import MaxNLocator
+
+    for ax in grid.axes[-1]:
+        ax.xaxis.set_major_locator(MaxNLocator(nbins=7, integer=True))
+        ax.tick_params(axis="x")
+
     return grid.figure
 
 
@@ -190,7 +244,7 @@ def main() -> None:
 
     figure = build_figure(summary_df)
     args.output.parent.mkdir(parents=True, exist_ok=True)
-    figure.savefig(args.output, dpi=args.dpi, bbox_inches="tight")
+    figure.savefig(args.output, dpi=args.dpi, bbox_inches="tight", pad_inches=0.02)
     plt.close(figure)
     LOGGER.info("Saved %s", args.output)
 

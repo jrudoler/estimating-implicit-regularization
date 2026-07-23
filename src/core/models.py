@@ -4,7 +4,6 @@ from torch import Tensor
 
 import lightning as pl
 from lightning import LightningModule
-import wandb
 from typing import Union, Optional, Any, Type, Callable, Tuple, List
 
 from torchmetrics.classification import Accuracy
@@ -24,6 +23,7 @@ def load_model_from_artifact(
     Returns:
         The loaded model.
     """
+    import wandb  # lazy: only needed for artifact loading, not compatible with Python 3.12 distutils
     api = wandb.Api()
     artifact = api.artifact(artifact_ref)
     checkpoint_path = artifact.download()

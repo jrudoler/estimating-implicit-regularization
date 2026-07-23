@@ -1,6 +1,6 @@
 # Repository Agent Rules
 
-This file is the canonical repo-local instructions for autonomous work in `/home/jrudoler/inductive-bias`.
+This file is the canonical repo-local instructions for autonomous work in this repository.
 
 ## General Repo Boundaries
 
@@ -8,9 +8,8 @@ This file is the canonical repo-local instructions for autonomous work in `/home
 - `paper/` is available as read-only context for ordinary coding, methods, and experiment tasks.
 - Treat the parent repo and `paper/` as operationally independent repos. Keep commits separate.
 - Never edit files in `paper/` unless the user explicitly asks for manuscript, paper, or Overleaf changes.
-- Default behavior for implementation, experiment, or methods work is to update code and non-paper docs only, not `paper/`.
-- By default, log autonomous method or code changes in [`docs/autonomous_notes.md`](/home/jrudoler/inductive-bias/docs/autonomous_notes.md) or another non-paper note in `docs/`, not in `paper/`.
-- The active manuscript location is `paper/`. Do not treat manuscript-like files in the parent repo, such as [`docs/paper.tex`](/home/jrudoler/inductive-bias/docs/paper.tex), as the default paper editing target unless the user explicitly asks for those legacy files.
+- Default behavior for implementation, experiment, or methods work is to update code only, not `paper/`.
+- The active manuscript location is `paper/`.
 
 ## Paper Repo Safety Rules
 
@@ -68,7 +67,7 @@ git -C paper status --short
 # read files in paper/ for context, but do not stage or edit them
 ```
 
-For implementation, methods, experiments, and autonomous findings, update code and non-paper docs first, such as [`docs/autonomous_notes.md`](/home/jrudoler/inductive-bias/docs/autonomous_notes.md), unless the user explicitly asks for manuscript edits.
+For implementation, methods, experiments, and autonomous findings, update code first; only edit the manuscript when the user explicitly asks for manuscript edits.
 
 ### Explicit Manuscript Edits In `paper/`
 
@@ -99,12 +98,6 @@ Run this only if you want the parent repo to record the new manuscript commit:
 git add paper
 git commit -m "Update paper submodule pointer"
 ```
-
-## Notes Convention
-
-- For autonomous work, method changes, implementation decisions, and experiment notes should usually be recorded in `docs/` first.
-- [`docs/autonomous_notes.md`](/home/jrudoler/inductive-bias/docs/autonomous_notes.md) is the default running log for those notes when no more specific doc is requested.
-- Only update the manuscript itself when the user explicitly asks for manuscript, paper, or Overleaf changes.
 
 ## Analysis Output Convention
 

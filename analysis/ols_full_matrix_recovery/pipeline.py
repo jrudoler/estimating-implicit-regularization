@@ -24,15 +24,73 @@ def loss_grad(X: torch.Tensor, y: torch.Tensor, theta: torch.Tensor) -> torch.Te
     return X.T @ (X @ theta - y) / n
 
 
+def loss_grad_trajectory(
+    X: torch.Tensor, y: torch.Tensor, thetas: torch.Tensor
+) -> torch.Tensor:
+    """Vectorised loss gradients for a whole trajectory.
+
+    thetas: [T+1, p] — one row per GD iterate. Returns [T+1, p] where
+    row k is loss_grad(X, y, thetas[k]).  Useful for trajectory visualisation;
+    for a single point prefer calling loss_grad directly.
+    """
+    n = X.shape[0]
+    c = (X.T @ y) / n
+    A = (X.T @ X) / n
+    return thetas @ A.T - c.unsqueeze(0)
+
+
+def mse_loss(X: torch.Tensor, y: torch.Tensor, theta: torch.Tensor) -> torch.Tensor:
+    return (X @ theta - y).square().mean()
+
+
 def gd_trajectory(
     X: torch.Tensor, y: torch.Tensor, steps: int, eps: float
 ) -> dict[str, torch.Tensor]:
     theta = torch.zeros(X.shape[1], dtype=X.dtype)
     thetas = [theta.clone()]
+    losses = [mse_loss(X, y, theta)]
     for _ in range(steps):
         theta = theta - eps * loss_grad(X, y, theta)
         thetas.append(theta.clone())
-    return {"theta": torch.stack(thetas)}
+        losses.append(mse_loss(X, y, theta))
+    return {"theta": torch.stack(thetas), "loss": torch.stack(losses)}
+
+
+def callback_stop_step(
+    monitored_losses: torch.Tensor, patience: int, min_delta: float
+) -> int:
+    """Lightning-style early-stopping over a precomputed loss trace.
+
+    Returns the index k such that monitored_losses[k] is the iterate used as
+    the final model — i.e. the last step before patience consecutive steps with
+    no improvement >= min_delta.  Mirrors the behaviour of
+    lightning.pytorch.callbacks.EarlyStopping(mode="min", restore_best_weights=False).
+    """
+    best = float("inf")
+    wait = 0
+    for epoch in range(len(monitored_losses) - 1):
+        current = float(monitored_losses[epoch])
+        if current < best - min_delta:
+            best = current
+            wait = 0
+        else:
+            wait += 1
+            if wait >= patience:
+                return epoch + 1
+    return len(monitored_losses) - 1
+
+
+def freeze_after_stop(theta_traj: torch.Tensor, stop_step: int) -> torch.Tensor:
+    """Return a copy of theta_traj with all iterates after stop_step clamped.
+
+    Useful for visualising what a GD trajectory looks like under early stopping:
+    the trajectory is frozen at stop_step rather than continuing to converge.
+    Not needed for scalar endpoint extraction — index theta_traj[stop_step] directly.
+    """
+    frozen = theta_traj.clone()
+    if stop_step + 1 < frozen.shape[0]:
+        frozen[stop_step + 1 :] = frozen[stop_step]
+    return frozen
 
 
 @dataclass

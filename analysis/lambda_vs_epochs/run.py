@@ -37,7 +37,7 @@ from analysis.ols_dgp import (  # noqa: E402
 LOGGER = logging.getLogger(__name__)
 DEFAULT_OUTPUT = REPO_ROOT / "data" / "generated" / "lambda_vs_epochs" / "results.pt"
 
-# Experiment parameters matching notebooks/linear-regression.ipynb.
+# Experiment parameters shared with the OLS early-stopping pipeline.
 SEED = DEFAULT_OLS_SEED
 N = DEFAULT_OLS_N
 P = DEFAULT_OLS_P
