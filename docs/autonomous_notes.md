@@ -19,6 +19,18 @@ Use this file as the default non-manuscript log for autonomous method, implement
 - Added an OLMo ridge-estimation pilot in [`analysis/olmo_ridge_estimation/run.py`](/home/jrudoler/inductive-bias/analysis/olmo_ridge_estimation/run.py). It estimates the scalar ridge coefficient under the project convention `R(theta) = lambda ||theta||^2`, using `lambda_hat = -<theta, grad L> / (2 <theta, theta>)`, for `allenai/OLMo-2-0425-1B` at revision `stage1-step1907359-tokens4001B` on only `data/wiki/wiki-0001.json.gz` from `allenai/olmo-mix-1124`. Hugging Face model and dataset downloads are routed through `$HF_HOME`, defaulting to `/shared_data0/jrudoler/.cache/huggingface/`.
 - Extended the OLMo ridge-estimation script to save reusable sharded per-parameter gradients with manifests under `/shared_data0/jrudoler/inductive-bias/olmo_ridge_estimation/model_grid/gradients/<run_id>/`, and added [`scripts/submit_llm_ridge_grid.sh`](/home/jrudoler/inductive-bias/scripts/submit_llm_ridge_grid.sh) for parallel <=7B model runs on standby H200 GPUs.
 
+## 2026-05-01
+
+- Added the controlled LLM ridge model-grid extension in [`scripts/submit_llm_ridge_extension_grid.sh`](/home/jrudoler/inductive-bias/scripts/submit_llm_ridge_extension_grid.sh) for `google/gemma-3-270m`, `google/gemma-3-1b-pt`, `Qwen/Qwen2.5-3B`, and `Qwen/Qwen2.5-7B`. The script has separate `smoke` and `full` modes, preserves prior 50M outputs, writes summaries under `data/generated/olmo_ridge_estimation/model_grid/`, and keeps large gradient shards under `/shared_data0/jrudoler/inductive-bias/olmo_ridge_estimation/model_grid/gradients/`.
+- Added the primary `attention_plus_mlp` estimate to [`analysis/olmo_ridge_estimation/run.py`](/home/jrudoler/inductive-bias/analysis/olmo_ridge_estimation/run.py). It excludes embedding/output-head and normalization parameters and is computed from summed `<theta, grad>`, `||theta||_2^2`, and `||grad||_2^2` sufficient statistics, not by averaging per-group lambdas.
+- Added [`analysis/olmo_ridge_estimation/summarize_model_grid.py`](/home/jrudoler/inductive-bias/analysis/olmo_ridge_estimation/summarize_model_grid.py) to render compact model-grid tables ordered by transformer-block parameter count. Submitted 1M-token smoke jobs `54910`-`54913`; full jobs should wait until those smoke jobs complete successfully.
+
+## 2026-05-03
+
+- Checked the controlled LLM ridge extension jobs. Smoke jobs `54910`-`54913` and full 50M-token jobs `54919`-`54922` all completed with Slurm exit code `0:0`. The full jobs wrote JSON/PT summaries for `gemma3_270m`, `gemma3_1b_pt`, `qwen25_3b`, and `qwen25_7b` under `data/generated/olmo_ridge_estimation/model_grid/`, plus gradient manifests under `/shared_data0/jrudoler/inductive-bias/olmo_ridge_estimation/model_grid/gradients/<run_id>/`.
+- Generated the compact model-grid summary table at `data/generated/olmo_ridge_estimation/model_grid/summary.md`. The primary `attention_plus_mlp` estimates for the new 50M runs are: Gemma 3 270M `-6.114e-10`, Gemma 3 1B `-3.1432e-09`, Qwen2.5 3B `-2.6782e-08`, and Qwen2.5 7B `-9.4376e-09`.
+- Added the model-grid plot pipeline [`analysis/plot_llm_ridge_model_grid/run.py`](/home/jrudoler/inductive-bias/analysis/plot_llm_ridge_model_grid/run.py), with the Snakemake target `results/figures/llm_ridge_model_grid.pdf`. The figure shows signed `lambda_hat` against model size across all, decay-eligible, attention+MLP, embedding/LM-head, attention, and MLP scopes. The strongest within-family pattern is Qwen2.5: the block-only `attention_plus_mlp` estimate is negative at every size and shrinks toward zero as size increases, while embedding-inclusive all/decay scopes flip positive at 3B and 7B.
+
 ## 2026-04-23
 
 - Slimmed the active project surface to align with the manuscript and retained research trajectory. Added [`docs/paper_figure_inventory.md`](/home/jrudoler/inductive-bias/docs/paper_figure_inventory.md) as the provenance map for all figures currently referenced by [`paper/main.tex`](/home/jrudoler/inductive-bias/paper/main.tex).
@@ -154,3 +166,41 @@ Use this file as the default non-manuscript log for autonomous method, implement
 - Archived legacy figure artifacts from the old top-level `figures/` and repo-root output locations into `archive/figures_legacy_2026-04/`, keeping active workflow figures under `results/figures/`.
 - Updated `docs/paper_figure_pipeline.md` after removing the separate paper figure inventory note; the maintained convention is now explicit that `results/figures/` is the repo-side final figure location and `paper/figures/` is a Snakemake-staged manuscript copy.
 - Converted active paper-figure workflow targets to PDF outputs by default and routed W&B-backed figures through local `data/generated/<analysis>/runs.parquet` snapshots. The tracked W&B sweep manifest is now account-neutral; personal W&B entity/project and finished sweep IDs live in ignored `config/sweeps.local.yaml` or runtime config/env overrides.
+
+## 2026-05-04
+
+- Extended the LLM ridge estimator with a full-Wikitext attention/MLP-only path. `analysis/olmo_ridge_estimation/run.py` now supports `--dataset-source wikitext`, `--token-budget 0` for the full selected split, `--parameter-scope attention_mlp`, and batch bootstrap intervals from resampled per-batch sufficient statistics.
+- Added `scripts/submit_llm_ridge_bootstrap_grid.sh` for smoke and full Wikitext-103 jobs. The grid includes at least three checkpoints per family up to roughly 15B: Gemma 3, Qwen2.5, Qwen3 Base, and OLMo 2 stage1.
+- Added `analysis/plot_llm_ridge_bootstrap_grid/run.py` plus the Snakemake plotting rule for `results/figures/llm_ridge_bootstrap_grid.pdf`, using the project matplotlib style and separate panels for attention+MLP, attention, and MLP estimates.
+- Ran the 1M-token bootstrap smoke grid as Slurm jobs `56088`-`56102`; all 15 jobs completed with exit code `0:0` and wrote JSON/PT summaries under `data/generated/olmo_ridge_estimation/bootstrap_grid/`.
+- Submitted the full-Wikitext bootstrap grid as Slurm jobs `56105`-`56119`, using 1000 batch-bootstrap replicates and a 36-hour walltime. The full jobs write only small summaries under `data/generated/olmo_ridge_estimation/bootstrap_grid/`; they do not write large gradient shards.
+- Added contiguous-token chunk summaries to the attention/MLP path via `--chunk-token-budget`; the intended uncertainty display is now mean +/- SEM across roughly 10M-token Wikitext chunks. Added `scripts/submit_llm_ridge_chunk_grid.sh` and the `results/figures/llm_ridge_chunk_grid.pdf` plotting target.
+- Submitted the missing OLMo 2 7B final-stage1 chunk job as Slurm job `57249` after noticing the initial selected chunk grid included OLMo 2 1B but omitted OLMo 2 7B.
+
+## 2026-07-23
+
+- Replaced lambda-only chunk accumulation for new runs with exact within-chunk
+  mean-gradient accumulation. New chunk payloads retain gradient norms, cosine
+  alignment, projection R-squared, residual ratios, and chunk losses for
+  attention, MLP, and their union.
+- Kept the historical chunk and bootstrap artifacts unchanged. Their `.pt`
+  files duplicate the JSON payloads and do not contain hidden gradient vectors
+  or gradient norms.
+- Reclassified OLMo 2 1B/7B/13B as release-qualified diagnostics because the
+  1B model is from the `0425` release while 7B/13B are from `1124`, with
+  different training budgets. They are no longer submitted by default as a
+  controlled size ladder.
+- Added the Pythia deduplicated 1B/2.8B/6.9B ladder as the controlled
+  replacement, with 12B behind `INCLUDE_LARGE_ENDPOINTS=1` until smaller runs
+  demonstrate meaningful projection fit quality.
+- Deferred layerwise gradient statistics until the coarse attention/MLP
+  projection passes that diagnostic threshold.
+- Ran exact 1M-token float32 chunk-gradient smoke diagnostics as Slurm jobs
+  `64885`-`64888`; all completed with exit code `0:0`. Attention+MLP projection
+  R-squared was `2.02e-10` for Pythia 1B, `2.41e-08` for Pythia 2.8B,
+  `1.37e-09` for OLMo 2 1B, and `6.02e-09` for OLMo 2 7B. Residual ratios were
+  effectively one for every model.
+- Applied the fit-quality gate: no full-Wikitext, Pythia 6.9B, or 12B-14B
+  chunk-fit jobs were submitted. The chunk submission script now requires an
+  explicit `MODEL_SLUGS` list, and all 12B-14B endpoints require
+  `INCLUDE_LARGE_ENDPOINTS=1`.

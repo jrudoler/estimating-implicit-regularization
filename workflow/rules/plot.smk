@@ -129,6 +129,46 @@ rule plot_ols_full_matrix_recovery:
         "--out-recovery {output.recovery} --out-distance {output.distance}"
 
 
+rule plot_llm_ridge_model_grid:
+    input:
+        script="analysis/plot_llm_ridge_model_grid/run.py",
+        style="clean_fig.mplstyle",
+        model_grid="data/generated/olmo_ridge_estimation/model_grid",
+    output:
+        pdf="results/figures/llm_ridge_model_grid.pdf",
+    shell:
+        "PYTHONPATH=src uv run python {input.script} "
+        "--input-dir {input.model_grid} "
+        "--output {output.pdf}"
+
+
+rule plot_llm_ridge_bootstrap_grid:
+    input:
+        script="analysis/plot_llm_ridge_bootstrap_grid/run.py",
+        style="clean_fig.mplstyle",
+        bootstrap_grid="data/generated/olmo_ridge_estimation/bootstrap_grid",
+    output:
+        pdf="results/figures/llm_ridge_bootstrap_grid.pdf",
+    shell:
+        "PYTHONPATH=src uv run python {input.script} "
+        "--input-dir {input.bootstrap_grid} "
+        "--output {output.pdf}"
+
+
+rule plot_llm_ridge_chunk_grid:
+    input:
+        script="analysis/plot_llm_ridge_bootstrap_grid/run.py",
+        style="clean_fig.mplstyle",
+        chunk_grid="data/generated/olmo_ridge_estimation/chunk_grid",
+    output:
+        pdf="results/figures/llm_ridge_chunk_grid.pdf",
+    shell:
+        "PYTHONPATH=src uv run python {input.script} "
+        "--input-dir {input.chunk_grid} "
+        "--pattern '*_wikitext103_full_chunk10m.json' "
+        "--output {output.pdf}"
+
+
 rule stage_preserved_figure:
     input:
         src="data/provided/paper_assets/{fig_id}.{ext}",
