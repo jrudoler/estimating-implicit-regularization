@@ -8,7 +8,6 @@ import json
 import logging
 from contextlib import nullcontext
 from pathlib import Path
-import sys
 from typing import Any, Dict, List, Optional
 
 import torch
@@ -17,7 +16,15 @@ from lightning.pytorch.callbacks import EarlyStopping, ModelCheckpoint
 from lightning.pytorch.loggers import WandbLogger
 import wandb
 
-from core.bias import RidgeBias, NuclearNormBias, LowRankBias, JointBias
+from core.bias import (
+    RidgeBias,
+    NuclearNormBias,
+    LowRankBias,
+    StableRankBias,
+    SpectralEntropyBias,
+    SpectralGapBias,
+    JointBias,
+)
 from core.estimators import BiasWithCrossEntropyScheduled
 from core.models import DeepReLUClassifier
 from core.data import MNISTLightningDataModule
@@ -94,6 +101,16 @@ def parse_args() -> argparse.Namespace:
         "--disable-wandb",
         action="store_true",
         help="Completely disable wandb logging and run locally only.",
+    )
+    parser.add_argument(
+        "--output",
+        type=Path,
+        default=None,
+        help=(
+            "JSON path for estimated bias parameters plus gradient-matching "
+            "adequacy diagnostics (residual_ratio, grad_cosine). Needed when "
+            "running without wandb, whose summary otherwise captures them."
+        ),
     )
     args, _ = parser.parse_known_args()
     args.checkpoint_dir = args.checkpoint_dir.expanduser()
@@ -203,6 +220,7 @@ def main() -> None:
         datamodule.setup("fit")
 
         # Load or train predictive model
+        test_results: Dict[str, Any] = {}
         checkpoint_path: Optional[Path]
         if args.checkpoint_path is not None:
             LOGGER.info(
@@ -304,6 +322,12 @@ def main() -> None:
                 bias_model_list.append(NuclearNormBias(enforce_positive=True))
             elif bias_type == "low_rank":
                 bias_model_list.append(LowRankBias(enforce_positive=True))
+            elif bias_type == "stable_rank":
+                bias_model_list.append(StableRankBias(enforce_positive=True))
+            elif bias_type == "spectral_entropy":
+                bias_model_list.append(SpectralEntropyBias(enforce_positive=True))
+            elif bias_type == "spectral_gap":
+                bias_model_list.append(SpectralGapBias(enforce_positive=True))
             else:
                 raise ValueError(f"Unknown bias type: {bias_type}")
 
@@ -353,14 +377,56 @@ def main() -> None:
             for name, value in joint_bias_model.get_bias_params().items()
         }
 
+        # Gradient-matching adequacy diagnostics (how much of grad L this family
+        # explains).  These are logged by the estimator each step; take the final
+        # values so they survive without wandb's automatic metric summary.
+        adequacy_keys = (
+            "train_bias/loss",
+            "train_bias/residual_ratio",
+            "train_bias/grad_cosine",
+            "train_bias/projection_r2",
+            "train_bias/loss_grad_norm",
+        )
+        adequacy_metrics = {
+            key: float(value)
+            for key, value in bias_trainer.callback_metrics.items()
+            if key in adequacy_keys
+        }
+
         if not args.disable_wandb and run is not None:
             wandb.log(bias_parameter_metrics)
             for key, value in bias_parameter_metrics.items():
+                run.summary[key] = value
+            for key, value in adequacy_metrics.items():
                 run.summary[key] = value
         else:
             LOGGER.info("[bias-estimation] Estimated bias parameters:")
             for key, value in bias_parameter_metrics.items():
                 LOGGER.info("  %s: %f", key, value)
+            LOGGER.info("[bias-estimation] Adequacy diagnostics:")
+            for key, value in adequacy_metrics.items():
+                LOGGER.info("  %s: %g", key, value)
+
+        if args.output is not None:
+            args.output.parent.mkdir(parents=True, exist_ok=True)
+            record: Dict[str, Any] = {
+                "config": {
+                    "depth": depth,
+                    "width": width,
+                    "dropout": dropout,
+                    "batchnorm": batchnorm,
+                    "l2_lambda": l2_lambda,
+                    "seed": seed,
+                    "bias_types": bias_types,
+                },
+                "bias_params": bias_parameter_metrics,
+                "adequacy": adequacy_metrics,
+                "predictive_metrics": {
+                    str(key): float(value) for key, value in test_results.items()
+                },
+            }
+            args.output.write_text(json.dumps(record, indent=2))
+            LOGGER.info("[bias-estimation] Wrote %s", args.output)
 
         if not args.disable_wandb and run is not None:
             wandb.finish()

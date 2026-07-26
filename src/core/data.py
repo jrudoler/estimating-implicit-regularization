@@ -164,3 +164,87 @@ class MNISTLightningDataModule(LightningDataModule):
             num_workers=self.num_workers,
             persistent_workers=self.num_workers > 0,
         )
+
+
+class CIFAR10LightningDataModule(LightningDataModule):
+    """CIFAR-10 counterpart to MNISTLightningDataModule.
+
+    Added so the estimator can be applied on the dataset reviewers asked about.
+    Normalization uses the standard CIFAR-10 channel statistics; no augmentation,
+    since gradient matching assumes a fixed empirical objective evaluated at a
+    trained optimum (random crops/flips would change the objective per epoch).
+    """
+
+    def __init__(
+        self, root: Path, batch_size: int, num_workers: int, val_fraction: float = 0.1
+    ):
+        super().__init__()
+        self.root = root
+        self.batch_size = batch_size
+        self.num_workers = num_workers
+        self.val_fraction = val_fraction
+        self.transform = transforms.Compose(
+            [
+                transforms.ToTensor(),
+                transforms.Normalize(
+                    (0.4914, 0.4822, 0.4465), (0.2470, 0.2435, 0.2616)
+                ),
+            ]
+        )
+        self._train_dataset = None
+        self._val_dataset = None
+        self._test_dataset = None
+
+    def prepare_data(self) -> None:  # type: ignore[override]
+        datasets.CIFAR10(root=self.root, train=True, download=True)
+        datasets.CIFAR10(root=self.root, train=False, download=True)
+
+    def setup(self, stage: str | None = None) -> None:  # type: ignore[override]
+        if stage == "fit" or stage is None:
+            full_train = datasets.CIFAR10(
+                root=self.root,
+                train=True,
+                download=False,
+                transform=self.transform,
+            )
+            val_size = int(len(full_train) * self.val_fraction)
+            train_size = len(full_train) - val_size
+            self._train_dataset, self._val_dataset = random_split(
+                full_train,
+                [train_size, val_size],
+                generator=torch.Generator().manual_seed(42),
+            )
+        if stage == "test" or stage is None:
+            self._test_dataset = datasets.CIFAR10(
+                root=self.root,
+                train=False,
+                download=False,
+                transform=self.transform,
+            )
+
+    def train_dataloader(self) -> DataLoader:
+        return DataLoader(
+            self._train_dataset,
+            batch_size=self.batch_size,
+            shuffle=True,
+            num_workers=self.num_workers,
+            persistent_workers=self.num_workers > 0,
+        )
+
+    def val_dataloader(self) -> DataLoader:
+        return DataLoader(
+            self._val_dataset,
+            batch_size=self.batch_size,
+            shuffle=False,
+            num_workers=self.num_workers,
+            persistent_workers=self.num_workers > 0,
+        )
+
+    def test_dataloader(self) -> DataLoader:
+        return DataLoader(
+            self._test_dataset,
+            batch_size=self.batch_size,
+            shuffle=False,
+            num_workers=self.num_workers,
+            persistent_workers=self.num_workers > 0,
+        )

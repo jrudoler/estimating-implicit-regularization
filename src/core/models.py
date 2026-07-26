@@ -541,3 +541,79 @@ class DeepReLUClassifier(LightningModule):
             gamma=0.1,
         )
         return [optimizer], [scheduler]
+
+
+class SmallCNN(DeepReLUClassifier):
+    """Small convolutional classifier, for applying the estimator to a conv net.
+
+    Reviewers asked why only MLPs were studied.  The gradient-matching estimator is
+    architecture-agnostic (it treats the predictive model as a black box via
+    ``functional_call``), so only the module needs to change.  This subclasses
+    :class:`DeepReLUClassifier` purely to reuse its train/val/test steps, L2
+    penalty, and SGD+MultiStepLR configuration; the MLP trunk is replaced by
+    conv -> ReLU -> maxpool blocks followed by a small classifier head.
+
+    Note ``LightningModule.__init__`` is called directly to skip the parent's MLP
+    construction while still inheriting its training logic.
+    """
+
+    def __init__(
+        self,
+        in_channels: int,
+        num_classes: int,
+        image_size: int,
+        channels: Tuple[int, ...] = (32, 64),
+        fc_width: int = 128,
+        dropout: float = 0.0,
+        batchnorm: bool = False,
+        l2_lambda: float = 0.0,
+        lr: float = 0.05,
+        momentum: float = 0.9,
+    ) -> None:
+        LightningModule.__init__(self)
+        # Pass the values explicitly: because LightningModule.__init__ is invoked
+        # directly (rather than through DeepReLUClassifier), frame inspection does
+        # not pick up these arguments, and the inherited weight_regularization and
+        # configure_optimizers read l2_lambda/lr/momentum off self.hparams.
+        self.save_hyperparameters(
+            {
+                "in_channels": in_channels,
+                "num_classes": num_classes,
+                "image_size": image_size,
+                "channels": tuple(channels),
+                "fc_width": fc_width,
+                "dropout": dropout,
+                "batchnorm": batchnorm,
+                "l2_lambda": l2_lambda,
+                "lr": lr,
+                "momentum": momentum,
+            }
+        )
+        if not channels:
+            raise ValueError("channels must contain at least one conv width")
+
+        layers: List[nn.Module] = []
+        prev_channels = in_channels
+        spatial = image_size
+        for out_channels in channels:
+            layers.append(nn.Conv2d(prev_channels, out_channels, kernel_size=3, padding=1))
+            if batchnorm:
+                layers.append(nn.BatchNorm2d(out_channels))
+            layers.append(nn.ReLU())
+            layers.append(nn.MaxPool2d(2))
+            prev_channels = out_channels
+            spatial //= 2
+        if spatial < 1:
+            raise ValueError("Too many conv blocks for the given image_size")
+        layers.append(nn.Flatten())
+        layers.append(nn.Linear(prev_channels * spatial * spatial, fc_width))
+        layers.append(nn.ReLU())
+        if dropout > 0:
+            layers.append(nn.Dropout(dropout))
+        layers.append(nn.Linear(fc_width, num_classes))
+
+        self.network = nn.Sequential(*layers)
+        self.loss_fn = nn.CrossEntropyLoss()
+        self.train_accuracy = Accuracy(task="multiclass", num_classes=num_classes)
+        self.val_accuracy = Accuracy(task="multiclass", num_classes=num_classes)
+        self.test_accuracy = Accuracy(task="multiclass", num_classes=num_classes)

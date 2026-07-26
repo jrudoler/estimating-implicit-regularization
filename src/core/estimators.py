@@ -93,6 +93,27 @@ class InductiveBiasEstimator(pl.LightningModule):
 
         self.log("train_bias/loss", loss, prog_bar=False)
 
+        # Scale-free adequacy diagnostics: how much of the residual loss gradient
+        # does this regularizer family actually explain?  `true_grad` is -grad L and
+        # `gradients` is grad R, so the gradient-matching residual is grad R + grad L
+        # and residual_ratio in [0, 1] is the unexplained fraction of ||grad L||
+        # (0 = fully explained, ->1 = out-of-family).  cosine is the alignment of
+        # grad R with -grad L; for a one-parameter family at its optimum
+        # residual_ratio = sqrt(1 - cosine^2).
+        with torch.no_grad():
+            grad_r = gradients.detach()
+            neg_grad_l = true_grad.detach()
+            loss_grad_norm = neg_grad_l.norm()
+            if loss_grad_norm > 0:
+                residual_ratio = (grad_r - neg_grad_l).norm() / loss_grad_norm
+                cosine = torch.nn.functional.cosine_similarity(
+                    grad_r, neg_grad_l, dim=0
+                )
+                self.log("train_bias/residual_ratio", residual_ratio, prog_bar=False)
+                self.log("train_bias/grad_cosine", cosine, prog_bar=False)
+                self.log("train_bias/projection_r2", cosine**2, prog_bar=False)
+                self.log("train_bias/loss_grad_norm", loss_grad_norm, prog_bar=False)
+
         # Log parameters from the bias model
         if hasattr(self.bias_model, "get_bias_params"):
             bias_params = self.bias_model.get_bias_params()
