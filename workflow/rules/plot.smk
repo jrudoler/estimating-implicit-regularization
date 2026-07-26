@@ -32,6 +32,44 @@ rule plot_dropout_bias_ridge_panel:
         "--output {output.pdf}"
 
 
+rule plot_closed_form_dropout_grid:
+    input:
+        script="analysis/plot_closed_form_dropout_grid/run.py",
+        style="clean_fig.mplstyle",
+        results="data/generated/closed_form_dropout_grid/results",
+    output:
+        pdf="results/figures/dropout_bias_ridge_panel_closed_form.pdf",
+    shell:
+        "PYTHONPATH=src uv run python {input.script} "
+        "--results-dir {input.results} "
+        "--output {output.pdf}"
+
+
+rule plot_dropout_trajectory_stability:
+    input:
+        script="analysis/plot_dropout_trajectory_stability/run.py",
+        style="clean_fig.mplstyle",
+        summary="data/generated/dropout_trajectory_lightning/summary.json",
+    output:
+        pdf="results/figures/dropout_lambda_trajectory_stability.pdf",
+    shell:
+        "PYTHONPATH=src uv run python {input.script} "
+        "--summary {input.summary} "
+        "--output {output.pdf}"
+
+
+rule plot_scaling_data_vs_model:
+    input:
+        script="analysis/plot_scaling_data_vs_model/run.py",
+        style="clean_fig.mplstyle",
+    output:
+        pdf="results/figures/scaling_data_vs_model.pdf",
+    shell:
+        "PYTHONPATH=src uv run python {input.script} "
+        "--style {input.style} "
+        "--output {output.pdf}"
+
+
 rule plot_barrett_igr_figure2:
     input:
         script="analysis/plot_barrett_igr_figure2/run.py",
