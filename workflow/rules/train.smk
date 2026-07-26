@@ -297,3 +297,29 @@ rule ols_bootstrap_recovery_panel_b:
         "--linear-data {input.linear_data} --output {output.results} "
         "--stop-step {params.stop_step}"
 
+
+SWA_REBUTTAL_SEEDS = [123, 42, 666, 314, 17, 111, 325, 643, 432, 51]
+
+
+rule swa_effective_regularizer:
+    """Separate SWA's learning-rate and averaging effects on an MNIST MLP."""
+    input:
+        script="analysis/swa_effective_regularizer/run.py",
+    output:
+        json="data/generated/swa_effective_regularizer/results/seed{seed}.json",
+    params:
+        checkpoints=lambda wildcards: (
+            f"data/generated/swa_effective_regularizer/checkpoints/seed{wildcards.seed}"
+        ),
+    wildcard_constraints:
+        seed="|".join(str(seed) for seed in SWA_REBUTTAL_SEEDS),
+    resources:
+        slurm_partition="whartonstat",
+        runtime=120,
+        mem_mb=32000,
+        cpus_per_task=4,
+        slurm_extra="--gres=gpu:1",
+    shell:
+        "PYTHONPATH=src uv run python {input.script} "
+        "--seed {wildcards.seed} --output {output.json} "
+        "--checkpoint-dir {params.checkpoints}"

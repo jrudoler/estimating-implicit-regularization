@@ -58,6 +58,23 @@ rule plot_dropout_trajectory_stability:
         "--output {output.pdf}"
 
 
+rule plot_swa_effective_regularizer:
+    input:
+        script="analysis/plot_swa_effective_regularizer/run.py",
+        style="clean_fig.mplstyle",
+        results=expand(
+            "data/generated/swa_effective_regularizer/results/seed{seed}.json",
+            seed=SWA_REBUTTAL_SEEDS,
+        ),
+    output:
+        pdf="results/figures/swa_effective_regularizer.pdf",
+    shell:
+        "PYTHONPATH=src uv run python {input.script} "
+        "--style {input.style} "
+        "--results-dir data/generated/swa_effective_regularizer/results "
+        "--output {output.pdf}"
+
+
 rule plot_scaling_data_vs_model:
     input:
         script="analysis/plot_scaling_data_vs_model/run.py",

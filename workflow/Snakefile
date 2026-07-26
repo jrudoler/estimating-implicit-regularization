@@ -47,6 +47,7 @@ localrules:
     plot_dropout_bias_ridge_panel,
     plot_closed_form_dropout_grid,
     plot_dropout_trajectory_stability,
+    plot_swa_effective_regularizer,
     plot_scaling_data_vs_model,
     plot_ols_composite,
     plot_ols_bootstrap_composite,
