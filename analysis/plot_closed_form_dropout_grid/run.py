@@ -17,6 +17,8 @@ import matplotlib.pyplot as plt
 import pandas as pd
 import seaborn as sns
 from cmap import Colormap
+from core.dropout_grid import load_grid
+from core.scalar_estimation import file_sha256
 
 
 LOGGER = logging.getLogger(__name__)
@@ -40,6 +42,8 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--results-dir", type=Path, default=DEFAULT_RESULTS_DIR)
     parser.add_argument("--output", type=Path, default=DEFAULT_OUTPUT)
+    parser.add_argument("--validation", type=Path, required=True,
+                        help="Provenance/coverage receipt from validate_dropout_grid")
     return parser.parse_args()
 
 
@@ -50,11 +54,17 @@ def configure_logging() -> None:
     )
 
 
-def load_results(results_dir: Path) -> pd.DataFrame:
+def load_results(results_dir: Path, validation: Path) -> pd.DataFrame:
     """Load the corrected Figure-5 grid into one plotting table."""
     rows: list[dict[str, float | int | str]] = []
-    for path in sorted(results_dir.glob("*.json")):
-        payload = json.loads(path.read_text())
+    receipt = json.loads(validation.read_text())
+    hashes = {tuple(s["cell"]): s["sha256"] for s in receipt["sources"]}
+    records = load_grid(results_dir, diagnostic_tolerance=receipt.get("diagnostic_tolerance", 1e-5))
+    if set(hashes) != set(records) or len(receipt["sources"]) != EXPECTED_RUNS:
+        raise ValueError("Validation receipt does not cover this grid")
+    for key, (path, payload) in sorted(records.items()):
+        if hashes[key] != file_sha256(path):
+            raise ValueError(f"Stale validation receipt: {path}")
         config = payload["config"]
         ridge = payload["closed_form"]["ridge"]
         rows.append(
@@ -64,12 +74,15 @@ def load_results(results_dir: Path) -> pd.DataFrame:
                 "width": int(config["width"]),
                 "dropout": float(config["dropout"]),
                 "seed": int(config["seed"]),
-                "estimated_ridge": float(ridge["scale_star"]),
-                "residual_ratio": float(ridge["residual_ratio"]),
-                "grad_cosine": float(ridge["grad_cosine"]),
+                "estimated_ridge": float(ridge["scale_star_clamped"]),
+                "estimated_ridge_signed": float(ridge["scale_star"]),
+                "residual_ratio": ridge["residual_ratio_clamped"],
+                "projection_r2": max(ridge["grad_cosine"], 0.)**2 if ridge["grad_cosine"] is not None else float("nan"),
+                "grad_cosine": ridge["grad_cosine"],
             }
         )
     frame = pd.DataFrame(rows)
+    frame.attrs["historical_source"] = receipt.get("historical_source")
     if len(frame) != EXPECTED_RUNS:
         raise RuntimeError(
             f"Expected {EXPECTED_RUNS} completed runs under {results_dir}, found {len(frame)}."
@@ -81,8 +94,8 @@ def build_figure(frame: pd.DataFrame) -> plt.Figure:
     """Build a layout-compatible closed-form replacement for Figure 5."""
     cmap = Colormap("crameri:imola").to_mpl()
     norm = mpl.colors.Normalize(
-        vmin=float(frame["grad_cosine"].min()),
-        vmax=float(frame["grad_cosine"].max()),
+        vmin=0.0,
+        vmax=max(float(frame["projection_r2"].max()), 1e-12) if frame["projection_r2"].notna().any() else 1.0,
     )
 
     grid = sns.FacetGrid(
@@ -115,11 +128,11 @@ def build_figure(frame: pd.DataFrame) -> plt.Figure:
                 ax=axis,
             )
             sns.stripplot(
-                data=subset,
+                data=subset[subset["projection_r2"].notna()],
                 x="dropout",
                 y="estimated_ridge",
                 order=DROPOUT_ORDER,
-                hue="grad_cosine",
+                hue="projection_r2",
                 hue_norm=norm,
                 palette=cmap,
                 size=4.5,
@@ -129,6 +142,10 @@ def build_figure(frame: pd.DataFrame) -> plt.Figure:
                 legend=False,
                 ax=axis,
             )
+            undefined = subset[subset["projection_r2"].isna()]
+            if not undefined.empty:
+                sns.stripplot(data=undefined, x="dropout", y="estimated_ridge",
+                              order=DROPOUT_ORDER, color="gray", marker="x", ax=axis)
 
             medians = (
                 subset.groupby("dropout", observed=False)["estimated_ridge"]
@@ -148,12 +165,14 @@ def build_figure(frame: pd.DataFrame) -> plt.Figure:
             axis.set_title("")
             axis.set_xlabel("")
             axis.set_ylabel("")
+            axis.tick_params(axis="both", labelsize=10)
             axis.tick_params(axis="x", rotation=45)
 
     for axis, width in zip(grid.axes[0], WIDTH_ORDER):
         axis.set_title(
             f"Width {width}",
             pad=6,
+            y=1.06,
             fontsize=FACET_LABEL_SIZE,
             color="gray",
             alpha=0.9,
@@ -161,7 +180,7 @@ def build_figure(frame: pd.DataFrame) -> plt.Figure:
 
     grid.figure.subplots_adjust(
         left=0.13,
-        bottom=0.16,
+        bottom=0.19,
         top=0.92,
         right=0.83,
         hspace=0.18,
@@ -184,9 +203,13 @@ def build_figure(frame: pd.DataFrame) -> plt.Figure:
     scalar_mappable = mpl.cm.ScalarMappable(cmap=cmap, norm=norm)
     scalar_mappable.set_array([])
     colorbar = grid.figure.colorbar(scalar_mappable, cax=colorbar_axis)
-    colorbar.set_label(r"Ridge-gradient cosine")
+    colorbar.set_label("Gradient energy explained", fontsize=11)
+    colorbar.ax.tick_params(labelsize=10)
 
-    grid.figure.supxlabel("Dropout rate", y=0.025, fontsize=SHARED_AXIS_LABEL_SIZE)
+    grid.figure.supxlabel("Dropout rate", y=0.06, fontsize=SHARED_AXIS_LABEL_SIZE)
+    if frame.attrs.get("historical_source"):
+        grid.figure.text(.5, .01, "Historical retrained grid (float32); checkpoint controls reported separately",
+                         ha="center", fontsize=8, color="dimgray")
     grid.figure.supylabel(
         r"Closed-form ridge penalty $\hat{\lambda}$",
         fontsize=SHARED_AXIS_LABEL_SIZE,
@@ -200,7 +223,7 @@ def main() -> None:
     args = parse_args()
     if STYLE_PATH.exists():
         plt.style.use(str(STYLE_PATH))
-    frame = load_results(args.results_dir)
+    frame = load_results(args.results_dir, args.validation)
     LOGGER.info("Loaded %d closed-form Figure-5 runs.", len(frame))
     figure = build_figure(frame)
     args.output.parent.mkdir(parents=True, exist_ok=True)

@@ -91,6 +91,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--data-root", type=Path, default=REPO_ROOT / "data" / "raw")
     parser.add_argument("--checkpoint-dir", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)
+    parser.add_argument("--skip-estimation", action="store_true",
+                        help="Save trajectory weights only; run diagnostics as a separate workflow step.")
     return parser.parse_args()
 
 
@@ -193,16 +195,16 @@ def main() -> None:
     if missing:
         raise RuntimeError(f"Training ended without saving target epochs: {missing}.")
 
-    closed_form_module = load_closed_form_module()
+    closed_form_module = None if args.skip_estimation else load_closed_form_module()
     records: list[dict[str, Any]] = []
     for epoch, fraction in sorted(targets.items(), key=lambda item: item[1]):
         checkpoint = checkpoint_callback.saved[epoch]
-        evaluation = evaluate_checkpoint(checkpoint, datamodule, closed_form_module)
+        evaluation = {} if args.skip_estimation else evaluate_checkpoint(checkpoint, datamodule, closed_form_module)
         records.append(
             {
                 "fraction": fraction,
                 "epoch": epoch,
-                "checkpoint": str(checkpoint.resolve().relative_to(REPO_ROOT)),
+                "checkpoint": str(checkpoint.resolve()),
                 **evaluation,
             }
         )

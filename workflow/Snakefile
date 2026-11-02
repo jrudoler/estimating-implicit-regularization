@@ -26,6 +26,8 @@
 include: "rules/common.smk"
 include: "rules/wandb.smk"
 include: "rules/train.smk"
+include: "rules/dropout.smk"
+include: "rules/dropout_convergence.smk"
 include: "rules/plot.smk"
 include: "rules/paper.smk"
 
@@ -34,6 +36,8 @@ include: "rules/paper.smk"
 # --executor slurm. Training rules are deliberately omitted so they do
 # submit to the cluster when a SLURM profile is active.
 localrules:
+    validate_dropout_grid,
+    summarize_dropout_checkpoint_audit,
     all,
     figures,
     paper,

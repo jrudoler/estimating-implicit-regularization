@@ -22,26 +22,29 @@ rule plot_elasticnet_recovery:
 rule plot_dropout_bias_ridge_panel:
     input:
         script="analysis/plot_dropout_bias_ridge_panel/run.py",
+        implementation="analysis/plot_closed_form_dropout_grid/run.py",
+        core="src/core/dropout_grid.py",
         style="clean_fig.mplstyle",
-        runs="data/generated/dropout_bias_estimation/runs.parquet",
+        validation="data/generated/closed_form_dropout_grid/validated.json",
     output:
         pdf="results/figures/dropout_bias_ridge_panel.pdf",
     shell:
         "PYTHONPATH=src uv run python {input.script} "
-        "--runs-parquet {input.runs} "
-        "--output {output.pdf}"
+        "--results-dir data/generated/closed_form_dropout_grid/results "
+        "--validation {input.validation} --output {output.pdf}"
 
 
 rule plot_closed_form_dropout_grid:
     input:
         script="analysis/plot_closed_form_dropout_grid/run.py",
         style="clean_fig.mplstyle",
-        results="data/generated/closed_form_dropout_grid/results",
+        validation="data/generated/closed_form_dropout_grid/validated.json",
     output:
         pdf="results/figures/dropout_bias_ridge_panel_closed_form.pdf",
     shell:
         "PYTHONPATH=src uv run python {input.script} "
-        "--results-dir {input.results} "
+        "--results-dir data/generated/closed_form_dropout_grid/results "
+        "--validation {input.validation} "
         "--output {output.pdf}"
 
 

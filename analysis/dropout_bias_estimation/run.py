@@ -25,9 +25,11 @@ from core.bias import (
     SpectralGapBias,
     JointBias,
 )
-from core.estimators import BiasWithCrossEntropyScheduled
+from core.estimators import BiasWithCrossEntropyScheduled, vector_to_parameter_views
 from core.models import DeepReLUClassifier
 from core.data import MNISTLightningDataModule
+from core.scalar_estimation import ridge_estimate, provenance, full_batch_loss_grad, scalar_projection
+from torch.utils.data import DataLoader
 
 LOGGER = logging.getLogger(__name__)
 
@@ -56,6 +58,10 @@ def parse_args() -> argparse.Namespace:
         allow_abbrev=False,
     )
     parser.add_argument(
+        "--estimator", choices=("auto", "closed_form", "legacy_iterative"), default="auto",
+        help="Auto uses exact nonnegative least squares for ridge-only runs.",
+    )
+    parser.add_argument(
         "--checkpoint-path",
         type=Path,
         default=None,
@@ -64,7 +70,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--checkpoint-dir",
         type=Path,
-        default=Path("~/inductive-bias/logs/checkpoints").expanduser(),
+        default=Path("data/generated/dropout_bias_estimation/checkpoints"),
         help="Directory for saving predictive-model checkpoints when training.",
     )
     parser.add_argument(
@@ -196,6 +202,11 @@ def main() -> None:
         # Parse bias types (comma-separated list, e.g., "ridge,nuclear_norm")
         bias_types_str = get_config_value(config_source, "bias_types", "ridge")
         bias_types = [b.strip() for b in bias_types_str.split(",")]
+        method = args.estimator
+        if method == "auto":
+            method = "closed_form" if bias_types == ["ridge"] else "legacy_iterative"
+        if method == "closed_form" and bias_types != ["ridge"]:
+            raise ValueError("Production closed_form currently supports ridge-only runs")
 
         LOGGER.info("Starting dropout bias estimation experiment")
         LOGGER.info(
@@ -230,6 +241,8 @@ def main() -> None:
             model = DeepReLUClassifier.load_from_checkpoint(str(args.checkpoint_path))
             model.eval()
             checkpoint_path = args.checkpoint_path
+            checkpoint_epoch = torch.load(checkpoint_path, map_location="cpu", weights_only=False).get("epoch")
+            endpoint_kind = "provided_checkpoint"
         else:
             checkpoint_dir = args.checkpoint_dir
             if run is not None and not args.disable_wandb:
@@ -284,6 +297,12 @@ def main() -> None:
             )
 
             model_trainer.fit(model, datamodule=datamodule)
+            # Record exactly the final in-memory weights used below, not the best
+            # validation checkpoint (which can precede early stopping by 50 epochs).
+            checkpoint_path = checkpoint_dir / "estimation_endpoint.ckpt"
+            model_trainer.save_checkpoint(str(checkpoint_path))
+            checkpoint_epoch = torch.load(checkpoint_path, map_location="cpu", weights_only=False).get("epoch")
+            endpoint_kind = "final_training_endpoint"
 
             # Evaluate on test set
             datamodule.setup("test")
@@ -297,11 +316,6 @@ def main() -> None:
                     }
                 )
 
-            best_model_path_str = (
-                checkpoint_callback.best_model_path
-                or checkpoint_callback.last_model_path
-            )
-            checkpoint_path = Path(best_model_path_str) if best_model_path_str else None
             model.eval()
 
             LOGGER.info("Finished training predictive model")
@@ -313,7 +327,41 @@ def main() -> None:
                 args.checkpoint_path is not None
             )
 
-        # Build bias models
+        evidence = provenance(model, checkpoint=checkpoint_path, epoch=checkpoint_epoch,
+                              endpoint_kind=endpoint_kind, dataset=datamodule._train_dataset)
+        if run is not None:
+            run.summary["estimator_method"] = method
+            run.summary["estimator_provenance"] = evidence
+        actual_config = dict(model.hparams)
+        actual_config.update(seed=seed, bias_types=bias_types, val_fraction=val_fraction)
+        if method == "closed_form":
+            loader = DataLoader(datamodule._train_dataset, batch_size=batch_size,
+                                shuffle=False, num_workers=num_data_workers)
+            fit = ridge_estimate(model, loader)
+            record = {
+                "schema_version": 2, "config": actual_config,
+                "estimator": {"method": method, "constraint": "nonnegative", "model_mode": "eval"},
+                "provenance": evidence, "closed_form": {"ridge": fit},
+                "bias_params": {"estimated_ridge": fit["scale_star_clamped"],
+                                "estimated_ridge_scale": fit["scale_star_clamped"],
+                                "estimated_ridge_signed": fit["scale_star"]},
+                "adequacy": {"residual_ratio": fit["residual_ratio_clamped"],
+                             "grad_cosine": fit["grad_cosine"],
+                             "projection_r2": fit["projection_r2_clamped"]},
+                "predictive_metrics": {str(k): float(v) for k, v in test_results.items()},
+            }
+            if run is not None:
+                run.summary.update(record["bias_params"])
+                run.summary["estimator_method"] = method
+                run.summary["estimator_provenance"] = evidence
+                run.summary["estimator_adequacy"] = record["adequacy"]
+            if args.output is not None:
+                args.output.parent.mkdir(parents=True, exist_ok=True)
+                args.output.write_text(json.dumps(record, indent=2, allow_nan=False))
+            LOGGER.info("Closed-form ridge: %s", record["bias_params"])
+            return
+
+        # Legacy fitting is retained for controlled numerical audits.
         bias_model_list: List[torch.nn.Module] = []
         for bias_type in bias_types:
             if bias_type == "ridge":
@@ -376,6 +424,8 @@ def main() -> None:
             f"estimated_{name.replace('/', '_')}": float(value)
             for name, value in joint_bias_model.get_bias_params().items()
         }
+        if "estimated_ridge_scale" in bias_parameter_metrics:
+            bias_parameter_metrics["estimated_ridge"] = bias_parameter_metrics["estimated_ridge_scale"]
 
         # Gradient-matching adequacy diagnostics (how much of grad L this family
         # explains).  These are logged by the estimator each step; take the final
@@ -392,6 +442,25 @@ def main() -> None:
             for key, value in bias_trainer.callback_metrics.items()
             if key in adequacy_keys
         }
+        # Final-minibatch diagnostics above are historical logging only. Report
+        # the actual fitted gradient against the same full-dataset target used
+        # by closed form; do not mistake a cosine squared for achieved fit.
+        loader = DataLoader(datamodule._train_dataset, batch_size=batch_size,
+                            shuffle=False, num_workers=num_data_workers)
+        target = -full_batch_loss_grad(model, loader)
+        flat = torch.nn.utils.parameters_to_vector(model.parameters()).detach().requires_grad_()
+        regularizer = joint_bias_model(flat, vector_to_parameter_views(flat, model))
+        fitted_gradient = torch.autograd.grad(regularizer, flat)[0].detach().cpu().double()
+        alignment = scalar_projection(fitted_gradient, target)
+        target_sq = float(target @ target)
+        sse = float((fitted_gradient - target).square().sum())
+        full_adequacy = {
+            "scope": "full_training_dataset", "sse": sse,
+            "residual_ratio": (sse / target_sq)**.5 if target_sq else None,
+            "grad_cosine": alignment["grad_cosine"],
+            "projection_r2": 1 - sse / target_sq if target_sq else None,
+            "status": alignment["status"],
+        }
 
         if not args.disable_wandb and run is not None:
             wandb.log(bias_parameter_metrics)
@@ -399,6 +468,7 @@ def main() -> None:
                 run.summary[key] = value
             for key, value in adequacy_metrics.items():
                 run.summary[key] = value
+            run.summary["estimator_adequacy"] = full_adequacy
         else:
             LOGGER.info("[bias-estimation] Estimated bias parameters:")
             for key, value in bias_parameter_metrics.items():
@@ -410,22 +480,18 @@ def main() -> None:
         if args.output is not None:
             args.output.parent.mkdir(parents=True, exist_ok=True)
             record: Dict[str, Any] = {
-                "config": {
-                    "depth": depth,
-                    "width": width,
-                    "dropout": dropout,
-                    "batchnorm": batchnorm,
-                    "l2_lambda": l2_lambda,
-                    "seed": seed,
-                    "bias_types": bias_types,
-                },
+                "schema_version": 2,
+                "config": actual_config,
+                "estimator": {"method": method, "constraint": "nonnegative", "model_mode": "eval"},
+                "provenance": evidence,
                 "bias_params": bias_parameter_metrics,
-                "adequacy": adequacy_metrics,
+                "adequacy": full_adequacy,
+                "legacy_minibatch_adequacy": adequacy_metrics,
                 "predictive_metrics": {
                     str(key): float(value) for key, value in test_results.items()
                 },
             }
-            args.output.write_text(json.dumps(record, indent=2))
+            args.output.write_text(json.dumps(record, indent=2, allow_nan=False))
             LOGGER.info("[bias-estimation] Wrote %s", args.output)
 
         if not args.disable_wandb and run is not None:

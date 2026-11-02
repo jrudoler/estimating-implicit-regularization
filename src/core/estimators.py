@@ -279,6 +279,13 @@ class BiasWithCrossEntropy(InductiveBiasEstimator):
 class BiasWithCrossEntropyScheduled(BiasWithCrossEntropy):
     """Bias estimator with adaptive LR scheduling."""
 
+    def train(self, mode: bool = True):
+        # Lightning can recursively toggle submodules. Estimation always uses
+        # the fixed, dropout-free predictor, including after validation hooks.
+        super().train(mode)
+        self.predictive_model.eval()
+        return self
+
     def __init__(
         self,
         *args,

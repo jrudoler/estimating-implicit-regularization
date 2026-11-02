@@ -97,6 +97,20 @@ class FullBatchDataModule(LightningDataModule):
         )
 
 
+class InMemoryBatches:
+    """Exact MNIST ToTensor inputs on a device, with a fixed split and order."""
+
+    def __init__(self, dataset, device, batch_size=2048):
+        indices = torch.as_tensor(dataset.indices)
+        self.x = dataset.dataset.data[indices].to(device=device, dtype=torch.float32).div_(255).unsqueeze(1)
+        self.y = dataset.dataset.targets[indices].to(device)
+        self.batch_size = batch_size
+
+    def __iter__(self):
+        for i in range(0, len(self.y), self.batch_size):
+            yield self.x[i:i + self.batch_size], self.y[i:i + self.batch_size]
+
+
 class MNISTLightningDataModule(LightningDataModule):
     def __init__(
         self, root: Path, batch_size: int, num_workers: int, val_fraction: float = 0.1

@@ -2,9 +2,9 @@
 
 Motivation: the iterative gradient-matching fit used previously (Adam on
 beta with scale = exp(beta), mse_loss reduction="mean") does not converge -- it
-overshoots the true least-squares optimum by 38-61x on this architecture, because
-d(loss)/d(beta) underflows Adam's eps before the optimum is reached.  See
-analysis/verify_estimator_convergence/.
+overshoots the true least-squares optimum by 38-61x in the stored fixed-endpoint
+audits. These establish iterative nonconvergence, not its attribution solely
+to Adam epsilon. See analysis/dropout_checkpoint_audit/ for controlled ablations.
 
 Every family here is R(theta) = s * P(theta) with a single scalar s, so gradient
 matching is one-dimensional least squares with an exact solution against the
@@ -41,6 +41,7 @@ from core.bias import (
 )
 from core.data import MNISTLightningDataModule
 from core.estimators import vector_to_parameter_views
+from core.scalar_estimation import full_batch_loss_grad, scalar_projection
 from core.models import DeepReLUClassifier
 
 FAMILIES = {
@@ -52,49 +53,14 @@ FAMILIES = {
 }
 
 
-def full_batch_loss_grad(model, loader):
-    """Deterministic mean cross-entropy gradient over the whole loader."""
-    model.zero_grad(set_to_none=True)
-    device = next(model.parameters()).device
-    total = 0
-    for x, y in loader:
-        x, y = x.to(device), y.to(device)
-        F.cross_entropy(model(x), y, reduction="sum").backward()
-        total += y.numel()
-    grad = torch.cat(
-        [
-            (p.grad.detach().reshape(-1) / total)
-            if p.grad is not None
-            else torch.zeros(p.numel(), device=device)
-            for p in model.parameters()
-        ]
-    )
-    model.zero_grad(set_to_none=True)
-    return grad
-
-
 def closed_form(family_name, model, loss_grad):
     """Exact 1-D least-squares optimum for R = s * P(theta), plus adequacy."""
-    fam = FAMILIES[family_name](enforce_positive=True, init_value=0.0).to(loss_grad.device)
+    fam = FAMILIES[family_name](enforce_positive=True, init_value=0.0).to(next(model.parameters()).device)
     flat = torch.nn.utils.parameters_to_vector(model.parameters()).detach().requires_grad_()
     structured = vector_to_parameter_views(flat, model)
     # init_value=0.0 -> scale = exp(0) = 1, so this gradient is exactly grad P.
     (grad_p,) = torch.autograd.grad(fam(flat, structured), flat)
-    with torch.no_grad():
-        target = -loss_grad
-        denom = float(grad_p.pow(2).sum())
-        if denom == 0:
-            return {"scale_star": None}
-        s = float(grad_p @ target) / denom
-        tn = float(target.norm())
-        return {
-            "scale_star": s,
-            "scale_star_clamped": max(s, 0.0),
-            "residual_ratio": float((s * grad_p - target).norm()) / tn,
-            "residual_ratio_clamped": float((max(s, 0.0) * grad_p - target).norm()) / tn,
-            "grad_cosine": float(F.cosine_similarity(grad_p, target, dim=0)),
-            "grad_p_norm": denom**0.5,
-        }
+    return scalar_projection(grad_p, -loss_grad)
 
 
 def main() -> None:
