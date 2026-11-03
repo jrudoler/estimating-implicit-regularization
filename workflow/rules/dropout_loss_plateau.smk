@@ -147,7 +147,7 @@ rule train_dropout_loss_plateau:
         absolute=PLATEAU_ABSOLUTE,
     resources:
         slurm_partition="whartonstat", runtime=240, mem_mb=24000,
-        cpus_per_task=2, slurm_extra=f"--gres=gpu:1 --nodelist={PLATEAU_NODE}",
+        cpus_per_task=2, gres="gpu:1", slurm_extra=f"--nodelist={PLATEAU_NODE}",
     shell:
         "PYTHONPATH={params.source:q} UV_NO_SYNC=1 .venv/bin/python {input.script:q} "
         "--depth {wildcards.depth} --width {wildcards.width} --dropout {wildcards.rate} "

@@ -54,7 +54,7 @@ rule dropout_convergence:
         device=config.get("device", "cuda"),
     resources:
         slurm_partition="whartonstat", runtime=240, mem_mb=24000,
-        cpus_per_task=2, slurm_extra="--gres=gpu:1",
+        cpus_per_task=2, gres="gpu:1",
     shell:
         "PYTHONPATH=src uv run --frozen python {input.script} "
         "--source-result {input.source:q} --checkpoint {input.checkpoint:q} "

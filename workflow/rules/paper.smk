@@ -26,7 +26,7 @@ rule stage_all_paper_figures:
 rule paper_pdf:
     input:
         tex="paper/main.tex",
-        replacement_summary="results/data/dropout_replacement_manuscript.json",
+        replacement_summary="results/data/dropout_matched_replacement.json",
         figures=rules.stage_all_paper_figures.input,
         sources=sorted(str(p) for p in Path("paper").rglob("*")
                        if p.suffix in {".tex", ".bib", ".sty", ".cls", ".bst"}),

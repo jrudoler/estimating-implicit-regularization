@@ -8,7 +8,8 @@
 #   runtime         -> -t / --time (minutes)
 #   mem_mb          -> --mem (MB)
 #   cpus_per_task   -> -c / --cpus-per-task
-#   slurm_extra     -> free-form sbatch flags (we use it for --gres=gpu:1)
+#   gres            -> generic resources (gpu:1 requests one GPU)
+#   slurm_extra     -> additional flags not managed by the executor
 #
 # Under `--cores N` (local) these resources are ignored and the rule runs
 # on the local machine.
@@ -59,7 +60,7 @@ rule olmo_ridge_estimation:
         runtime=720,
         mem_mb=128000,
         cpus_per_task=8,
-        slurm_extra="--gres=gpu:1",
+        gres="gpu:1",
     shell:
         "export HF_HOME=${{HF_HOME:-/shared_data0/jrudoler/.cache/huggingface}}; "
         "PYTHONPATH=src uv run python {input.script} "
@@ -117,7 +118,7 @@ rule barrett_igr_figure2:
         runtime=240,
         mem_mb=32000,
         cpus_per_task=4,
-        slurm_extra="--gres=gpu:1",
+        gres="gpu:1",
     shell:
         "PYTHONPATH=src uv run python {input.script} {params.device} "
         "--train-samples 10000 --val-samples 1000 --test-samples 5000 "
@@ -142,7 +143,7 @@ rule barrett_igr_long_horizon_synth_eta001:
         runtime=360,
         mem_mb=32000,
         cpus_per_task=4,
-        slurm_extra="--gres=gpu:1",
+        gres="gpu:1",
     shell:
         "PYTHONPATH=src uv run python {input.script} "
         "--dataset synthetic --eta 0.01 --num-steps 50 --n-samples 500 --seed 0 "
@@ -162,7 +163,7 @@ rule barrett_igr_long_horizon_synth_eta003:
         runtime=360,
         mem_mb=32000,
         cpus_per_task=4,
-        slurm_extra="--gres=gpu:1",
+        gres="gpu:1",
     shell:
         "PYTHONPATH=src uv run python {input.script} "
         "--dataset synthetic --eta 0.03 --num-steps 50 --n-samples 500 --seed 0 "
@@ -182,7 +183,7 @@ rule barrett_igr_long_horizon_mnist_tanh:
         runtime=360,
         mem_mb=32000,
         cpus_per_task=4,
-        slurm_extra="--gres=gpu:1",
+        gres="gpu:1",
     shell:
         "PYTHONPATH=src uv run python {input.script} "
         "--dataset mnist --activation tanh --eta 0.01 --num-steps 30 --n-samples 1000 --seed 0 "
@@ -202,7 +203,7 @@ rule barrett_igr_long_horizon_mnist_relu:
         runtime=360,
         mem_mb=32000,
         cpus_per_task=4,
-        slurm_extra="--gres=gpu:1",
+        gres="gpu:1",
     shell:
         "PYTHONPATH=src uv run python {input.script} "
         "--dataset mnist --activation relu --eta 0.01 --num-steps 30 --n-samples 1000 --seed 0 "
@@ -318,7 +319,7 @@ rule swa_effective_regularizer:
         runtime=120,
         mem_mb=32000,
         cpus_per_task=4,
-        slurm_extra="--gres=gpu:1",
+        gres="gpu:1",
     shell:
         "PYTHONPATH=src uv run python {input.script} "
         "--seed {wildcards.seed} --output {output.json} "

@@ -36,6 +36,7 @@ include: "rules/plot_dropout_loss_plateau_interim.smk"
 include: "rules/plot_dropout_loss_plateau_symlog.smk"
 include: "rules/verify_dropout_loss_plateau.smk"
 include: "rules/dropout_replacement.smk"
+include: "rules/matched_dropout_replacement.smk"
 include: "rules/plot.smk"
 include: "rules/paper.smk"
 
@@ -63,6 +64,7 @@ localrules:
     download_manuscript_mnist,
     approve_dropout_loss_plateau_grid,
     summarize_dropout_replacement,
+    summarize_matched_dropout_replacement,
     plot_closed_form_dropout_grid,
     plot_dropout_trajectory_stability,
     plot_swa_effective_regularizer,

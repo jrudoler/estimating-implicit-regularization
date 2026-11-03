@@ -126,13 +126,17 @@ manuscript using already-staged figures:
 uv run snakemake -s workflow/Snakefile --cores 1 --allowed-rules paper_pdf -- paper/main.pdf
 ```
 
-The historical explicit-replacement experiment in Appendix H.4.1 is a separate
-branch: `train_dropout_replacement` reproduces the four reported conditions
-with the original validation-loss stopping protocol, and
-`summarize_dropout_replacement` verifies ten-seed coverage and records source
-hashes and medians in `results/data/dropout_replacement_manuscript.json`.
-The PDF rule depends on this summary. Existing results are reused; this branch
-does not substitute final Figure 5 coefficients for the historical fitted value.
+The explicit-replacement experiment in Appendix H.4.1 uses the final Figure 5
+targets, archived initial weights, seed-specific coefficients, and training-loss
+stopping protocol. `train_matched_dropout_replacement` runs ten seeds each with
+dropout disabled, with and without the fitted ridge penalty.
+`summarize_matched_dropout_replacement` verifies checkpoint/source hashes,
+stopping histories, and reproduction of the original no-dropout controls; the
+PDF rule depends on its `results/data/dropout_matched_replacement.json` summary.
+See `analysis/matched_dropout_replacement/README.md` for the execution commands
+and checkpoint prerequisites. The older validation-stopped experiment remains
+available through `train_dropout_replacement` and `summarize_dropout_replacement`
+as a separate historical branch.
 
 ### Adding a new analysis
 
