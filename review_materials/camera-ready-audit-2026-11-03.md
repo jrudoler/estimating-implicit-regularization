@@ -2,7 +2,7 @@
 
 ## Outcome
 
-**Not yet an unconditional submission sign-off.** Selected human-review commitments are addressed, and the PDF builds within the content-page limit. The remaining issues are mathematical consistency, release/reproduction access, and establishing the exact submitted baseline. SWA remains omitted, elastic-net retraining recovery deferred, and automated feedback was not reviewed as a separate workstream.
+**Not yet an unconditional submission sign-off.** Selected human-review commitments are addressed, and the PDF builds within the content-page limit. The remaining issues are mathematical consistency, stale/missing generation provenance, and establishing the exact submitted baseline. The workflow/experiment branch has since been fast-forward merged into local `main` for publication; persistent public artifacts are not required per the user’s decision. SWA remains omitted, elastic-net retraining recovery deferred, and automated feedback was not reviewed as a separate workstream.
 
 Audited manuscript starting revision: `f3d5af9`; parent starting revision: `ff693e2`. Manuscript formatting commit: `418dabb` (pushed). This audit also makes appendix-only line-breaking corrections, preserving equations and scientific claims. The earlier “selected review items complete” status is not a claim that every mathematical statement or release prerequisite has been independently validated.
 
@@ -11,7 +11,7 @@ Audited manuscript starting revision: `f3d5af9`; parent starting revision: `ff69
 | ID | Priority | Finding | Required action |
 |---|---|---|---|
 | CR1 | High | Mathematical consistency issues remain in Section 2.2 and Appendices B–C; see precise locations below. | A focused mathematical correction/review before final submission. Formatting corrections made here do not repair these statements. |
-| CR2 | High | The paper links the repository's default `main` branch (`33c9ba7` at audit), while the final dropout/replacement workflow is on `agent/neurips-rebuttal-experiments`. Required frozen-source and run artifacts are ignored/untracked; the README requires an archive but supplies no public download location. | Publish/pin a reproducible code revision and provide the required archival inputs or a documented regeneration route. Then recheck the open-code checklist answer. No merge, release, or data upload performed in this audit. |
+| CR2 | Resolved scope | The default branch lagged behind the final dropout/replacement workflow at audit. The working branch through `f77e466`, including manuscript pointer `418dabb`, has now been fast-forward merged into local `main` for publication. | Push the merged `main` and verify the remote revision. Persistent public artifacts are not required per the user; artifact publication is no longer a submission blocker in this tracker. This does not certify fresh-clone reproduction (see CR5). |
 | CR3 | Before sign-off | Exact OpenReview-submitted PDF was not obtained: web retrieval failed and direct download returned HTTP 403. May 6 revision `751ce36` is a plausible submission-era baseline, not a verified submitted version. | Identify the exact submitted PDF/source, then assess overall scope against original plus rebuttal content. Do not claim certified compliance with the approximate 10% guidance from the proxy figures below. |
 | CR4 | Medium | Abstract still says dropout demonstrates “implicit $\ell_2$ effects,” while final results support an endpoint gradient projection with low fit and unsuccessful scalar-ridge replacement. | Consider a small qualification such as “characterizing ridge-aligned gradient components and the limitations of scalar ridge as a replacement for dropout.” Main introduction and dropout discussion already explain the limitation. |
 | CR5 | Medium | Full existing-workspace `paper` dry run schedules 14 jobs, including five upstream training/data producers, checkpoint verification, plotting, and staging. Three staged figures have no current counterpart under `results/figures/`. | Resolve stale/missing generation provenance before claiming a fully current end-to-end rebuild. No expensive training was launched by this audit. The PDF-only build passes using the staged assets. |
@@ -29,6 +29,8 @@ These observations come from reading the active TeX, not a complete theorem revi
 - `paper/app_trajectory.tex:70`: the final bound contains a covering number at `t/T`, whereas the theorem and stated net use `1/T`. The proof also writes `W` where the setup permits time-varying `W_t`; check the indexing throughout.
 
 ### CR2/CR5: reproduction evidence
+
+The observations below describe the original audit state. The subsequent main-branch merge addresses code availability; the user explicitly declined a persistent public artifact requirement. Local input prerequisites and CR5 remain documented separately.
 
 - GitHub API confirms `jrudoler/estimating-implicit-regularization` is public and defaults to `main`; fetched `origin/main` is `33c9ba7`. The final workflow exists on the pushed working branch, not that default revision.
 - The immutable source archive `data/generated/dropout_loss_plateau_absolute/source-v1.tar.gz` exists locally (~232 KiB), SHA256 `15fb6023d4d207bf5eafb51e68998958528767a4c74790a57ae7c107ac18e278`. It is not tracked in Git. The historical source is deliberately required by the workflow.
