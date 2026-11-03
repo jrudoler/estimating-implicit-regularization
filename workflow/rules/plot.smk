@@ -22,16 +22,21 @@ rule plot_elasticnet_recovery:
 rule plot_dropout_bias_ridge_panel:
     input:
         script="analysis/plot_dropout_bias_ridge_panel/run.py",
-        implementation="analysis/plot_closed_form_dropout_grid/run.py",
-        core="src/core/dropout_grid.py",
+        core="src/core/loss_plateau_reporting.py",
+        scalar="src/core/scalar_estimation.py",
         style="clean_fig.mplstyle",
-        validation="data/generated/closed_form_dropout_grid/validated.json",
+        validation="data/generated/dropout_loss_plateau_absolute/full_grid_verification.json",
+        runs=[f"data/generated/dropout_loss_plateau_absolute/d{d}_w{w}_do{p}_s{s}/result.json"
+              for d, w, p, s in DROPOUT_CELLS],
     output:
         pdf="results/figures/dropout_bias_ridge_panel.pdf",
+        table="data/generated/plot_dropout_bias_ridge_panel/grid.csv",
+        receipt="data/generated/plot_dropout_bias_ridge_panel/validation.json",
     shell:
-        "PYTHONPATH=src uv run python {input.script} "
-        "--results-dir data/generated/closed_form_dropout_grid/results "
-        "--validation {input.validation} --output {output.pdf}"
+        "MPLCONFIGDIR=.snakemake/matplotlib PYTHONPATH=src UV_NO_SYNC=1 .venv/bin/python {input.script:q} "
+        "--results-dir data/generated/dropout_loss_plateau_absolute "
+        "--validation {input.validation:q} --output {output.pdf:q} "
+        "--table {output.table:q} --receipt {output.receipt:q} --style {input.style:q}"
 
 
 rule plot_closed_form_dropout_grid:
@@ -59,6 +64,22 @@ rule plot_dropout_trajectory_stability:
         "PYTHONPATH=src uv run python {input.script} "
         "--summary {input.summary} "
         "--output {output.pdf}"
+
+
+rule plot_dropout_checkpoint_stability:
+    input:
+        script="analysis/plot_dropout_checkpoint_stability/run.py",
+        style="clean_fig.mplstyle",
+        results=expand(
+            "data/generated/dropout_loss_plateau_absolute/d3_w256_do0.3_s{seed}/result.json",
+            seed=[123, 42, 666, 314, 17, 111, 325, 643, 432, 51],
+        ),
+    output:
+        pdf="results/figures/dropout_checkpoint_stability_loss_plateau_absolute.pdf",
+        table="results/data/dropout_checkpoint_stability_loss_plateau_absolute.csv",
+    shell:
+        "PYTHONPATH=src uv run --no-sync python {input.script} "
+        "--inputs {input.results:q} --output {output.pdf:q} --table {output.table:q}"
 
 
 rule plot_swa_effective_regularizer:

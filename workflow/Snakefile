@@ -28,6 +28,13 @@ include: "rules/wandb.smk"
 include: "rules/train.smk"
 include: "rules/dropout.smk"
 include: "rules/dropout_convergence.smk"
+# The manuscript uses the absolute-loss protocol; the standalone rule file
+# retains its historical relative-loss default.
+config.setdefault("plateau_study", "dropout_loss_plateau_absolute")
+include: "rules/dropout_loss_plateau.smk"
+include: "rules/plot_dropout_loss_plateau_interim.smk"
+include: "rules/plot_dropout_loss_plateau_symlog.smk"
+include: "rules/verify_dropout_loss_plateau.smk"
 include: "rules/plot.smk"
 include: "rules/paper.smk"
 
@@ -49,6 +56,11 @@ localrules:
     plot_barrett_igr_long_horizon,
     plot_elasticnet_recovery,
     plot_dropout_bias_ridge_panel,
+    plot_dropout_checkpoint_stability,
+    review_dropout_loss_plateau_pilots,
+    prepare_dropout_manuscript_source,
+    download_manuscript_mnist,
+    approve_dropout_loss_plateau_grid,
     plot_closed_form_dropout_grid,
     plot_dropout_trajectory_stability,
     plot_swa_effective_regularizer,
@@ -71,6 +83,7 @@ PAPER_FIGURES = [
     "results/figures/barrett_igr_figure2.pdf",
     "results/figures/ols_composite.pdf",
     "results/figures/ols_bootstrap_composite.pdf",
+    "results/figures/dropout_checkpoint_stability_loss_plateau_absolute.pdf",
 ]
 
 

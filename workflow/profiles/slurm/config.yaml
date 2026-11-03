@@ -18,7 +18,7 @@ latency-wait: 60
 printshellcmds: true
 
 default-resources:
-  slurm_partition: gpu
+  slurm_partition: whartonstat
   slurm_account: ""         # most clusters do not need an account
   runtime: 120              # minutes
   mem_mb: 16000

@@ -25,7 +25,7 @@ rule lambda_vs_epochs:
     output:
         results="data/generated/lambda_vs_epochs/results.pt",
     resources:
-        slurm_partition="gpu",
+        slurm_partition="whartonstat",
         runtime=240,
         mem_mb=16000,
         cpus_per_task=2,
@@ -40,7 +40,7 @@ rule linear_regression_ols:
     output:
         results="data/generated/linear_regression_ols/results.pt",
     resources:
-        slurm_partition="gpu",
+        slurm_partition="whartonstat",
         runtime=120,
         mem_mb=8000,
         cpus_per_task=2,
@@ -55,7 +55,7 @@ rule olmo_ridge_estimation:
         json="data/generated/olmo_ridge_estimation/olmo2_1b_stage1_wiki0001_50m.json",
         pt="data/generated/olmo_ridge_estimation/olmo2_1b_stage1_wiki0001_50m.pt",
     resources:
-        slurm_partition="standby",
+        slurm_partition="whartonstat",
         runtime=720,
         mem_mb=128000,
         cpus_per_task=8,
@@ -78,7 +78,7 @@ rule linear_regression_ols_noisy:
     output:
         results="data/generated/linear_regression_ols_noisy/results.pt",
     resources:
-        slurm_partition="gpu",
+        slurm_partition="whartonstat",
         runtime=120,
         mem_mb=8000,
         cpus_per_task=2,
@@ -96,7 +96,7 @@ rule ols_bootstrap_sigma_sweep:
     output:
         results=protected("data/generated/ols_bootstrap_sigma_sweep/results.pt"),
     resources:
-        slurm_partition="gpu",
+        slurm_partition="whartonstat",
         runtime=60,
         mem_mb=8000,
         cpus_per_task=2,
@@ -113,7 +113,7 @@ rule barrett_igr_figure2:
     params:
         device=device_arg(),
     resources:
-        slurm_partition="gpu",
+        slurm_partition="whartonstat",
         runtime=240,
         mem_mb=32000,
         cpus_per_task=4,
@@ -138,7 +138,7 @@ rule barrett_igr_long_horizon_synth_eta001:
     params:
         device=device_arg(),
     resources:
-        slurm_partition="gpu",
+        slurm_partition="whartonstat",
         runtime=360,
         mem_mb=32000,
         cpus_per_task=4,
@@ -158,7 +158,7 @@ rule barrett_igr_long_horizon_synth_eta003:
     params:
         device=device_arg(),
     resources:
-        slurm_partition="gpu",
+        slurm_partition="whartonstat",
         runtime=360,
         mem_mb=32000,
         cpus_per_task=4,
@@ -178,7 +178,7 @@ rule barrett_igr_long_horizon_mnist_tanh:
     params:
         device=device_arg(),
     resources:
-        slurm_partition="gpu",
+        slurm_partition="whartonstat",
         runtime=360,
         mem_mb=32000,
         cpus_per_task=4,
@@ -198,7 +198,7 @@ rule barrett_igr_long_horizon_mnist_relu:
     params:
         device=device_arg(),
     resources:
-        slurm_partition="gpu",
+        slurm_partition="whartonstat",
         runtime=360,
         mem_mb=32000,
         cpus_per_task=4,
@@ -219,7 +219,7 @@ rule ols_full_matrix_recovery:
     output:
         results=protected("data/generated/ols_full_matrix_recovery/results.pt"),
     resources:
-        slurm_partition="gpu",
+        slurm_partition="whartonstat",
         runtime=60,
         mem_mb=8000,
         cpus_per_task=2,
@@ -240,7 +240,7 @@ rule ols_full_matrix_recovery_panel_b:
     output:
         results=protected("data/generated/ols_full_matrix_recovery_panel_b/results.pt"),
     resources:
-        slurm_partition="gpu",
+        slurm_partition="whartonstat",
         runtime=60,
         mem_mb=8000,
         cpus_per_task=2,
@@ -265,7 +265,7 @@ rule ols_bootstrap_recovery:
     output:
         results=protected("data/generated/ols_bootstrap_recovery/results.pt"),
     resources:
-        slurm_partition="gpu",
+        slurm_partition="whartonstat",
         runtime=60,
         mem_mb=8000,
         cpus_per_task=2,
@@ -284,7 +284,7 @@ rule ols_bootstrap_recovery_panel_b:
     output:
         results=protected("data/generated/ols_bootstrap_recovery_panel_b/results.pt"),
     resources:
-        slurm_partition="gpu",
+        slurm_partition="whartonstat",
         runtime=60,
         mem_mb=8000,
         cpus_per_task=2,

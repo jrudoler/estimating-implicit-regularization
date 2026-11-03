@@ -69,7 +69,7 @@ Every step runs through Snakemake. The top-level targets, defined in [workflow/S
 
 ```bash
 # Rebuild every paper figure. Snakemake reuses existing data/generated/ snapshots
-# and only re-runs upstream rules (training, W&B pulls) for outputs that are missing.
+# and rebuilds upstream rules when outputs are missing or dependencies change.
 uv run snakemake -s workflow/Snakefile --cores 4 figures
 
 # Full end-to-end via SLURM: train, pull W&B snapshots, plot, latexmk -> paper/main.pdf
@@ -86,6 +86,45 @@ uv run snakemake -s workflow/Snakefile \
 
 Analysis sub-DAGs are independent. Rebuilding the OLS figures never triggers the dropout pipeline, and vice versa.
 Experiment-backed figures are split into `data/generated/<analysis>/` data rules and `results/figures/` plot rules so plot iteration can rebuild PDFs without rerunning training or data analysis. The methods visualizations are the exception because they have no meaningful intermediate data.
+
+### Current manuscript dropout workflow
+
+The main workflow defaults to `dropout_loss_plateau_absolute`, the 480-model
+study used in Figure 5. It connects MNIST download, restoration of the frozen
+training source, seven pilot runs, pilot review and approval, the remaining
+473 runs, checkpoint verification, plotting, staging, and manuscript compilation.
+The checkpoint-stability appendix figure reads ten of these same results.
+`figures` includes all eight manuscript figures, and `paper_pdf` tracks all
+LaTeX, bibliography, and style sources as well as the staged figures.
+
+The immutable input `data/generated/dropout_loss_plateau_absolute/source-v1.tar.gz`
+must be retained or supplied when reproducing this historical study (SHA256
+`15fb6023d4d207bf5eafb51e68998958528767a4c74790a57ae7c107ac18e278`).
+`prepare_dropout_manuscript_source` verifies and restores its contents through
+Snakemake; it never substitutes current training code for the archived version.
+Elastic-net results are read from the existing parquet snapshot or retrieved
+using the configured W&B sweep. Those historical inputs are prerequisites,
+not outputs that can be recovered from manuscript PDFs.
+
+Dropout training and its checkpoint audit default to node9 on `whartonstat`,
+where the saved trajectories reside. `plateau_node` and `plateau_scratch` can
+configure a new execution location; existing checkpoints must remain at their
+recorded locations for the historical audit. Do not set the scratch directory
+to the published result directory. Training publishes endpoint copies and
+`storage.json` alongside `result.json`; full trajectories stay on scratch.
+
+Inspect the build before submitting work:
+
+```bash
+uv run snakemake -s workflow/Snakefile --profile workflow/profiles/slurm --dry-run paper
+```
+
+This can schedule training if results are absent or stale. To compile only the
+manuscript using already-staged figures:
+
+```bash
+uv run snakemake -s workflow/Snakefile --cores 1 --allowed-rules paper_pdf -- paper/main.pdf
+```
 
 ### Adding a new analysis
 
