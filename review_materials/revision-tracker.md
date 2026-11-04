@@ -101,3 +101,5 @@ Minimal-edit plan: R1 gets a caption/methods wording change; R2–R3 go primaril
 - 2026-11-03: Fixed the missing minus sign on the loss gradient in Section 2.2’s collinearity display; manuscript commit `fc46221`. Snakemake PDF build and diff check passed. Other CR1 mathematical findings remain open.
 
 - 2026-11-03: Addressed CR4 with the user’s abstract wording and restored original dropout contribution framing, replacing monotonicity with variation by dropout rate and architecture (`852a51e`). Detailed low-fit/replacement limitations retained. Snakemake PDF build passed: 38 pages, main content through page 10, no overfull boxes or unresolved references.
+
+- 2026-11-03: Restored the original elevator/stairs lay summary exactly from `52fd859` at the user’s request. Manuscript commit `cf70e33` pushed; historical-file equality verified. This standalone author-console text is not included in the manuscript PDF.
