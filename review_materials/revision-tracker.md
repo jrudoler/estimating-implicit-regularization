@@ -105,3 +105,5 @@ Minimal-edit plan: R1 gets a caption/methods wording change; R2–R3 go primaril
 - 2026-11-03: Restored the original elevator/stairs lay summary exactly from `52fd859` at the user’s request. Manuscript commit `cf70e33` pushed; historical-file equality verified. This standalone author-console text is not included in the manuscript PDF.
 
 - 2026-11-03: Light grammar cleanup of the restored lay summary (`2d4547a`): consistent second-person opening, smoother word order, list punctuation, and parallel phrasing. Analogy and substantive claims preserved; diff check passed.
+
+- 2026-11-03: Revised Appendix I to describe hardware, per-job resources, experiment counts, and allocated compute budgets for independent replication. Removed cluster-specific scheduling, local paths, archival/audit requirements, and workflow commands; implementation instructions are deferred to GitHub. Manuscript `21621d2` includes rebuilt PDF and preserves concurrent funding wording. Snakemake PDF build passed.
