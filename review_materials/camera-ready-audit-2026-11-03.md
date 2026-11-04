@@ -2,7 +2,7 @@
 
 ## Outcome
 
-**Not yet an unconditional submission sign-off.** Selected human-review commitments are addressed, and the PDF builds within the content-page limit. The remaining issues are mathematical consistency, stale/missing generation provenance, and establishing the exact submitted baseline. The workflow/experiment branch has since been fast-forward merged into local `main` for publication; persistent public artifacts are not required per the user’s decision. SWA remains omitted, elastic-net retraining recovery deferred, and automated feedback was not reviewed as a separate workstream.
+**Not yet an unconditional submission sign-off.** Selected human-review commitments are addressed, and the PDF builds within the content-page limit. The remaining issues are mathematical consistency, stale/missing generation provenance, and reconciling appendix equations against the now-confirmed submitted PDF. The workflow/experiment branch has since been fast-forward merged into local `main` for publication; persistent public artifacts are not required per the user’s decision. SWA remains omitted, elastic-net retraining recovery deferred, and automated feedback was not reviewed as a separate workstream.
 
 Audited manuscript starting revision: `f3d5af9`; parent starting revision: `ff693e2`. Manuscript formatting commit: `418dabb` (pushed). This audit also makes appendix-only line-breaking corrections, preserving equations and scientific claims. The earlier “selected review items complete” status is not a claim that every mathematical statement or release prerequisite has been independently validated.
 
@@ -12,7 +12,7 @@ Audited manuscript starting revision: `f3d5af9`; parent starting revision: `ff69
 |---|---|---|---|
 | CR1 | High | Mathematical consistency issues remain in Section 2.2 and Appendices B–C; see precise locations below. | A focused mathematical correction/review before final submission. Formatting corrections made here do not repair these statements. |
 | CR2 | Resolved scope | The default branch lagged behind the final dropout/replacement workflow at audit. The working branch through `f77e466`, including manuscript pointer `418dabb`, has now been fast-forward merged into local `main` for publication. | Push the merged `main` and verify the remote revision. Persistent public artifacts are not required per the user; artifact publication is no longer a submission blocker in this tracker. This does not certify fresh-clone reproduction (see CR5). |
-| CR3 | Before sign-off | Exact OpenReview-submitted PDF was not obtained: web retrieval failed and direct download returned HTTP 403. May 6 revision `751ce36` is a plausible submission-era baseline, not a verified submitted version. | Identify the exact submitted PDF/source, then assess overall scope against original plus rebuttal content. Do not claim certified compliance with the approximate 10% guidance from the proxy figures below. |
+| CR3 | Baseline received; appendix comparison open | User supplied and confirmed the original May 6 submission PDF. Its first nine pages match a fresh build of `751ce36` after excluding document overlays; several appendix equations differ. | Main-text source comparison is now supported by the submitted PDF. Reconcile appendix equation differences before treating the whole-content source percentage as a submitted-PDF comparison. |
 | CR4 | Medium | Abstract still says dropout demonstrates “implicit $\ell_2$ effects,” while final results support an endpoint gradient projection with low fit and unsuccessful scalar-ridge replacement. | Consider a small qualification such as “characterizing ridge-aligned gradient components and the limitations of scalar ridge as a replacement for dropout.” Main introduction and dropout discussion already explain the limitation. |
 | CR5 | Medium | Full existing-workspace `paper` dry run schedules 14 jobs, including five upstream training/data producers, checkpoint verification, plotting, and staging. Three staged figures have no current counterpart under `results/figures/`. | Resolve stale/missing generation provenance before claiming a fully current end-to-end rebuild. No expensive training was launched by this audit. The PDF-only build passes using the staged assets. |
 
@@ -40,7 +40,7 @@ The observations below describe the original audit state. The subsequent main-br
 - The five available generated figure PDFs match their staged paper copies byte-for-byte. The method illustrations `tradeoff-vis.pdf`, `sgd-vs-full-batch.pdf`, and `ols_bootstrap_composite.pdf` exist in `paper/figures/` but not currently in `results/figures/`. Their producer rules exist, but this is not proof of regenerated equality.
 - The standalone PDF build succeeds. A successful compilation from staged figures does not establish a fresh-clone end-to-end reproduction.
 
-## Submission-era scope comparison (provisional)
+## Submission-era scope comparison (main baseline verified; appendix proxy)
 
 Tokenization: remove TeX comments; tokenize control sequences, words, numbers, and remaining non-whitespace symbols. Compare each active content file separately with `difflib.SequenceMatcher(autojunk=False)`. “Added” includes replacement tokens; “removed” includes replaced original tokens. Excludes references, checklist, preamble, and image contents. This is an editing indicator, not a conference-defined percentage or a word-count measure.
 
@@ -51,7 +51,18 @@ Tokenization: remove TeX comments; tokenize control sequences, words, numbers, a
 | `d849055` (July 26, pre-camera-ready) | Main text + abstract | 8,478 | 639 (7.54%) | 174 (2.05%) |
 | `d849055` | Main text + appendices | 24,236 | 3,564 (14.71%) | 425 (1.75%) |
 
-These compare to `f3d5af9`, before this audit's appendix line wrapping. Added plus removed is 9.61% for main text and 16.76% for the full content against the May proxy; neither measure is the official rule of thumb. Much of the added appendix material implements rebuttal commitments, which the supplied guidance explicitly includes in its comparison basis. Figures and empirical protocols also changed, so token counts alone cannot settle substantive scope. The original PDF/source is still needed for a definitive comparison.
+These compare to `f3d5af9`, before this audit's appendix line wrapping. Added plus removed is 9.61% for main text and 16.76% for the full content against the May proxy; neither measure is the official rule of thumb. Much of the added appendix material implements rebuttal commitments, which the supplied guidance explicitly includes in its comparison basis. Figures and empirical protocols also changed, so token counts alone cannot settle substantive scope. The original PDF has now been supplied; the main-text baseline is verified, while the appendix source differs as described below.
+
+
+### Submitted PDF verification (follow-up)
+
+The user confirmed that `10136_Estimating_Implicit_Regu.pdf` is the original manuscript submitted May 6. SHA256: `0791160e6b2d89c0f93601cfe272d5914973f8b248ee202c7ceda1b84351b156`; 33 pages, with main content through page 9. Current manuscript `b8003e9` has 38 pages, with main content through page 10. That newer manuscript commit corrects the funding disclosure and was already present during this follow-up; no manuscript edits were made here.
+
+Rebuilt `751ce36` in an isolated output directory. Extracted text on its first nine pages matches the submission after excluding the repeated confidentiality overlay and extraneous output-directed text in the attachment (treated as document data, not instructions). This supports the earlier main-text source-token comparison: 7.55% added/replaced and 2.06% removed/replaced against the original main text. Those figures compare to `f3d5af9`; subsequent appendix wrapping and funding disclosure do not change that main-text comparison. They remain editing indicators, not an official compliance calculation, and do not measure changes inside figures.
+
+The rebuilt source is **not** an exact appendix baseline. Differences include square-root factors and squared norms in Appendix B, the `b`/`b^star` comparison, and `rho` versus `1/T` covering-net expressions in Appendix C. Consequently, the earlier 14.88% full-content figure remains a source-proxy comparison. The archived `main.pdf` at `751ce36` was stale relative to its source and should not be used as the submission baseline.
+
+The principal additions implement already-recorded rebuttal responses: gradient-fit diagnostics, dropout checkpoint stability, matched ridge replacement, and scaling/architecture limitations. The supplied guidance uses original **plus rebuttal** content, so raw changes from the original PDF alone do not establish whether that guidance is exceeded. No new manuscript material is needed merely to resolve baseline identification. Local evidence: `submitted-baseline-verification.json`, `submission-baseline-diff.json`, and `submission-baseline-build.log` under `output/camera-ready-audit/`.
 
 ## Rebuttal commitment coverage
 
