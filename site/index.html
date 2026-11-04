@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="description" content="An interactive guide to estimating implicit regularization: balance gradients, explore a loss landscape, and recover a hidden penalty in a neural network.">
+<title>What is your network really minimizing?</title>
+<link rel="stylesheet" href="./style.css">
+<script type="module" src="./app.mjs"></script>
+</head>
+<body>
+<header class="masthead"><a class="wordmark" href="#">INDUCTIVE BIAS <span>/ an interactive essay</span></a><a href="https://github.com/jrudoler/estimating-implicit-regularization">Code <span aria-hidden="true">↗</span></a></header>
+<main>
+<section class="hero">
+<div class="eyebrow">ESTIMATING IMPLICIT REGULARIZATION IN DEEP LEARNING</div>
+<h1>What is your network<br>really <em>minimizing?</em></h1>
+<p class="dek">A model can stop short of the best fit to its training data.<br class="desktop"> The gradient it leaves behind gives us a clue about why.</p>
+<div class="byline">Joseph H. Rudoler · Kevin Tan · Giles Hooker · Konrad P. Kording</div>
+<a class="start-link" href="#balance">Follow the gradients <span aria-hidden="true">↓</span></a>
+<div class="hero-equation" aria-label="The gradient of the loss plus the gradient of the regularizer equals zero"><span class="loss">∇L</span><span>+</span><span class="reg">∇R</span><span>=</span><span class="total">0</span></div>
+</section>
+<nav class="chapter-nav" aria-label="Chapters"><a href="#balance">01 / The balance</a><a href="#landscape">02 / The landscape</a><a href="#network">03 / The experiment</a></nav>
+<section id="balance" class="chapter">
+<div class="section-intro"><div class="eyebrow">01 — THE BALANCE</div><h2>Fitting the data has a counterweight.</h2><p>Training loss rewards a better fit. A regularizer rewards a different preference—here, smaller weights. Add the two, and the best compromise is usually somewhere between their minima.</p></div>
+<div class="lab balance-lab">
+<div class="lab-top"><div><span class="live-dot"></span> ONE PARAMETER <span class="subtle">/ an exact toy example</span></div><div class="legend"><span class="loss">● Loss</span><span class="reg">● Penalty</span><span class="total">● Sum</span></div></div>
+<div class="plot-wrap"><canvas id="balance-chart" aria-label="Loss, regularization, and their sum as functions of one parameter. Drag to inspect a parameter value." role="img"></canvas></div>
+<div class="control-grid"><label>Penalty strength <output id="lambda-value">0.50</output><input aria-label="Penalty strength" id="lambda" type="range" min="0" max="2" step="0.01" value="0.5"></label><label>Inspect parameter θ <output id="theta-value">1.00</output><input aria-label="Inspect parameter theta" id="theta" type="range" min="-1" max="3" step="0.01" value="1"></label><button id="find-balance" class="primary">Find the balance <span aria-hidden="true">→</span></button></div>
+<div class="gradient-strip"><div><span class="loss">Loss gradient</span><strong id="g-loss">−1.00</strong></div><span>+</span><div><span class="reg">Penalty gradient</span><strong id="g-reg">+1.00</strong></div><span>=</span><div><span>Net gradient</span><strong id="g-net">0.00</strong></div><p id="balance-status">At the optimum, the slopes cancel.</p></div>
+<div class="lab-foot"><span>L(θ) = ½(θ − 2)² &nbsp; · &nbsp; R(θ) = λθ²</span><button id="hide-penalty" class="text-button" aria-pressed="false">Hide λ & infer it from θ</button></div>
+<div id="inverse-result" class="inverse" hidden></div>
+</div>
+<div class="aside-prose"><h3>Now run the reasoning backward.</h3><p>If we observe the solution and know the training loss, we know what gradient a proposed regularizer would need to supply. We can estimate its strength by asking it to cancel the remaining loss gradient. At other points, this is a hypothetical explanation—not necessarily the penalty that produced them.</p></div>
+</section>
+<section id="landscape" class="chapter">
+<div class="section-intro"><div class="eyebrow">02 — THE LANDSCAPE</div><h2>In more dimensions,<br>direction matters too.</h2><p>A single slope becomes a vector. At the regularized optimum, the loss and penalty gradients point in opposite directions with equal magnitude. Explore the same two-parameter objective from above and in 3D.</p></div>
+<div class="lab">
+<div class="lab-top"><span>TWO PARAMETERS <span class="subtle">/ linked views</span></span><div class="legend"><span class="loss">→ ∇L</span><span class="reg">→ ∇R</span><span class="total">→ Net</span></div></div>
+<div class="landscape-plots"><div class="plot-wrap"><span class="plot-label">CONTOURS OF L + R <small>click to move the point</small></span><canvas id="contour-chart" role="img" aria-label="Contours of the combined objective and gradient vectors at the selected two-dimensional point."></canvas></div><div class="plot-wrap"><span class="plot-label">SURFACE OF L + R <small>drag to rotate</small></span><canvas id="surface-chart" role="img" aria-label="Rotatable three-dimensional surface of the same combined objective."></canvas></div></div>
+<div class="control-grid landscape-controls"><label>Penalty λ <output id="lambda2-value"></output><input aria-label="Landscape penalty strength" id="lambda2" type="range" min="0" max="2" step="0.01" value="0.5"></label><label>Loss elongation <output id="stretch-value"></output><input aria-label="Loss elongation" id="stretch" type="range" min="1" max="6" step="0.1" value="3"></label><label>Loss rotation <output id="angle-value"></output><input aria-label="Loss rotation in degrees" id="angle" type="range" min="0" max="180" step="1" value="34"></label><button id="snap2" class="primary">Go to optimum</button></div>
+<details class="keyboard-controls"><summary>Point & camera controls</summary><div class="control-grid"><label>θ₁ <input aria-label="Inspected theta one" id="point-x" type="range" min="-2" max="3" step="0.01" value="1"></label><label>θ₂ <input aria-label="Inspected theta two" id="point-y" type="range" min="-2" max="3" step="0.01" value="0.5"></label><label>Camera rotation <input aria-label="Camera rotation in degrees" id="camera" type="range" min="-180" max="180" value="-35"></label></div></details>
+<div class="landscape-readout"><strong id="vector-status"></strong><span id="vector-detail"></span></div>
+<div class="lab-foot"><span>Arrows show gradients (uphill), with a shared scale. Descent moves in the opposite direction. Dots mark the loss minimum (red), penalty minimum (blue), combined minimum (purple), and inspected point (dark).</span></div>
+</div>
+<div class="aside-prose"><h3>A balance is a clue, not a unique explanation.</h3><p>These quadratic bowls are convex, so a zero net gradient identifies the minimum. A neural network is more complicated: gradient cancellation alone establishes stationarity, not a global minimum. And several regularizers may explain the same endpoint.</p></div>
+</section>
+<section id="network" class="chapter">
+<div class="section-intro"><div class="eyebrow">03 — THE EXPERIMENT</div><h2>Can we recover a penalty<br>we haven’t been shown?</h2><p>Train a small ReLU network on noisy samples of a curve. We add a hidden L₂ penalty, then estimate its strength from the trained weights and the gradient of the <em>unregularized</em> training loss.</p></div>
+<div class="lab network-lab">
+<div class="lab-top"><span><span class="live-dot"></span> YOUR BROWSER IS THE LAB</span><span class="subtle">1 input → 16 ReLUs → 1 output · 49 parameters</span></div>
+<div class="network-layout"><div class="plot-wrap"><canvas id="network-chart" role="img" aria-label="Training samples, the noiseless target function, and the neural network's current prediction."></canvas><div class="legend chart-legend"><span class="data-color">● Training data</span><span class="subtle">┄ Target</span><span class="total">━ Network</span></div></div><div class="experiment-panel"><div class="eyebrow">RECOVER THE HIDDEN λ</div><div class="estimate-big" id="estimate">—</div><p class="metric-caption">estimated penalty strength</p><div class="metric-row"><span>True λ</span><strong id="true-lambda">hidden</strong></div><div class="metric-row"><span>Gradient explained</span><strong id="explained">—</strong></div><div class="meter"><div id="explained-meter"></div></div><div class="metric-row"><span>Training MSE</span><strong id="train-loss">—</strong></div><div class="metric-row"><span>Net gradient norm</span><strong id="stationarity">—</strong></div><button id="reveal" class="secondary" disabled>Reveal the true penalty</button><p id="recovery-note" class="small-note">Watch the estimate settle as the network approaches a stationary point.</p></div></div>
+<div class="training-progress"><div id="training-bar"></div></div>
+<div class="control-grid train-controls"><label>Hidden penalty<select id="penalty-choice"><option value="0.015">Moderate</option><option value="0.005">Weak</option><option value="0.05">Strong</option></select></label><label>Data & initialization seed<select id="seed"><option>7</option><option>19</option><option>42</option></select></label><button id="train" class="primary">Train the network <span aria-hidden="true">→</span></button><button id="reset" class="secondary">Reset</button></div>
+<p id="train-status" role="status" class="train-status">Ready. Training runs locally; training data stays in your browser.</p>
+</div>
+<details class="methods"><summary>What exactly are we estimating?</summary><div><p>We use mean squared error L = (1/n) Σ(fθ(xᵢ) − yᵢ)² and R = λ‖θ‖², penalizing all 49 parameters, including biases. Full-batch gradient descent uses learning rate 0.04 for up to 20,000 steps. The data and initialization are reproducible for each seed.</p><p class="formula">λ̂ = max(0, −θᵀ∇L / (2‖θ‖²))</p><p>This is a nonnegative least-squares projection of −∇L onto 2θ. “Gradient explained” is 1 − ‖∇L + 2λ̂θ‖² / ‖∇L‖². It is a fit diagnostic, not predictive R². Near-zero weights make the coefficient unidentifiable; a near-zero loss gradient makes the explained fraction uninformative. We display a dash for unavailable diagnostics.</p><p>The network uses ReLU’s zero derivative at a kink. Finite training time and nonsmoothness can leave a residual even when the loss appears stable. This experiment demonstrates explicit-penalty recovery, not proof that an arbitrary implicit bias is ridge regularization.</p></div></details>
+</section>
+<section class="ending"><div class="eyebrow">FROM A SANITY CHECK TO A SCIENTIFIC QUESTION</div><h2>What if the penalty<br>was never written down?</h2><p>Early stopping, dropout, and optimization choices can all change what a model learns. The paper asks whether a proposed explicit regularizer can explain those effects—and whether retraining with it reproduces the original behavior.</p><p>Our dropout experiments offer an important limit: a scalar ridge penalty explains only a small part of the residual gradient, and replacing dropout with that fitted penalty does not recover the original test performance. Estimating a coefficient is only the beginning. Testing the explanation is the point.</p><a class="primary link-button" href="https://github.com/jrudoler/estimating-implicit-regularization">Explore the research & code ↗</a></section>
+</main>
+<footer><span>Estimating Implicit Regularization in Deep Learning</span><span>Interactive examples · deterministic seeds · local computation</span></footer>
+<noscript>This essay’s experiments need JavaScript. The explanatory text remains available without it.</noscript>
+</body></html>
