@@ -99,3 +99,5 @@ Minimal-edit plan: R1 gets a caption/methods wording change; R2–R3 go primaril
 - 2026-11-03: User supplied and confirmed the original May 6 submission PDF. Rebuilt `751ce36`: first nine pages match submitted main text after excluding overlays, supporting the earlier 7.55% main-text added/replaced estimate. Appendix equations differ from that source revision, so the 14.88% full-content estimate remains provisional. CR3 baseline receipt resolved; appendix reconciliation remains documented. No manuscript edits; current manuscript is `b8003e9` from the separate funding correction.
 
 - 2026-11-03: Fixed the missing minus sign on the loss gradient in Section 2.2’s collinearity display; manuscript commit `fc46221`. Snakemake PDF build and diff check passed. Other CR1 mathematical findings remain open.
+
+- 2026-11-03: Addressed CR4 with the user’s abstract wording and restored original dropout contribution framing, replacing monotonicity with variation by dropout rate and architecture (`852a51e`). Detailed low-fit/replacement limitations retained. Snakemake PDF build passed: 38 pages, main content through page 10, no overfull boxes or unresolved references.
