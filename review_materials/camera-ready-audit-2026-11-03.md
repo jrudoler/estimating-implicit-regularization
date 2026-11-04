@@ -20,7 +20,7 @@ Audited manuscript starting revision: `f3d5af9`; parent starting revision: `ff69
 
 These observations come from reading the active TeX, not a complete theorem review. Leave theorem correctness unverified until the targeted review is complete.
 
-- `paper/sec_estimation.tex:150`: the collinearity display writes `grad L = sum lambda_k grad R_k`. Equation 2 and Appendix B define the target as **negative** loss gradient. The display needs a minus sign on the left (or an explicitly different coefficient convention).
+- **Fixed in `fc46221` (2026-11-03):** `paper/sec_estimation.tex:151` now has the negative loss gradient, consistent with Equation 2. Snakemake PDF build passed. Original finding: the collinearity display writes `grad L = sum lambda_k grad R_k`. Equation 2 and Appendix B define the target as **negative** loss gradient. The display needs a minus sign on the left (or an explicitly different coefficient convention).
 - `paper/sec_estimation.tex:127`: “local convexity guarantees that the solution is unique” is too strong. Convexity alone permits a continuum of minima (e.g. `f(x,y)=x^2`). Appendix A uses stronger curvature assumptions; local uniqueness also does not by itself guarantee arbitrary retraining reaches that point.
 - `paper/app_pac.tex:45`: the linear proof compares vectors using `<=` after applying a matrix spectral bound. This should be a norm inequality, not an order relation between arbitrary vectors.
 - `paper/app_pac.tex:92`: the variance proxy bound uses `sup ||g-g'||_2` where the quadratic form bound requires `sup ||g-g'||_2^2`. The next displayed tail bound takes its square root, consistent with the squared version.
