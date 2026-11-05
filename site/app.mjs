@@ -4,8 +4,9 @@ const randomBetween=(min,max)=>min+(max-min)*Math.random();
 const colors={loss:'#ff0000',reg:'#0000ff',total:'#555555',ink:'#222222',muted:'#707070',grid:'#e9e9e9'};
 const number=(x,d=2)=>Number.isFinite(x)?(Math.abs(x)<0.5*10**(-d)?0:x).toFixed(d):'—';
 function canvas(id){const el=$(id),r=el.getBoundingClientRect(),dpr=window.devicePixelRatio||1;el.width=r.width*dpr;el.height=r.height*dpr;const ctx=el.getContext('2d');ctx.scale(dpr,dpr);ctx.font='11px system-ui';return {el,ctx,w:r.width,h:r.height};}
-function axes(view,{xmin,xmax,ymin,ymax,xlabel='θ',ylabel='Objective',left=55,bottom=38}){
+function axes(view,{xmin,xmax,ymin,ymax,xlabel='θ',ylabel='Objective',left=55,bottom=38,equalAspect=false}){
  const {ctx,w,h}=view,pad={l:left,r:25,t:24,b:bottom};
+ if(equalAspect){const unit=Math.min((w-pad.l-pad.r)/(xmax-xmin),(h-pad.t-pad.b)/(ymax-ymin)),dx=(w-pad.l-pad.r-unit*(xmax-xmin))/2,dy=(h-pad.t-pad.b-unit*(ymax-ymin))/2;pad.l+=dx;pad.r+=dx;pad.t+=dy;pad.b+=dy;}
  const X=x=>pad.l+(x-xmin)/(xmax-xmin)*(w-pad.l-pad.r),Y=y=>h-pad.b-(y-ymin)/(ymax-ymin)*(h-pad.t-pad.b);
  ctx.strokeStyle=colors.grid;ctx.fillStyle=colors.muted;ctx.lineWidth=1;
  for(let i=0;i<=4;i++){const y=ymin+(ymax-ymin)*i/4;ctx.beginPath();ctx.moveTo(X(xmin),Y(y));ctx.lineTo(X(xmax),Y(y));ctx.stroke();ctx.textAlign='right';ctx.fillText(number(y,1),pad.l-10,Y(y)+4);}
@@ -15,7 +16,7 @@ function axes(view,{xmin,xmax,ymin,ymax,xlabel='θ',ylabel='Objective',left=55,b
 }
 function line(ctx,points,color,width=2,dash=[]){ctx.beginPath();ctx.strokeStyle=color;ctx.lineWidth=width;ctx.setLineDash(dash);points.forEach(([x,y],i)=>i?ctx.lineTo(x,y):ctx.moveTo(x,y));ctx.stroke();ctx.setLineDash([]);}
 function dot(ctx,x,y,color,r=5){ctx.beginPath();if(color===colors.reg){ctx.moveTo(x,y-r-1);ctx.lineTo(x+r+1,y+r);ctx.lineTo(x-r-1,y+r);ctx.closePath();}else if(color===colors.total){ctx.moveTo(x,y-r-1);ctx.lineTo(x+r+1,y);ctx.lineTo(x,y+r+1);ctx.lineTo(x-r-1,y);ctx.closePath();}else{ctx.arc(x,y,r,0,2*Math.PI);}ctx.fillStyle=color;ctx.fill();ctx.strokeStyle='#ffffff';ctx.lineWidth=2;ctx.stroke();}
-function arrow(ctx,from,to,color){const dx=to[0]-from[0],dy=to[1]-from[1],len=Math.hypot(dx,dy);if(len<1)return;line(ctx,[from,to],color,color===colors.total?3:2.5,color===colors.reg?[5,4]:[]);const a=Math.atan2(dy,dx);ctx.beginPath();ctx.moveTo(...to);ctx.lineTo(to[0]-8*Math.cos(a-.42),to[1]-8*Math.sin(a-.42));ctx.lineTo(to[0]-8*Math.cos(a+.42),to[1]-8*Math.sin(a+.42));ctx.closePath();ctx.fillStyle=color;ctx.fill();ctx.font='11px system-ui';ctx.textAlign='left';ctx.strokeStyle='#fff';ctx.lineWidth=3;const label=color===colors.loss?'∇L':color===colors.reg?'∇R':'Net';ctx.strokeText(label,to[0]+5,to[1]-6);ctx.fillText(label,to[0]+5,to[1]-6);}
+function arrow(ctx,from,to,color){const dx=to[0]-from[0],dy=to[1]-from[1],len=Math.hypot(dx,dy);if(len<1)return;line(ctx,[from,to],color,color===colors.total?3:2.5,color===colors.reg?[5,4]:[]);const a=Math.atan2(dy,dx);ctx.beginPath();ctx.moveTo(...to);ctx.lineTo(to[0]-8*Math.cos(a-.42),to[1]-8*Math.sin(a-.42));ctx.lineTo(to[0]-8*Math.cos(a+.42),to[1]-8*Math.sin(a+.42));ctx.closePath();ctx.fillStyle=color;ctx.fill();ctx.font='11px system-ui';ctx.textAlign=dx<0?'right':'left';ctx.strokeStyle='#fff';ctx.lineWidth=3;const label=color===colors.loss?'∇L':color===colors.reg?'∇R':'Net';const labelX=to[0]+(dx<0?-6:6),labelY=to[1]+(dy>0?14:-6);ctx.strokeText(label,labelX,labelY);ctx.fillText(label,labelX,labelY);}
 // Keep the computed parameter independent of the range input's 0.01 snapping.
 let balanceTheta=+$('theta').value;
 let hidden=false,balAxes,balAnimation=0;
@@ -119,16 +120,27 @@ $('random-inverse').onclick=()=>{inverseAnimation++;inverseLambda=randomBetween(
 
 let point=[1.5,.9],landscapeAnimation=0,contourAxes,yaw=-.61,pitch=.7;
 function config(){return {l:+$('lambda2').value,a:+$('angle').value*Math.PI/180,s:+$('stretch').value};}
+function visibleLandscapes(){return [
+ {key:'loss',label:'Loss L',color:colors.loss,dash:[],center:[1.5,.9]},
+ {key:'penalty',label:'Penalty R',color:colors.reg,dash:[5,4],center:[0,0]},
+ {key:'total',label:'Total L + R',color:colors.total,dash:[],center:optimum2D(config().l,config().a,config().s)}
+].filter(layer=>$('show-'+layer.key).checked);}
 function drawLandscape(){
  const {l,a,s}=config(),opt=optimum2D(l,a,s);
- const v=canvas('contour-chart'),{ctx}=v;contourAxes=axes(v,{xmin:-2,xmax:3,ymin:-2,ymax:3,xlabel:'θ₁',ylabel:'θ₂'});const {X,Y}=contourAxes;
+ const v=canvas('contour-chart'),{ctx}=v;contourAxes=axes(v,{xmin:-2,xmax:3,ymin:-2,ymax:3,xlabel:'θ₁',ylabel:'θ₂',equalAspect:true});const {X,Y}=contourAxes;
  ctx.save();ctx.beginPath();ctx.rect(X(-2),Y(3),X(3)-X(-2),Y(-2)-Y(3));ctx.clip();
- for(const level of [.1,.35,.8,1.5,2.7,4.5,7,10,15,22]){
-   const pts=Array.from({length:161},(_,i)=>{const t=i/160*Math.PI*2,u=Math.sqrt(2*level/(1+2*l))*Math.cos(t),vv=Math.sqrt(2*level/(s+2*l))*Math.sin(t);return[X(opt[0]+Math.cos(a)*u-Math.sin(a)*vv),Y(opt[1]+Math.sin(a)*u+Math.cos(a)*vv)];});
-   line(ctx,pts,'#b9b9b9',1);
+ const layers=visibleLandscapes(),alpha=+$('landscape-alpha').value;
+ $('landscape-alpha-value').textContent=number(alpha,2);
+ ctx.globalAlpha=alpha;
+ for(const layer of layers)for(const level of [.1,.35,.8,1.5,2.7,4.5,7,10,15,22]){
+   const h1=layer.key==='penalty'?2*l:1+(layer.key==='total'?2*l:0),h2=layer.key==='penalty'?2*l:s+(layer.key==='total'?2*l:0);
+   if(h1===0)continue; // A zero penalty is flat: no nonzero contour levels.
+   const pts=Array.from({length:161},(_,i)=>{const t=i/160*Math.PI*2,u=Math.sqrt(2*level/h1)*Math.cos(t),vv=Math.sqrt(2*level/h2)*Math.sin(t);return[X(layer.center[0]+Math.cos(a)*u-Math.sin(a)*vv),Y(layer.center[1]+Math.sin(a)*u+Math.cos(a)*vv)];});
+   line(ctx,pts,layer.color,layer.key==='total'?1.5:1,layer.dash);
  }
+ ctx.globalAlpha=1;
  const b=landscape(...point,l,a,s),sum=b.gLoss.map((n,i)=>n+b.gReg[i]);
- const from=[X(point[0]),Y(point[1])],scale=.25;
+ const from=[X(point[0]),Y(point[1])],scale=.6;
  for(const [g,color] of [[b.gLoss,colors.loss],[b.gReg,colors.reg],[sum,colors.total]])arrow(ctx,from,[X(point[0]+scale*g[0]),Y(point[1]+scale*g[1])],color);
  dot(ctx,X(1.5),Y(.9),colors.loss,4);dot(ctx,X(0),Y(0),colors.reg,4);dot(ctx,X(opt[0]),Y(opt[1]),colors.total,5);dot(ctx,...from,colors.ink,4);ctx.restore();
  $('lambda2-value').textContent=number(l);$('stretch-value').textContent=number(s,1)+'×';$('angle-value').textContent=number(a*180/Math.PI,0)+'°';$('point-x').value=point[0];$('point-y').value=point[1];
@@ -140,11 +152,10 @@ function drawLandscape(){
  drawSurface();
 }
 function drawSurface(){
- const {ctx,w,h}=canvas('surface-chart'),{l,a,s}=config();
- const z=(x,y)=>landscape(x,y,l,a,s).total;
+ const {ctx,w,h}=canvas('surface-chart'),{l,a,s}=config(),layers=visibleLandscapes();
+ const z=(x,y,key='total')=>landscape(x,y,l,a,s)[key];
+ // Keep one height scale across layers and toggles so overlays are comparable.
  const maxZ=Math.max(...[[-2,-2],[-2,3],[3,-2],[3,3]].map(p=>z(...p)));
- // Orthographic wireframe: retain the full objective, fit the projected bounds,
- // and avoid opaque foreground faces hiding the minimum or selected point.
  const raw=(x,y,height)=>{x-=.5;y-=.5;const xx=Math.cos(yaw)*x-Math.sin(yaw)*y,yy=Math.sin(yaw)*x+Math.cos(yaw)*y;return [xx,Math.sin(pitch)*yy-Math.cos(pitch)*height/maxZ*5];};
  const grid=[];for(let i=0;i<=24;i++)for(let j=0;j<=24;j++){const x=-2+5*i/24,y=-2+5*j/24;grid.push(raw(x,y,z(x,y)));}
  const floor=[[-2,-2],[-2,3],[3,3],[3,-2],[-2,-2]];
@@ -153,23 +164,27 @@ function drawSurface(){
  const scale=Math.min((w-80)/(xmax-xmin),(h-70)/(ymax-ymin));
  const project=(x,y,height)=>{const p=raw(x,y,height);return [w/2+(p[0]-(xmin+xmax)/2)*scale,32+(p[1]-ymin)*scale];};
  line(ctx,floor.map(p=>project(...p,0)),'#b0b0b0',1);
- for(let i=0;i<=16;i++){
-   const q=-2+5*i/16;
-   line(ctx,Array.from({length:65},(_,j)=>{const t=-2+5*j/64;return project(q,t,z(q,t));}),'#aaa',1);
-   line(ctx,Array.from({length:65},(_,j)=>{const t=-2+5*j/64;return project(t,q,z(t,q));}),'#c5c5c5',1);
+ ctx.globalAlpha=+$('landscape-alpha').value;
+ for(const layer of layers)for(let i=0;i<=12;i++){
+   const q=-2+5*i/12;
+   for(const transpose of [false,true])line(ctx,Array.from({length:65},(_,j)=>{const t=-2+5*j/64,x=transpose?t:q,y=transpose?q:t;return project(x,y,z(x,y,layer.key));}),layer.color,layer.key==='total'?1.3:1,layer.dash);
  }
+ ctx.globalAlpha=1;
  line(ctx,[project(-2,-2,0),project(-2,-2,maxZ)],'#888',1);
  ctx.fillStyle=colors.muted;ctx.textAlign='left';ctx.font='11px system-ui';
- for(const [label,p] of [['θ₁',project(3,-2,0)],['θ₂',project(-2,3,0)],['L + R',project(-2,-2,maxZ)]])ctx.fillText(label,p[0]+5,p[1]);
- const opt=optimum2D(l,a,s),selected=project(...point,z(...point)),minimum=project(...opt,z(...opt));
- line(ctx,[project(...point,0),selected],colors.ink,1.5,[4,4]);
- dot(ctx,...minimum,colors.total,6);dot(ctx,...selected,colors.ink,6);
- ctx.font='600 12px system-ui';ctx.strokeStyle='#fff';ctx.lineWidth=4;ctx.fillStyle=colors.ink;
- const label=Math.hypot(point[0]-opt[0],point[1]-opt[1])<1e-9?'Selected = optimum':'Selected';
- ctx.strokeText(label,selected[0]+9,selected[1]-10);ctx.fillText(label,selected[0]+9,selected[1]-10);
- if(label==='Selected'){ctx.font='11px system-ui';ctx.strokeText('Optimum',minimum[0]+9,minimum[1]+17);ctx.fillText('Optimum',minimum[0]+9,minimum[1]+17);}
- ctx.font='11px system-ui';ctx.fillStyle=colors.muted;ctx.fillText(`Selected objective: ${number(z(...point),3)} · height autoscaled`,12,h-10);
+ for(const [label,p] of [['θ₁',project(3,-2,0)],['θ₂',project(-2,3,0)],['Value',project(-2,-2,maxZ)]])ctx.fillText(label,p[0]+5,p[1]);
+ for(const [index,layer] of layers.entries()){
+   const selected=project(...point,z(...point,layer.key)),minimum=project(...layer.center,z(...layer.center,layer.key));
+   line(ctx,[project(...point,0),selected],layer.color,1,[4,4]);
+   if(layer.key!=='penalty'||l>0)dot(ctx,...minimum,layer.color,5);
+   dot(ctx,...selected,colors.ink,4);
+   ctx.font='11px system-ui';ctx.strokeStyle='#fff';ctx.lineWidth=4;ctx.fillStyle=layer.color;
+   const readout=`${layer.label}: ${number(z(...point,layer.key),3)}`;ctx.strokeText(readout,12,18+index*16);ctx.fillText(readout,12,18+index*16);
+ }
+ ctx.font='11px system-ui';ctx.fillStyle=colors.muted;ctx.fillText(layers.length?'Black dots: selected weights on each surface':'Select a landscape above to show it.',12,h-10);
 }
+for(const id of ['show-loss','show-penalty','show-total'])$(id).onchange=drawLandscape;
+$('landscape-alpha').oninput=drawLandscape;
 for(const id of ['lambda2','stretch','angle'])$(id).addEventListener('input',()=>{landscapeAnimation++;drawLandscape();});
 $('snap2').onclick=()=>{
  const token=++landscapeAnimation,start=[...point],{l,a,s}=config(),end=optimum2D(l,a,s),time=performance.now();

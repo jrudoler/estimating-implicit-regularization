@@ -1051,3 +1051,9 @@ footer  {
 @media (max-width: 760px) { .inverse-plots { grid-template-columns: 1fr; } .inverse-plots .plot-wrap + .plot-wrap { border-left: 0; border-top: 1px solid var(--line); } }
 
 .network-architecture { grid-template-columns: 1fr 1fr; max-width: 640px; }
+
+.landscape-layers { display:flex; flex-wrap:wrap; gap:20px; align-items:center; margin:16px 0; }
+.landscape-layers fieldset { border:0; padding:0; margin:0; display:flex; flex-wrap:wrap; gap:14px; }
+.landscape-layers legend { font-size:12px; margin-bottom:8px; }
+.landscape-layers label { font-size:12px; }
+.landscape-layers input[type="checkbox"] { width:auto; margin-right:5px; }

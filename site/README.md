@@ -63,3 +63,5 @@ Each figure has a Random initialization button:
 - Figure 2: new candidate lambda, unchanged observed weight.
 - Figure 3: new two-dimensional weight, unchanged objective and camera.
 - Figure 4: new displayed network initialization seed, unchanged data seed and penalty; any active training is stopped and reset. Reset repeats that initialization, while Random initialization draws another one.
+
+Figure 3 offers loss, penalty, and total layer checkboxes for both views, plus landscape opacity. Wireframes share a height scale across toggles. The gradient arrows always show positive (uphill) derivatives; tests verify finite differences and the canvas y-axis sign.

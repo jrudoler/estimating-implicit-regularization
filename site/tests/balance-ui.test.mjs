@@ -11,8 +11,8 @@ function fixture(withLandscape=false) {
   const context=new Proxy({}, {get:(obj,key)=>obj[key]??(()=>{}),set:(obj,key,value)=>(obj[key]=value,true)});
   function element(id) {
     if(nodes.has(id))return nodes.get(id);
-    let value=({lambda:.5,lambda2:.5,stretch:3,angle:34,'observed-theta':.8,'inverse-lambda':.15})[id]??1;
-    const node={textContent:'',style:{},listeners:{},hidden:false,
+    let value=({lambda:.5,lambda2:.5,stretch:3,angle:34,'landscape-alpha':.55,'observed-theta':.8,'inverse-lambda':.15})[id]??1;
+    const node={textContent:'',style:{},listeners:{},hidden:false,checked:id==='show-total',
       addEventListener(event,fn){this.listeners[event]=fn;},
       getBoundingClientRect(){return {width:800,height:350,left:0,top:0};},
       getContext(){return context;},setAttribute(){},setPointerCapture(){},
@@ -28,7 +28,7 @@ function fixture(withLandscape=false) {
   vm.runInContext(controller,scope);
   vm.runInContext('drawInverse()',scope);
   if(withLandscape)vm.runInContext('drawLandscape()',scope);
-  return {element,flush(){while(frames.length)frames.shift()(1000);}};
+  return {element,arrows(){return vm.runInContext('(()=>{const result=[];const original=arrow;arrow=(ctx,from,to,color)=>result.push({from,to,color});drawLandscape();arrow=original;return result;})()',scope);},flush(){while(frames.length)frames.shift()(1000);}};
 }
 
 test('Find the balance cancels gradients across every penalty slider value despite range snapping',()=>{
@@ -110,4 +110,27 @@ test('random initialization preserves the fixed quantities and cancels pending a
  ui.element('snap2').onclick();ui.element('random-landscape').onclick();
  const point=ui.element('point-status').textContent;ui.flush();assert.equal(ui.element('point-status').textContent,point);
  assert.equal(ui.element('lambda2').value,'0.5');
+});
+
+test('Figure 3 arrows map positive analytical gradients to canvas coordinates',()=>{
+ const ui=fixture(true);
+ for(const p of [[.4,.7],[-1,2],[2,-1]]){
+  ui.element('point-x').value=p[0];ui.element('point-y').value=p[1];ui.element('point-x').oninput();
+  const b=landscape(...p,.5,34*Math.PI/180,3),gradients=[b.gLoss,b.gReg,b.gLoss.map((v,i)=>v+b.gReg[i])];
+  ui.arrows().forEach((arrow,i)=>{
+   // Real axes: 288px square (equal aspect) for a five-unit domain. Canvas y points down.
+   assert.ok(Math.abs((arrow.to[0]-arrow.from[0])/(288/5*.6)-gradients[i][0])<1e-10);
+   assert.ok(Math.abs((arrow.to[1]-arrow.from[1])/(-288/5*.6)-gradients[i][1])<1e-10);
+  });
+ }
+});
+test('landscape overlays and opacity preserve the selected weights and optimum',()=>{
+ const ui=fixture(true),before=ui.element('point-status').textContent;
+ for(const id of ['show-loss','show-penalty','show-total']){ui.element(id).checked=true;ui.element(id).onchange();}
+ ui.element('landscape-alpha').value=.3;ui.element('landscape-alpha').oninput();
+ assert.equal(ui.element('landscape-alpha-value').textContent,'0.30');
+ assert.equal(ui.element('point-status').textContent,before);
+ ui.element('lambda2').value=0;ui.element('lambda2').listeners.input();
+ for(const id of ['show-loss','show-penalty','show-total']){ui.element(id).checked=false;ui.element(id).onchange();}
+ assert.match(ui.element('point-status').textContent,/Selected: \(1.500, 0.900\)/);
 });

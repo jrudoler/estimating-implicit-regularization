@@ -42,3 +42,14 @@ for(const activation of ['relu','tanh'])for(const width of [16,32,64])test(`${ac
  assert.ok(Math.abs(result.estimate.lambda-lambda)/lambda<.05);
  assert.ok(result.estimate.explained>.95);
 });
+
+test('landscape gradients match finite differences and point uphill',()=>{
+ const eps=1e-6;
+ for(const lambda of [0,.5,2])for(const angle of [0,.6,2.8])for(const stretch of [1,3,6])for(const p of [[-.7,1.2],[0,0],[2,-1]]){
+  const b=landscape(...p,lambda,angle,stretch);
+  for(const [key,g] of [['loss',b.gLoss],['penalty',b.gReg],['total',b.gLoss.map((v,i)=>v+b.gReg[i])]]){
+   for(let i=0;i<2;i++){const plus=[...p],minus=[...p];plus[i]+=eps;minus[i]-=eps;near(g[i],(landscape(...plus,lambda,angle,stretch)[key]-landscape(...minus,lambda,angle,stretch)[key])/(2*eps),1e-7);}
+   if(Math.hypot(...g)>1e-8)assert.ok(landscape(p[0]+eps*g[0],p[1]+eps*g[1],lambda,angle,stretch)[key]>b[key]);
+  }
+ }
+});
