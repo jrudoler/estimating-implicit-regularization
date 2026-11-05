@@ -65,3 +65,5 @@ Each figure has a Random initialization button:
 - Figure 4: new displayed network initialization seed, unchanged data seed and penalty; any active training is stopped and reset. Reset repeats that initialization, while Random initialization draws another one.
 
 Figure 3 offers loss, penalty, and total layer checkboxes for both views, plus landscape opacity. Wireframes share a height scale across toggles. The gradient arrows always show positive (uphill) derivatives; tests verify finite differences and the canvas y-axis sign.
+
+The neural-network interactive defaults to tanh. It is a single-coefficient L₂ illustration of the paper’s explicit elastic-net recovery logic, not a reproduction of its two-coefficient ReLU experiment. The closing section distinguishes endpoint fitting, coefficient recovery, replacement/retraining validation, and trajectory matching, and links to arXiv:2605.05436.
