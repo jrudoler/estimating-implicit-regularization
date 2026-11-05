@@ -38,21 +38,30 @@ export function initEarlyStopping({canvas,axes,line,colors,number}){
   }
   if(!s.fitted){ctx.fillStyle=colors.muted;ctx.textAlign='center';ctx.fillText('No unique minimum for this fitted objective',v.w/2,v.h/2);}
   const trace=canvas('early-penalties'),series=Array.from({length:400},(_,i)=>{const k=i+1;return {t:k,s:regressionAt(problem,k,start)};});
-  const log=$('early-log').checked, floor=1e-6;
+  const log=$('early-log').checked;
   const values=p=>[p.s.scalar.lambda];
   const maximum=Math.max(.1,...series.flatMap(values).filter(x=>x!==null));
-  const ymax=log?Math.ceil(Math.log10(maximum)):maximum*1.08, ymin=log?-6:0;
+  const positive=series.flatMap(values).filter(x=>x>0);
+  const low=Math.floor(Math.log10(Math.min(...positive,maximum))),high=Math.ceil(Math.log10(maximum));
+  const stride=Math.max(1,Math.ceil((high-low)/6));
+  const logTicks=Array.from({length:Math.floor((high-low)/stride)+1},(_,i)=>high-i*stride);
+  const ymax=log?high+.3:maximum*1.08, ymin=log?low-.5:0;
   const val=x=>log?Math.log10(x):x;
-  const a=axes(trace,{xmin:0,xmax:400,ymin,ymax,xlabel:'Training step',ylabel:'Estimated penalty λ',left:65,xticks:[0,100,200,300,400],yticks:log?Array.from({length:ymax+7},(_,i)=>i-6):null,formatY:x=>log?(x< -3?'10^'+x:String(10**x)):number(x,2)});
+  const a=axes(trace,{xmin:0,xmax:400,ymin,ymax,xlabel:'Training step',ylabel:'Estimated penalty λ',left:65,xticks:[0,100,200,300,400],yticks:log?logTicks:null,formatY:x=>log?(x< -3?'10^'+x:String(10**x)):number(x,2)});
   for(let j=0;j<1;j++){
    let points=[];
    const flush=()=>{if(points.length)line(trace.ctx,points,colors.total,2.5,[]);points=[];};
-   for(const p of series){const value=values(p)[j];if(value===null||(log&&value<floor)){flush();continue;}points.push([a.X(p.t),a.Y(val(value))]);}flush();
+   for(const p of series){const value=values(p)[j];if(value===null||(log&&value<=0)){flush();continue;}points.push([a.X(p.t),a.Y(val(value))]);}flush();
    const current=series[t-1].s.scalar.lambda;
-   if(current!==null&&(!log||current>=floor)){trace.ctx.fillStyle=colors.ink;trace.ctx.beginPath();trace.ctx.arc(a.X(t),a.Y(val(current)),3,0,2*Math.PI);trace.ctx.fill();}
+   if(current!==null&&(!log||current>0)){trace.ctx.fillStyle=colors.ink;trace.ctx.beginPath();trace.ctx.arc(a.X(t),a.Y(val(current)),3,0,2*Math.PI);trace.ctx.fill();}
+  }
+  const firstZero=series.find(p=>p.s.scalar.lambda===0);
+  if(log&&firstZero){
+   const x=a.X(firstZero.t),y=a.Y(ymin);
+   trace.ctx.strokeStyle=colors.total;trace.ctx.lineWidth=1.5;trace.ctx.beginPath();trace.ctx.arc(x,y,4,0,2*Math.PI);trace.ctx.stroke();
   }
   line(trace.ctx,[[a.X(t),a.Y(ymin)],[a.X(t),a.Y(ymax)]],colors.ink,1,[3,4]);
-  $('early-penalty-caption').textContent=`Paper Fig. 4E: a separate scalar ridge estimate at every step of the displayed trajectory, regardless of the matrix estimator selected above. The dot marks step ${t}. `+(log?'The vertical axis is logarithmic: each tick is a tenfold change. Values below 0.000001 (including zero) are not shown.':'Both axes are linear: equal distances mean equal changes.');
+  $('early-penalty-caption').textContent=`Paper Fig. 4E: a separate scalar ridge estimate at every step of the displayed trajectory, regardless of the matrix estimator selected above. The dot marks step ${t}. `+(log?`The vertical axis is logarithmic and spans all positive estimates; tick labels give actual penalty values. ${firstZero?'The hollow marker at the bottom marks the first zero estimate (step '+firstZero.t+'); zero has no logarithmic coordinate. Values can reach numerical precision.':''}`:'Both axes are linear: equal distances mean equal changes.');
 
  }
  function tick(now){if(!playing)return;if(now-lastTime>65){lastTime=now;$('early-step').value=Math.min(400,step()+1);draw();}if(step()===400){stop();return;}frame=requestAnimationFrame(tick);}
