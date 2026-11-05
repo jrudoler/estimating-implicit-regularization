@@ -1,5 +1,6 @@
 import {balance,landscape,optimum2D,ridgeEstimate,dataset,createModel,predict,target} from './math.mjs';
 const $=id=>document.getElementById(id);
+const randomBetween=(min,max)=>min+(max-min)*Math.random();
 const colors={loss:'#ff0000',reg:'#0000ff',total:'#555555',ink:'#222222',muted:'#707070',grid:'#e9e9e9'};
 const number=(x,d=2)=>Number.isFinite(x)?(Math.abs(x)<0.5*10**(-d)?0:x).toFixed(d):'—';
 function canvas(id){const el=$(id),r=el.getBoundingClientRect(),dpr=window.devicePixelRatio||1;el.width=r.width*dpr;el.height=r.height*dpr;const ctx=el.getContext('2d');ctx.scale(dpr,dpr);ctx.font='11px system-ui';return {el,ctx,w:r.width,h:r.height};}
@@ -41,12 +42,12 @@ function drawBalance(){
  $('balance-status').textContent=hidden?'What penalty could explain this point?':Math.abs(b.gLoss+b.gReg)<1e-10?'At the optimum, the slopes cancel.':'The net gradient is nonzero. Move toward the balance.';
  if(hidden){const est=ridgeEstimate([t],[b.gLoss]);$('inverse-result').textContent=est.lambda===null?'At θ = 0, ridge supplies no gradient. Its strength cannot be identified here.':`Assuming this point is stationary: estimated λ = ${number(est.lambda,3)}. Unexplained gradient = ${number(est.residual,3)}.${Math.abs(t-b.optimum)>1e-10?' Away from the true optimum, this need not recover the hidden penalty.':' This matches the hidden penalty at the true optimum.'}`;}
 }
-function drawGradientBalance(b,theta){
- const {ctx,w}=canvas('gradient-chart');
+function drawGradientBalance(b,theta,canvasId='gradient-chart',conceal=hidden,fixedScale=null){
+ const {ctx,w}=canvas(canvasId);
  const left=w<500?125:180,right=w-24,center=(left+right)/2;
- const max=Math.max(1,Math.abs(b.gLoss),hidden?0:Math.abs(b.gReg),hidden?0:Math.abs(b.gLoss+b.gReg));
+ const max=fixedScale??Math.max(1,Math.abs(b.gLoss),conceal?0:Math.abs(b.gReg),conceal?0:Math.abs(b.gLoss+b.gReg));
  const scale=(right-left)/2/max*.9;
- const rows=[['Loss ∇L',b.gLoss,colors.loss],['Penalty ∇R',hidden?null:b.gReg,colors.reg],['Net',hidden?null:b.gLoss+b.gReg,colors.total]];
+ const rows=[['Loss ∇L',b.gLoss,colors.loss],['Penalty ∇R',conceal?null:b.gReg,colors.reg],['Net',conceal?null:b.gLoss+b.gReg,colors.total]];
  line(ctx,[[center,10],[center,143]],'#bbbbbb',1,[2,3]);
  rows.forEach(([label,value,color],i)=>{
    const y=28+i*48;
@@ -66,6 +67,56 @@ $('find-balance').onclick=()=>{const token=++balAnimation,start=balanceTheta,end
 $('hide-penalty').onclick=()=>{hidden=!hidden;$('hide-penalty').textContent=hidden?'Reveal the penalty':'Hide λ & infer it from θ';$('hide-penalty').setAttribute('aria-pressed',hidden);$('lambda').disabled=hidden;$('inverse-result').hidden=!hidden;drawBalance();};
 $('balance-chart').addEventListener('pointerdown',e=>{balAnimation++;const r=e.currentTarget.getBoundingClientRect();balanceTheta=Math.max(-1,Math.min(3,balAxes.unX(e.clientX-r.left)));$('theta').value=balanceTheta;drawBalance();e.currentTarget.setPointerCapture(e.pointerId);});
 $('balance-chart').addEventListener('pointermove',e=>{if(e.buttons){const r=e.currentTarget.getBoundingClientRect();balanceTheta=Math.max(-1,Math.min(3,balAxes.unX(e.clientX-r.left)));$('theta').value=balanceTheta;drawBalance();}});
+$('random-balance').onclick=()=>{balAnimation++;balanceTheta=randomBetween(-1,3);$('theta').value=balanceTheta;drawBalance();};
+// In the inverse problem theta is observed; only lambda moves during estimation.
+let observedTheta=+$('observed-theta').value,inverseLambda=+$('inverse-lambda').value,inverseAnimation=0,inverseLimit=1.2;
+function inverseEstimate(){return ridgeEstimate([observedTheta],[observedTheta-2]);}
+function drawInverse(){
+ const t=observedTheta,l=inverseLambda,b=balance(t,l),fit=inverseEstimate();
+ const limit=Math.max(inverseLimit,(fit.lambda??0)*1.5);
+ $('inverse-lambda').max=limit;
+ const v=canvas('inverse-chart'),{ctx}=v;
+ const {X,Y}=axes(v,{xmin:-1,xmax:3,ymin:0,ymax:Math.max(5,9*limit+1),ylabel:'Objective value'});
+ for(const [key,col] of [['loss',colors.loss],['penalty',colors.reg],['total',colors.total]])
+   line(ctx,Array.from({length:201},(_,i)=>{const x=-1+i*.02;return[X(x),Y(balance(x,l)[key])];}),col,key==='total'?3.5:2,key==='penalty'?[7,5]:[]);
+ line(ctx,[[X(t),Y(0)],[X(t),Y(Math.max(5,9*limit+1))]],colors.ink,1.5,[3,3]);
+ const opt=b.optimum;
+ line(ctx,[[X(opt),Y(0)],[X(opt),Y(balance(opt,l).total)]],colors.total,1,[6,4]);
+ dot(ctx,X(opt),Y(balance(opt,l).total),colors.total,6);
+ dot(ctx,X(t),Y(b.loss),colors.loss);dot(ctx,X(t),Y(b.penalty),colors.reg);
+ for(const [height,gradient,color,dash] of [[b.loss,b.gLoss,colors.loss,[]],[b.penalty,b.gReg,colors.reg,[7,4]]]){
+   line(ctx,[[X(t-.35),Y(height-gradient*.35)],[X(t+.35),Y(height+gradient*.35)]],color,4,dash);
+ }
+ ctx.font='12px system-ui';ctx.fillStyle=colors.ink;ctx.textAlign=t>2?'right':'left';ctx.fillText(`Fixed θ̂ = ${number(t,2)}`,X(t)+(t>2?-6:6),40);
+ ctx.textAlign='left';ctx.fillStyle=colors.total;ctx.fillText('Total minimum',Math.min(v.w-100,Math.max(55,X(opt)+8)),Y(balance(opt,l).total)-12);
+ const e=canvas('inverse-error-chart'),error=x=>(t-2+2*x*t)**2;
+ const ea=axes(e,{xmin:0,xmax:limit,ymin:0,ymax:Math.max(1,error(0),error(limit))*1.08,xlabel:'λ',ylabel:'Squared net gradient'});
+ line(e.ctx,Array.from({length:151},(_,i)=>{const x=limit*i/150;return[ea.X(x),ea.Y(error(x))];}),colors.ink,2);
+ if(fit.lambda!==null)dot(e.ctx,ea.X(fit.lambda),ea.Y(error(fit.lambda)),colors.total,6);
+ dot(e.ctx,ea.X(l),ea.Y(error(l)),colors.reg,6);
+ e.ctx.fillStyle=colors.reg;e.ctx.font='12px system-ui';e.ctx.textAlign='left';e.ctx.fillText('Current λ',Math.max(55,Math.min(e.w-80,ea.X(l)+8)),Math.max(35,ea.Y(error(l))-12));
+ const gradientScale=Math.max(1,Math.abs(b.gLoss),2*limit*Math.abs(t),Math.abs(b.gLoss+2*limit*t));
+ drawGradientBalance(b,t,'inverse-gradient-chart',false,gradientScale);
+ $('observed-value').textContent=number(t,3);$('inverse-lambda-value').textContent=number(l,4);
+ $('inverse-current').textContent=number(l,4);$('inverse-error').textContent=error(l)<1e-20?'0':error(l).toExponential(2);$('inverse-minimum').textContent=number(opt,4);
+ $('estimate-lambda').disabled=fit.lambda===null;
+ $('inverse-status').textContent=fit.lambda===null?'At θ̂ = 0 the penalty gradient is zero for every λ. The coefficient is unidentifiable; the loss gradient cannot be canceled.':Math.abs(b.gLoss+b.gReg)<1e-10?'The gradients cancel: the total minimum now matches the fixed observed weight.':Math.abs(l-fit.lambda)<1e-10?'Best nonnegative fit reached, but a residual remains. Ridge cannot explain this observed weight.':'Adjust λ or select “Estimate λ”. The observed weight and its loss gradient remain fixed.';
+}
+$('observed-theta').oninput=()=>{inverseAnimation++;observedTheta=+$('observed-theta').value;inverseLimit=Math.max(1.2,inverseLambda);drawInverse();};
+$('inverse-lambda').oninput=()=>{inverseAnimation++;inverseLambda=+$('inverse-lambda').value;drawInverse();};
+$('inverse-extended').onchange=()=>{
+ inverseAnimation++;const extended=$('inverse-extended').checked;
+ $('observed-theta').min=extended?-1:.25;$('observed-theta').max=extended?3:2;
+ observedTheta=Math.max(extended?-1:.25,Math.min(extended?3:2,observedTheta));$('observed-theta').value=observedTheta;drawInverse();
+};
+$('estimate-lambda').onclick=()=>{
+ const end=inverseEstimate().lambda;if(end===null)return;
+ const token=++inverseAnimation,start=inverseLambda,time=performance.now(),duration=matchMedia('(prefers-reduced-motion: reduce)').matches?0:900;
+ function step(now){if(token!==inverseAnimation)return;const u=duration?Math.min(1,(now-time)/duration):1;inverseLambda=u===1?end:start+(end-start)*(1-(1-u)**3);$('inverse-lambda').value=inverseLambda;drawInverse();if(u<1)requestAnimationFrame(step);}
+ requestAnimationFrame(step);
+};
+$('random-inverse').onclick=()=>{inverseAnimation++;inverseLambda=randomBetween(0,+$('inverse-lambda').max||4);$('inverse-lambda').value=inverseLambda;drawInverse();};
+
 let point=[1.5,.9],landscapeAnimation=0,contourAxes,yaw=-.61,pitch=.7;
 function config(){return {l:+$('lambda2').value,a:+$('angle').value*Math.PI/180,s:+$('stretch').value};}
 function drawLandscape(){
@@ -126,6 +177,7 @@ $('snap2').onclick=()=>{
  function step(now){if(token!==landscapeAnimation)return;const u=duration?Math.min(1,(now-time)/duration):1,ease=1-(1-u)**3;point=u===1?end:start.map((v,i)=>v+(end[i]-v)*ease);drawLandscape();if(u<1)requestAnimationFrame(step);}
  requestAnimationFrame(step);
 };
+$('random-landscape').onclick=()=>{landscapeAnimation++;point=[randomBetween(-2,3),randomBetween(-2,3)];drawLandscape();};
 $('reset2').onclick=()=>{landscapeAnimation++;point=[1.5,.9];drawLandscape();};
 $('contour-chart').onclick=e=>{const r=e.currentTarget.getBoundingClientRect();point=[Math.max(-2,Math.min(3,contourAxes.unX(e.clientX-r.left))),Math.max(-2,Math.min(3,contourAxes.unY(e.clientY-r.top)))];landscapeAnimation++;drawLandscape();};
 for(const id of ['point-x','point-y'])$(id).oninput=()=>{point=[+$('point-x').value,+$('point-y').value];landscapeAnimation++;drawLandscape();};
@@ -133,6 +185,7 @@ $('camera').oninput=()=>{yaw=+$('camera').value*Math.PI/180;drawSurface();};
 let drag=null;$('surface-chart').onpointerdown=e=>{drag={x:e.clientX,y:e.clientY,yaw,pitch};e.currentTarget.setPointerCapture(e.pointerId);};
 $('surface-chart').onpointermove=e=>{if(!drag)return;yaw=drag.yaw+(e.clientX-drag.x)*.009;pitch=Math.max(.25,Math.min(1.3,drag.pitch+(e.clientY-drag.y)*.005));$('camera').value=((yaw*180/Math.PI+180)%360+360)%360-180;drawSurface();};
 $('surface-chart').onpointerup=$('surface-chart').onpointercancel=()=>{drag=null;};
+let initSeed=7;
 let data=dataset(7),curve=[],worker=null,state='ready',revealed=false,lastStats=null;
 function drawNetwork(){
  const v=canvas('network-chart'),{ctx}=v,{X,Y}=axes(v,{xmin:-1.6,xmax:1.6,ymin:-1.2,ymax:1.2,xlabel:'Input x',ylabel:'Prediction f(x)'});
@@ -140,7 +193,7 @@ function drawNetwork(){
  for(const p of data)dot(ctx,X(p.x),Y(p.y),'#777777',3);
  if(curve.length)line(ctx,curve.map(p=>[X(p.x),Y(p.y)]),colors.total,2.5);
 }
-function initialCurve(){const model=createModel(+$('seed').value);curve=Array.from({length:151},(_,i)=>({x:-1.5+i/50,y:predict(model,-1.5+i/50)}));}
+function initialCurve(){const model=createModel(initSeed);$('init-seed-value').textContent=initSeed;curve=Array.from({length:151},(_,i)=>({x:-1.5+i/50,y:predict(model,-1.5+i/50)}));}
 function updateStats(stats){
  lastStats=stats;curve=stats.curve;drawNetwork();
  $('estimate').textContent=number(stats.estimate.lambda,4);$('explained').textContent=stats.estimate.explained===null?'—':number(stats.estimate.explained*100,1)+'%';
@@ -156,9 +209,10 @@ $('train').onclick=()=>{
  if(state==='running'){worker.postMessage({type:'pause'});state='paused';$('train').textContent='Resume training';$('train-status').textContent='Paused. Inspect the current estimate or resume training.';return;}
  if(state==='paused'){state='running';worker.postMessage({type:'resume'});$('train').textContent='Pause training';return;}
  reset();
- try{worker=new Worker(new URL('./train-worker.mjs',import.meta.url),{type:'module'});worker.onmessage=({data})=>updateStats(data);worker.onerror=()=>{state='error';worker?.terminate();$('train-status').textContent='Training could not start. Try a modern browser with module-worker support, served over HTTP(S).';$('train').textContent='Try again';$('seed').disabled=$('penalty-choice').disabled=false;};state='running';$('seed').disabled=$('penalty-choice').disabled=true;$('train').textContent='Pause training';$('train-status').textContent='Starting local training…';worker.postMessage({type:'start',seed:+$('seed').value,lambda:+$('penalty-choice').value});}
+ try{worker=new Worker(new URL('./train-worker.mjs',import.meta.url),{type:'module'});worker.onmessage=({data})=>updateStats(data);worker.onerror=()=>{state='error';worker?.terminate();$('train-status').textContent='Training could not start. Try a modern browser with module-worker support, served over HTTP(S).';$('train').textContent='Try again';$('seed').disabled=$('penalty-choice').disabled=false;};state='running';$('seed').disabled=$('penalty-choice').disabled=true;$('train').textContent='Pause training';$('train-status').textContent='Starting local training…';worker.postMessage({type:'start',seed:+$('seed').value,initSeed,lambda:+$('penalty-choice').value});}
  catch(error){state='error';$('train-status').textContent=`Training unavailable: ${error.message}`;}
 };
 $('reset').onclick=reset;$('reveal').onclick=showReveal;$('seed').onchange=$('penalty-choice').onchange=reset;
-let resizeFrame;new ResizeObserver(()=>{cancelAnimationFrame(resizeFrame);resizeFrame=requestAnimationFrame(()=>{drawBalance();drawLandscape();drawNetwork();});}).observe(document.querySelector('main'));
-initialCurve();drawBalance();drawLandscape();drawNetwork();
+$('random-network').onclick=()=>{initSeed=(initSeed+1+Math.floor(Math.random()*999999))%1000000;reset();};
+let resizeFrame;new ResizeObserver(()=>{cancelAnimationFrame(resizeFrame);resizeFrame=requestAnimationFrame(()=>{drawBalance();drawInverse();drawLandscape();drawNetwork();});}).observe(document.querySelector('main'));
+initialCurve();drawBalance();drawInverse();drawLandscape();drawNetwork();

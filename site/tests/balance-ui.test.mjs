@@ -11,13 +11,13 @@ function fixture(withLandscape=false) {
   const context=new Proxy({}, {get:(obj,key)=>obj[key]??(()=>{}),set:(obj,key,value)=>(obj[key]=value,true)});
   function element(id) {
     if(nodes.has(id))return nodes.get(id);
-    let value=({lambda:.5,lambda2:.5,stretch:3,angle:34})[id]??1;
+    let value=({lambda:.5,lambda2:.5,stretch:3,angle:34,'observed-theta':.8,'inverse-lambda':.15})[id]??1;
     const node={textContent:'',style:{},listeners:{},hidden:false,
       addEventListener(event,fn){this.listeners[event]=fn;},
       getBoundingClientRect(){return {width:800,height:350,left:0,top:0};},
       getContext(){return context;},setAttribute(){},setPointerCapture(){},
       get value(){return String(value);},
-      set value(input){value=(id==='theta'||id==='lambda')?Math.round(Number(input)*100)/100:Number(input);},
+      set value(input){value=(['theta','lambda','inverse-lambda','observed-theta'].includes(id))?Math.round(Number(input)*100)/100:Number(input);},
     };
     nodes.set(id,node);return node;
   }
@@ -26,6 +26,7 @@ function fixture(withLandscape=false) {
   const scope=vm.createContext({document:{getElementById:element},window:{devicePixelRatio:1},balance,ridgeEstimate,landscape,optimum2D,
     performance:{now:()=>0},matchMedia:()=>({matches:false}),requestAnimationFrame:fn=>frames.push(fn)});
   vm.runInContext(controller,scope);
+  vm.runInContext('drawInverse()',scope);
   if(withLandscape)vm.runInContext('drawLandscape()',scope);
   return {element,flush(){while(frames.length)frames.shift()(1000);}};
 }
@@ -68,4 +69,45 @@ test('landscape starts away from optimum, moves exactly, and re-enables after ob
  assert.equal(ui.element('point-status').textContent.split(' · ')[0],previous);
  button.onclick();ui.flush();assert.equal(button.disabled,true);
  ui.element('reset2').onclick();assert.equal(button.disabled,false);
+});
+
+test('inverse estimation holds observed weights fixed and reaches exact gradient cancellation',()=>{
+ const ui=fixture();
+ for(const theta of [.25,.43,.8,1.27,1.91,2]){
+  ui.element('observed-theta').value=theta;ui.element('observed-theta').oninput();
+  ui.element('inverse-lambda').value=.18;ui.element('inverse-lambda').oninput();
+  const observed=ui.element('observed-value').textContent;
+  ui.element('estimate-lambda').onclick();ui.flush();
+  assert.equal(ui.element('observed-value').textContent,observed);
+  assert.equal(ui.element('inverse-error').textContent,'0');
+  assert.equal(ui.element('inverse-minimum').textContent,theta.toFixed(4));
+  assert.match(ui.element('inverse-status').textContent,/gradients cancel/);
+ }
+});
+
+test('inverse estimation reports infeasibility and nonidentifiability without false success',()=>{
+ const ui=fixture();ui.element('inverse-extended').checked=true;ui.element('inverse-extended').onchange();
+ for(const theta of [-1,2.5]){
+  ui.element('observed-theta').value=theta;ui.element('observed-theta').oninput();
+  ui.element('estimate-lambda').onclick();ui.flush();
+  assert.equal(ui.element('inverse-current').textContent,'0.0000');
+  assert.match(ui.element('inverse-status').textContent,/residual remains/);
+ }
+ ui.element('observed-theta').value=0;ui.element('observed-theta').oninput();
+ assert.equal(ui.element('estimate-lambda').disabled,true);
+ assert.match(ui.element('inverse-status').textContent,/unidentifiable/);
+});
+
+test('random initialization preserves the fixed quantities and cancels pending animations',()=>{
+ const ui=fixture(true);
+ ui.element('find-balance').onclick();ui.element('random-balance').onclick();
+ const theta=ui.element('theta-value').textContent;ui.flush();assert.equal(ui.element('theta-value').textContent,theta);
+ assert.equal(ui.element('lambda').value,'0.5');
+ const observed=ui.element('observed-value').textContent;
+ ui.element('estimate-lambda').onclick();ui.element('random-inverse').onclick();
+ const lambda=ui.element('inverse-current').textContent;ui.flush();assert.equal(ui.element('inverse-current').textContent,lambda);
+ assert.equal(ui.element('observed-value').textContent,observed);
+ ui.element('snap2').onclick();ui.element('random-landscape').onclick();
+ const point=ui.element('point-status').textContent;ui.flush();assert.equal(ui.element('point-status').textContent,point);
+ assert.equal(ui.element('lambda2').value,'0.5');
 });

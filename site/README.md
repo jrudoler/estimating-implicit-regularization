@@ -20,7 +20,7 @@ node --check site/app.mjs
 node --check site/train-worker.mjs
 ```
 
-The tests cover exact quadratic optima, constrained ridge projection, degenerate inputs, numerical finite-difference checks of the MLP gradients, reproducibility, and recovery across all nine UI presets. The recovery tests require <5% coefficient error and >95% gradient fit; the initial implementation achieved <0.1% coefficient error and >99% fit in all presets.
+The tests cover exact quadratic optima, constrained ridge projection, degenerate inputs, numerical finite-difference checks of the MLP gradients, reproducibility, and recovery across nine reference configurations (three paired data/initialization seeds × three penalties), plus forward/inverse UI regression tests. The recovery tests require <5% coefficient error and >95% gradient fit; the initial implementation achieved <0.1% coefficient error and >99% fit in those reference configurations. Random initializations are exploratory and may converge differently.
 
 ## GitHub Pages
 
@@ -52,3 +52,14 @@ Future extensions: early-stopped linear regression with its theoretical matrix r
 ## Visual encoding
 
 The notebook design follows Figure 1 (`analysis/plot_method_vis/run.py`): red loss, blue penalty, and a grayscale total objective. The total curve uses dark gray for contrast on white. Penalty curves and arrows are dashed; total curves are thicker. Circle/triangle/diamond markers, direct curve labels, and labeled arrows provide identification without color.
+
+## Inverse experiment and initialization controls
+
+Figure 2 fixes an observed scalar weight and fits a nonnegative ridge coefficient. Its animation interpolates to the analytic constrained least-squares solution, keeping the observation and plot/gradient scales fixed throughout. The error plot shows the squared remaining gradient versus lambda. The extended-observation checkbox includes impossible matches and the unidentifiable zero-weight case. Numerical state is kept independent of slider rounding.
+
+Each figure has a Random initialization button:
+
+- Figure 1: new weight, unchanged penalty.
+- Figure 2: new candidate lambda, unchanged observed weight.
+- Figure 3: new two-dimensional weight, unchanged objective and camera.
+- Figure 4: new displayed network initialization seed, unchanged data seed and penalty; any active training is stopped and reset. Reset repeats that initialization, while Random initialization draws another one.

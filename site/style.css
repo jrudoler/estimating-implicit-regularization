@@ -1041,3 +1041,11 @@ footer  {
 .landscape-actions { display: flex; flex-direction: column; gap: 8px; }
 .point-status { font-size: 12px; color: var(--muted); margin: 12px 0 0; font-variant-numeric: tabular-nums; }
 @media(max-width:760px) { .landscape-actions { grid-column: span 2; } }
+
+.inverse-plots { display: grid; grid-template-columns: 3fr 2fr; }
+.inverse-plots .plot-wrap + .plot-wrap { border-left: 1px solid var(--line); }
+#inverse-gradient-chart { height: 156px; }
+.inverse-metrics { display: flex; gap: 24px; flex-wrap: wrap; font-size: 12px; padding: 18px 0; font-variant-numeric: tabular-nums; }
+.inverse-cases { padding: 8px 0; font-weight: 400; line-height: 1.6; }
+.point-status output { float: none; }
+@media (max-width: 760px) { .inverse-plots { grid-template-columns: 1fr; } .inverse-plots .plot-wrap + .plot-wrap { border-left: 0; border-top: 1px solid var(--line); } }
