@@ -13,8 +13,7 @@ export function initEarlyStopping({canvas,axes,line,colors,number}){
   $('early-status').textContent=(family()==='full'?`Independent weight directions: ${s.rank}/10. `:'')+(s.unidentified?'A zero weight makes a coefficient unidentifiable.':!s.convex?'The fitted total objective is not strictly convex; gradient cancellation does not establish a unique minimum.':s.weightError<1e-8?'The explicit solution recovers the displayed endpoint weights. This alone does not identify the theoretical matrix.':'The fitted penalty does not exactly recover the displayed endpoint weights.');
   const estimated=s.A,reference=initSeed?null:penaltyMatrix(problem,theoreticalPenalty(problem,t));
   const difference=reference?estimated.map((row,i)=>row.map((value,j)=>value-reference[i][j])):null;
-  const referenceNorm=reference?Math.hypot(...reference.flat()):0;
-  $('early-matrix-error').textContent=difference&&referenceNorm>0?(Math.hypot(...difference.flat())/referenceNorm).toExponential(2):'—';
+  $('early-matrix-error').textContent=difference?Math.hypot(...difference.flat()).toExponential(2):'—';
   const matrixLimit=Math.max(1e-12,...estimated.flat().map(Math.abs),...(reference??[]).flat().map(Math.abs),...(difference??[]).flat().map(Math.abs));
   const compact=x=>Math.abs(x)<.001&&x!==0?x.toExponential(2):number(x,3);
   function heatmap(id,matrix){

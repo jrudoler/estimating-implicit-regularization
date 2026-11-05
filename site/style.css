@@ -1115,3 +1115,9 @@ math[display="inline"] { white-space:nowrap; }
 
 /* Keep scientific-notation values intact when metric labels wrap. */
 .inverse-metrics strong { display:inline-block; white-space:nowrap; }
+
+.validation-intro { max-width:760px; margin-bottom:32px; color:#444; }
+.validation-intro li { margin:12px 0; line-height:1.7; }
+.paper-result { margin:24px 0; }
+.paper-result img { display:block; width:100%; max-width:560px; height:auto; margin:0 auto 20px; }
+.paper-result figcaption { max-width:760px; font-size:13px; line-height:1.7; color:var(--muted); }
