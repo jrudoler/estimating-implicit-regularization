@@ -10,7 +10,7 @@ From the repository root:
 python3 -m http.server 8765 --bind 127.0.0.1 --directory site
 ```
 
-Open http://127.0.0.1:8765/. Use HTTP rather than opening `index.html` directly: ES modules and the training worker require it. There are no npm dependencies or build steps. Google Fonts are optional presentation assets; system fonts are fallbacks. No training data is transmitted.
+Open http://127.0.0.1:8765/. Use HTTP rather than opening `index.html` directly: ES modules and the training worker require it. There are no npm dependencies or build steps. The notebook layout uses system fonts with no external font requests. No training data is transmitted.
 
 ## Validation
 
@@ -48,3 +48,7 @@ The scalar estimate is constrained to be nonnegative. Gradient explained is `1 -
 The 3D plot renders the actual two-parameter quadratic objective (clipped above 24 for display), not a slice through the MLP's parameter space. Both views use the same parameters and selected point. Surface arrows lie in the parameter plane. Keyboard-accessible sliders provide alternatives to canvas pointer interactions.
 
 Future extensions: early-stopped linear regression with its theoretical matrix regularizer; alternate candidate families; dropout and replacement training; downloadable experiment records and precomputed multi-seed paper results.
+
+## Visual encoding
+
+The notebook design follows Figure 1 (`analysis/plot_method_vis/run.py`): red loss, blue penalty, and a grayscale total objective. The total curve uses dark gray for contrast on white. Penalty curves and arrows are dashed; total curves are thicker. Circle/triangle/diamond markers, direct curve labels, and labeled arrows provide identification without color.

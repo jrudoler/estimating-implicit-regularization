@@ -1,6 +1,6 @@
 import {balance,landscape,optimum2D,ridgeEstimate,dataset,createModel,predict,target} from './math.mjs';
 const $=id=>document.getElementById(id);
-const colors={loss:'#c05839',reg:'#367a9c',total:'#6b5ba6',ink:'#233b36',muted:'#7d897e',grid:'#e8ebe2'};
+const colors={loss:'#ff0000',reg:'#0000ff',total:'#555555',ink:'#222222',muted:'#707070',grid:'#e9e9e9'};
 const number=(x,d=2)=>Number.isFinite(x)?x.toFixed(d):'—';
 function canvas(id){const el=$(id),r=el.getBoundingClientRect(),dpr=window.devicePixelRatio||1;el.width=r.width*dpr;el.height=r.height*dpr;const ctx=el.getContext('2d');ctx.scale(dpr,dpr);ctx.font='11px system-ui';return {el,ctx,w:r.width,h:r.height};}
 function axes(view,{xmin,xmax,ymin,ymax,xlabel='θ',ylabel='Objective',left=55,bottom=38}){
@@ -13,8 +13,8 @@ function axes(view,{xmin,xmax,ymin,ymax,xlabel='θ',ylabel='Objective',left=55,b
  return {X,Y,unX:px=>xmin+(px-pad.l)/(w-pad.l-pad.r)*(xmax-xmin),unY:py=>ymin+(h-pad.b-py)/(h-pad.t-pad.b)*(ymax-ymin),pad};
 }
 function line(ctx,points,color,width=2,dash=[]){ctx.beginPath();ctx.strokeStyle=color;ctx.lineWidth=width;ctx.setLineDash(dash);points.forEach(([x,y],i)=>i?ctx.lineTo(x,y):ctx.moveTo(x,y));ctx.stroke();ctx.setLineDash([]);}
-function dot(ctx,x,y,color,r=5){ctx.beginPath();ctx.arc(x,y,r,0,2*Math.PI);ctx.fillStyle=color;ctx.fill();ctx.strokeStyle='#fffef9';ctx.lineWidth=2;ctx.stroke();}
-function arrow(ctx,from,to,color){const dx=to[0]-from[0],dy=to[1]-from[1],len=Math.hypot(dx,dy);if(len<1)return;line(ctx,[from,to],color,2.5);const a=Math.atan2(dy,dx);ctx.beginPath();ctx.moveTo(...to);ctx.lineTo(to[0]-8*Math.cos(a-.42),to[1]-8*Math.sin(a-.42));ctx.lineTo(to[0]-8*Math.cos(a+.42),to[1]-8*Math.sin(a+.42));ctx.closePath();ctx.fillStyle=color;ctx.fill();}
+function dot(ctx,x,y,color,r=5){ctx.beginPath();if(color===colors.reg){ctx.moveTo(x,y-r-1);ctx.lineTo(x+r+1,y+r);ctx.lineTo(x-r-1,y+r);ctx.closePath();}else if(color===colors.total){ctx.moveTo(x,y-r-1);ctx.lineTo(x+r+1,y);ctx.lineTo(x,y+r+1);ctx.lineTo(x-r-1,y);ctx.closePath();}else{ctx.arc(x,y,r,0,2*Math.PI);}ctx.fillStyle=color;ctx.fill();ctx.strokeStyle='#ffffff';ctx.lineWidth=2;ctx.stroke();}
+function arrow(ctx,from,to,color){const dx=to[0]-from[0],dy=to[1]-from[1],len=Math.hypot(dx,dy);if(len<1)return;line(ctx,[from,to],color,color===colors.total?3:2.5,color===colors.reg?[5,4]:[]);const a=Math.atan2(dy,dx);ctx.beginPath();ctx.moveTo(...to);ctx.lineTo(to[0]-8*Math.cos(a-.42),to[1]-8*Math.sin(a-.42));ctx.lineTo(to[0]-8*Math.cos(a+.42),to[1]-8*Math.sin(a+.42));ctx.closePath();ctx.fillStyle=color;ctx.fill();ctx.font='11px system-ui';ctx.textAlign='left';ctx.strokeStyle='#fff';ctx.lineWidth=3;const label=color===colors.loss?'∇L':color===colors.reg?'∇R':'Net';ctx.strokeText(label,to[0]+5,to[1]-6);ctx.fillText(label,to[0]+5,to[1]-6);}
 let hidden=false,balAxes,balAnimation=0;
 function drawBalance(){
  const v=canvas('balance-chart'),{ctx}=v,l=+$('lambda').value,t=+$('theta').value,b=balance(t,l);
@@ -22,16 +22,41 @@ function drawBalance(){
  const {X,Y}=balAxes;
  for(const [key,col] of [['loss',colors.loss],['penalty',colors.reg],['total',colors.total]]){
    if(hidden&&key!=='loss')continue;
-   line(ctx,Array.from({length:201},(_,i)=>{const x=-1+i*.02;return[X(x),Y(balance(x,l)[key])];}),col,key==='total'?3:2);
+   line(ctx,Array.from({length:201},(_,i)=>{const x=-1+i*.02;return[X(x),Y(balance(x,l)[key])];}),col,key==='total'?3.5:2,key==='penalty'?[7,5]:[]);
+ }
+ for(const [key,label,x,col] of [['loss','Loss',-.65,colors.loss],['penalty','Penalty',2.7,colors.reg],['total','Total',2.15,colors.total]]){
+   if(hidden&&key!=='loss')continue;
+   ctx.font='12px system-ui';ctx.textAlign='left';ctx.lineWidth=4;ctx.strokeStyle='#fff';ctx.fillStyle=col;
+   const yy=Math.max(32,Y(balance(x,l)[key])-10);ctx.strokeText(label,X(x),yy);ctx.fillText(label,X(x),yy);
  }
  line(ctx,[[X(t),Y(0)],[X(t),Y(hidden?b.loss:b.total)]],colors.muted,1,[4,4]);
  dot(ctx,X(t),Y(b.loss),colors.loss);if(!hidden){dot(ctx,X(t),Y(b.penalty),colors.reg);dot(ctx,X(t),Y(b.total),colors.total);dot(ctx,X(b.optimum),Y(balance(b.optimum,l).total),colors.total,4);}
- const span=.28;line(ctx,[[X(t-span),Y(b.loss-b.gLoss*span)],[X(t+span),Y(b.loss+b.gLoss*span)]],colors.loss,3);
- if(!hidden)line(ctx,[[X(t-span),Y(b.penalty-b.gReg*span)],[X(t+span),Y(b.penalty+b.gReg*span)]],colors.reg,3);
+ const span=.45;line(ctx,[[X(t-span),Y(b.loss-b.gLoss*span)],[X(t+span),Y(b.loss+b.gLoss*span)]],colors.loss,4.5);
+ if(!hidden)line(ctx,[[X(t-span),Y(b.penalty-b.gReg*span)],[X(t+span),Y(b.penalty+b.gReg*span)]],colors.reg,4.5,[7,4]);
+ drawGradientBalance(b,t);
  $('lambda-value').textContent=hidden?'hidden':number(l);$('theta-value').textContent=number(t);
  $('g-loss').textContent=number(b.gLoss);$('g-reg').textContent=hidden?'?':number(b.gReg);$('g-net').textContent=hidden?'?':number(b.gLoss+b.gReg);
  $('balance-status').textContent=hidden?'What penalty could explain this point?':Math.abs(b.gLoss+b.gReg)<.025?'At the optimum, the slopes cancel.':'The net gradient is nonzero. Move toward the balance.';
  if(hidden){const est=ridgeEstimate([t],[b.gLoss]);$('inverse-result').textContent=est.lambda===null?'At θ = 0, ridge supplies no gradient. Its strength cannot be identified here.':`Assuming this point is stationary: estimated λ = ${number(est.lambda,3)}. Unexplained gradient = ${number(est.residual,3)}.${Math.abs(t-b.optimum)>.02?' Away from the true optimum, this need not recover the hidden penalty.':' This matches the hidden penalty at the true optimum.'}`;}
+}
+function drawGradientBalance(b,theta){
+ const {ctx,w}=canvas('gradient-chart');
+ const left=w<500?125:180,right=w-24,center=(left+right)/2;
+ const max=Math.max(1,Math.abs(b.gLoss),hidden?0:Math.abs(b.gReg),hidden?0:Math.abs(b.gLoss+b.gReg));
+ const scale=(right-left)/2/max*.9;
+ const rows=[['Loss ∇L',b.gLoss,colors.loss],['Penalty ∇R',hidden?null:b.gReg,colors.reg],['Net',hidden?null:b.gLoss+b.gReg,colors.total]];
+ line(ctx,[[center,10],[center,143]],'#bbbbbb',1,[2,3]);
+ rows.forEach(([label,value,color],i)=>{
+   const y=28+i*48;
+   ctx.font='600 13px system-ui';ctx.textAlign='left';ctx.fillStyle=color;ctx.fillText(label,0,y-4);
+   ctx.font='13px system-ui';ctx.fillText(value===null?'hidden':(value>0?'+':'')+number(value,2),0,y+14);
+   if(value===null){ctx.fillStyle='#707070';ctx.fillText('?',center,y+4);return;}
+   const end=center+value*scale;
+   if(Math.abs(value)<.015){ctx.beginPath();ctx.arc(center,y,4,0,Math.PI*2);ctx.fillStyle=color;ctx.fill();if(i===2){ctx.font='12px system-ui';ctx.fillText('balanced',center+10,y+4);}return;}
+   line(ctx,[[center,y],[end,y]],color,i===2?3:4,color===colors.reg?[8,5]:[]);
+   const direction=Math.sign(value);ctx.beginPath();ctx.moveTo(end,y);ctx.lineTo(end-direction*10,y-6);ctx.lineTo(end-direction*10,y+6);ctx.closePath();ctx.fillStyle=color;ctx.fill();
+   ctx.beginPath();ctx.arc(center,y,3,0,Math.PI*2);ctx.fill();
+ });
 }
 for(const id of ['lambda','theta'])$(id).addEventListener('input',()=>{balAnimation++;drawBalance();});
 $('find-balance').onclick=()=>{const token=++balAnimation,start=+$('theta').value,end=balance(0,+$('lambda').value).optimum,time=performance.now(),duration=matchMedia('(prefers-reduced-motion: reduce)').matches?0:650;function step(now){if(token!==balAnimation)return;const u=duration?Math.min(1,(now-time)/duration):1;$('theta').value=start+(end-start)*(1-(1-u)**3);drawBalance();if(u<1)requestAnimationFrame(step);}requestAnimationFrame(step);};
@@ -46,7 +71,7 @@ function drawLandscape(){
  ctx.save();ctx.beginPath();ctx.rect(X(-2),Y(3),X(3)-X(-2),Y(-2)-Y(3));ctx.clip();
  for(const level of [.1,.35,.8,1.5,2.7,4.5,7,10,15,22]){
    const pts=Array.from({length:161},(_,i)=>{const t=i/160*Math.PI*2,u=Math.sqrt(2*level/(1+2*l))*Math.cos(t),vv=Math.sqrt(2*level/(s+2*l))*Math.sin(t);return[X(opt[0]+Math.cos(a)*u-Math.sin(a)*vv),Y(opt[1]+Math.sin(a)*u+Math.cos(a)*vv)];});
-   line(ctx,pts,'#b8b1cf',1);
+   line(ctx,pts,'#b9b9b9',1);
  }
  const b=landscape(...point,l,a,s),sum=b.gLoss.map((n,i)=>n+b.gReg[i]);
  const from=[X(point[0]),Y(point[1])],scale=.25;
@@ -64,7 +89,7 @@ function drawSurface(){
  const cells=[];const n=25;
  for(let i=0;i<n;i++)for(let j=0;j<n;j++){const x=-2+range*i/n,y=-2+range*j/n,d=range/n;const vertices=[[x,y],[x+d,y],[x+d,y+d],[x,y+d]];cells.push({vertices,depth:Math.sin(yaw)*(x+d/2)+Math.cos(yaw)*(y+d/2),z:z(x+d/2,y+d/2)});}
  cells.sort((u,v)=>u.depth-v.depth);
- for(const cell of cells){ctx.beginPath();cell.vertices.forEach(([x,y],i)=>{const p=project(x,y,z(x,y));i?ctx.lineTo(...p):ctx.moveTo(...p);});ctx.closePath();ctx.fillStyle=`hsl(258 24% ${90-22*Math.min(cell.z/maxZ,1)}%)`;ctx.fill();ctx.strokeStyle='#fffef975';ctx.lineWidth=.6;ctx.stroke();}
+ for(const cell of cells){ctx.beginPath();cell.vertices.forEach(([x,y],i)=>{const p=project(x,y,z(x,y));i?ctx.lineTo(...p):ctx.moveTo(...p);});ctx.closePath();ctx.fillStyle=`hsl(0 0% ${94-28*Math.min(cell.z/maxZ,1)}%)`;ctx.fill();ctx.strokeStyle='#ffffff90';ctx.lineWidth=.6;ctx.stroke();}
  const opt=optimum2D(l,a,s);dot(ctx,...project(opt[0],opt[1],z(...opt)),colors.total,5);dot(ctx,...project(point[0],point[1],z(...point)),colors.ink,4);
  // Gradients live in parameter space, so draw them on the z=0 plane.
  const b=landscape(...point,l,a,s),base=project(...point,0);line(ctx,[base,project(...point,z(...point))],colors.muted,1,[3,3]);
@@ -83,7 +108,7 @@ let data=dataset(7),curve=[],worker=null,state='ready',revealed=false,lastStats=
 function drawNetwork(){
  const v=canvas('network-chart'),{ctx}=v,{X,Y}=axes(v,{xmin:-1.6,xmax:1.6,ymin:-1.2,ymax:1.2,xlabel:'Input x',ylabel:'Prediction f(x)'});
  line(ctx,Array.from({length:151},(_,i)=>{const x=-1.5+i/50;return[X(x),Y(target(x))];}),colors.muted,1.5,[5,4]);
- for(const p of data)dot(ctx,X(p.x),Y(p.y),'#86a494',3);
+ for(const p of data)dot(ctx,X(p.x),Y(p.y),'#777777',3);
  if(curve.length)line(ctx,curve.map(p=>[X(p.x),Y(p.y)]),colors.total,2.5);
 }
 function initialCurve(){const model=createModel(+$('seed').value);curve=Array.from({length:151},(_,i)=>({x:-1.5+i/50,y:predict(model,-1.5+i/50)}));}
