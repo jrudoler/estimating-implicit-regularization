@@ -944,8 +944,11 @@ footer  {
 
 }
 
+.opening-prose { max-width:992px; margin:0 auto 32px; color:#444; }
+.opening-prose p { max-width:760px; }
+
 @media (max-width: 1040px)  {
-   .chapter, .chapter-nav, .ending  {
+   .chapter, .chapter-nav, .ending, .opening-prose  {
    margin-left: 24px;
    margin-right: 24px;
 
@@ -980,7 +983,7 @@ footer  {
 
 }
 
-  .chapter, .chapter-nav, .ending  {
+  .chapter, .chapter-nav, .ending, .opening-prose  {
    margin-left: 18px;
    margin-right: 18px;
 
@@ -1080,5 +1083,4 @@ footer  {
 @media(max-width:760px) { .network-settings { grid-template-columns:1fr 1fr; } .early-controls { grid-template-columns:1fr; } }
 @media(max-width:420px) { .experiment-actions { gap:8px; } .experiment-actions button { padding:10px 12px; } }
 
-.opening-prose { max-width:760px; margin:0 0 32px; color:#444; }
 .ending li { font-size:15px; line-height:1.7; margin-bottom:16px; color:#444; }
