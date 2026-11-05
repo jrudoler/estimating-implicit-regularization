@@ -20,42 +20,38 @@ function dot(ctx,x,y,color,r=5){ctx.beginPath();if(color===colors.reg){ctx.moveT
 function arrow(ctx,from,to,color){const dx=to[0]-from[0],dy=to[1]-from[1],len=Math.hypot(dx,dy);if(len<1)return;line(ctx,[from,to],color,color===colors.total?3:2.5,color===colors.reg?[5,4]:[]);const a=Math.atan2(dy,dx);ctx.beginPath();ctx.moveTo(...to);ctx.lineTo(to[0]-8*Math.cos(a-.42),to[1]-8*Math.sin(a-.42));ctx.lineTo(to[0]-8*Math.cos(a+.42),to[1]-8*Math.sin(a+.42));ctx.closePath();ctx.fillStyle=color;ctx.fill();ctx.font='11px system-ui';ctx.textAlign=dx<0?'right':'left';ctx.strokeStyle='#fff';ctx.lineWidth=3;const label=color===colors.loss?'∇L':color===colors.reg?'∇R':'Net';const labelX=to[0]+(dx<0?-6:6),labelY=to[1]+(dy>0?14:-6);ctx.strokeText(label,labelX,labelY);ctx.fillText(label,labelX,labelY);}
 // Keep the computed parameter independent of the range input's 0.01 snapping.
 let balanceTheta=+$('theta').value;
-let hidden=false,balAxes,balAnimation=0;
+let balAxes,balAnimation=0;
 function drawBalance(){
  const v=canvas('balance-chart'),{ctx}=v,l=+$('lambda').value,t=balanceTheta,b=balance(t,l);
  balAxes=axes(v,{xmin:-1,xmax:3,ymin:0,ymax:Math.max(5,9*l+1),ylabel:'Objective value'});
  const {X,Y}=balAxes;
  for(const [key,col] of [['loss',colors.loss],['penalty',colors.reg],['total',colors.total]]){
-   if(hidden&&key!=='loss')continue;
    line(ctx,Array.from({length:201},(_,i)=>{const x=-1+i*.02;return[X(x),Y(balance(x,l)[key])];}),col,key==='total'?3.5:2,key==='penalty'?[7,5]:[]);
  }
  for(const [key,label,x,col] of [['loss','Loss',-.65,colors.loss],['penalty','Penalty',2.7,colors.reg],['total','Total',2.15,colors.total]]){
-   if(hidden&&key!=='loss')continue;
    ctx.font='12px system-ui';ctx.textAlign='left';ctx.lineWidth=4;ctx.strokeStyle='#fff';ctx.fillStyle=col;
    const yy=Math.max(32,Y(balance(x,l)[key])-10);ctx.strokeText(label,X(x),yy);ctx.fillText(label,X(x),yy);
  }
- line(ctx,[[X(t),Y(0)],[X(t),Y(hidden?b.loss:b.total)]],colors.muted,1,[4,4]);
- dot(ctx,X(t),Y(b.loss),colors.loss);if(!hidden){dot(ctx,X(t),Y(b.penalty),colors.reg);dot(ctx,X(t),Y(b.total),colors.total);dot(ctx,X(b.optimum),Y(balance(b.optimum,l).total),colors.total,4);}
+ line(ctx,[[X(t),Y(0)],[X(t),Y(b.total)]],colors.muted,1,[4,4]);
+ dot(ctx,X(t),Y(b.loss),colors.loss);dot(ctx,X(t),Y(b.penalty),colors.reg);dot(ctx,X(t),Y(b.total),colors.total);dot(ctx,X(b.optimum),Y(balance(b.optimum,l).total),colors.total,4);
  const span=.45;line(ctx,[[X(t-span),Y(b.loss-b.gLoss*span)],[X(t+span),Y(b.loss+b.gLoss*span)]],colors.loss,4.5);
- if(!hidden)line(ctx,[[X(t-span),Y(b.penalty-b.gReg*span)],[X(t+span),Y(b.penalty+b.gReg*span)]],colors.reg,4.5,[7,4]);
+ line(ctx,[[X(t-span),Y(b.penalty-b.gReg*span)],[X(t+span),Y(b.penalty+b.gReg*span)]],colors.reg,4.5,[7,4]);
  drawGradientBalance(b,t);
- $('lambda-value').textContent=hidden?'hidden':number(l);$('theta-value').textContent=number(t,4);
- $('g-loss').textContent=number(b.gLoss);$('g-reg').textContent=hidden?'?':number(b.gReg);$('g-net').textContent=hidden?'?':number(b.gLoss+b.gReg);
- $('balance-status').textContent=hidden?'What penalty could explain this point?':Math.abs(b.gLoss+b.gReg)<1e-10?'At the optimum, the slopes cancel.':'The net gradient is nonzero. Move toward the balance.';
- if(hidden){const est=ridgeEstimate([t],[b.gLoss]);$('inverse-result').textContent=est.lambda===null?'At θ = 0, ridge supplies no gradient. Its strength cannot be identified here.':`Assuming this point is stationary: estimated λ = ${number(est.lambda,3)}. Unexplained gradient = ${number(est.residual,3)}.${Math.abs(t-b.optimum)>1e-10?' Away from the true optimum, this need not recover the hidden penalty.':' This matches the hidden penalty at the true optimum.'}`;}
+ $('lambda-value').textContent=number(l);$('theta-value').textContent=number(t,4);
+ $('g-loss').textContent=number(b.gLoss);$('g-reg').textContent=number(b.gReg);$('g-net').textContent=number(b.gLoss+b.gReg);
+ $('balance-status').textContent=Math.abs(b.gLoss+b.gReg)<1e-10?'At the optimum, the slopes cancel.':'The net gradient is nonzero. Move toward the balance.';
 }
-function drawGradientBalance(b,theta,canvasId='gradient-chart',conceal=hidden,fixedScale=null){
+function drawGradientBalance(b,theta,canvasId='gradient-chart',fixedScale=null){
  const {ctx,w}=canvas(canvasId);
  const left=w<500?125:180,right=w-24,center=(left+right)/2;
- const max=fixedScale??Math.max(1,Math.abs(b.gLoss),conceal?0:Math.abs(b.gReg),conceal?0:Math.abs(b.gLoss+b.gReg));
+ const max=fixedScale??Math.max(1,Math.abs(b.gLoss),Math.abs(b.gReg),Math.abs(b.gLoss+b.gReg));
  const scale=(right-left)/2/max*.9;
- const rows=[['Loss ∇L',b.gLoss,colors.loss],['Penalty ∇R',conceal?null:b.gReg,colors.reg],['Net',conceal?null:b.gLoss+b.gReg,colors.total]];
+ const rows=[['Loss ∇L',b.gLoss,colors.loss],['Penalty ∇R',b.gReg,colors.reg],['Net',b.gLoss+b.gReg,colors.total]];
  line(ctx,[[center,10],[center,143]],'#bbbbbb',1,[2,3]);
  rows.forEach(([label,value,color],i)=>{
    const y=28+i*48;
    ctx.font='600 13px system-ui';ctx.textAlign='left';ctx.fillStyle=color;ctx.fillText(label,0,y-4);
-   ctx.font='13px system-ui';ctx.fillText(value===null?'hidden':(value>0?'+':'')+number(value,2),0,y+14);
-   if(value===null){ctx.fillStyle='#707070';ctx.fillText('?',center,y+4);return;}
+   ctx.font='13px system-ui';ctx.fillText((value>0?'+':'')+number(value,2),0,y+14);
    const end=center+value*scale;
    if(Math.abs(value)<1e-10){ctx.beginPath();ctx.arc(center,y,4,0,Math.PI*2);ctx.fillStyle=color;ctx.fill();if(i===2){ctx.font='12px system-ui';ctx.fillText('balanced',center+10,y+4);}return;}
    line(ctx,[[center,y],[end,y]],color,i===2?3:4,color===colors.reg?[8,5]:[]);
@@ -66,7 +62,6 @@ function drawGradientBalance(b,theta,canvasId='gradient-chart',conceal=hidden,fi
 $('lambda').addEventListener('input',()=>{balAnimation++;drawBalance();});
 $('theta').addEventListener('input',()=>{balAnimation++;balanceTheta=+$('theta').value;drawBalance();});
 $('find-balance').onclick=()=>{const token=++balAnimation,start=balanceTheta,end=balance(0,+$('lambda').value).optimum,time=performance.now(),duration=matchMedia('(prefers-reduced-motion: reduce)').matches?0:650;function step(now){if(token!==balAnimation)return;const u=duration?Math.min(1,(now-time)/duration):1;balanceTheta=u===1?end:start+(end-start)*(1-(1-u)**3);$('theta').value=balanceTheta;drawBalance();if(u<1)requestAnimationFrame(step);}requestAnimationFrame(step);};
-$('hide-penalty').onclick=()=>{hidden=!hidden;$('hide-penalty').textContent=hidden?'Reveal the penalty':'Hide λ & infer it from θ';$('hide-penalty').setAttribute('aria-pressed',hidden);$('lambda').disabled=hidden;$('inverse-result').hidden=!hidden;drawBalance();};
 $('balance-chart').addEventListener('pointerdown',e=>{balAnimation++;const r=e.currentTarget.getBoundingClientRect();balanceTheta=Math.max(-1,Math.min(3,balAxes.unX(e.clientX-r.left)));$('theta').value=balanceTheta;drawBalance();e.currentTarget.setPointerCapture(e.pointerId);});
 $('balance-chart').addEventListener('pointermove',e=>{if(e.buttons){const r=e.currentTarget.getBoundingClientRect();balanceTheta=Math.max(-1,Math.min(3,balAxes.unX(e.clientX-r.left)));$('theta').value=balanceTheta;drawBalance();}});
 $('random-balance').onclick=()=>{balAnimation++;balanceTheta=randomBetween(-1,3);$('theta').value=balanceTheta;drawBalance();};
@@ -98,7 +93,7 @@ function drawInverse(){
  dot(e.ctx,ea.X(l),ea.Y(error(l)),colors.reg,6);
  e.ctx.fillStyle=colors.reg;e.ctx.font='12px system-ui';e.ctx.textAlign='left';e.ctx.fillText('Current λ',Math.max(55,Math.min(e.w-80,ea.X(l)+8)),Math.max(35,ea.Y(error(l))-12));
  const gradientScale=Math.max(1,Math.abs(b.gLoss),2*limit*Math.abs(t),Math.abs(b.gLoss+2*limit*t));
- drawGradientBalance(b,t,'inverse-gradient-chart',false,gradientScale);
+ drawGradientBalance(b,t,'inverse-gradient-chart',gradientScale);
  $('observed-value').textContent=number(t,3);$('inverse-lambda-value').textContent=number(l,4);
  $('inverse-current').textContent=number(l,4);$('inverse-error').textContent=error(l)<1e-20?'0':error(l).toExponential(2);$('inverse-minimum').textContent=number(opt,4);
  $('estimate-lambda').disabled=fit.lambda===null;
