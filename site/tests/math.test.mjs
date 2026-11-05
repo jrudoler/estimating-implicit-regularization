@@ -17,8 +17,8 @@ test('ridge projection handles boundaries and nonidentifiable inputs',()=>{
  near(ridgeEstimate([1],[1]).lambda,0);near(ridgeEstimate([1],[1]).explained,0);
  assert.equal(ridgeEstimate([0],[1]).lambda,null);assert.equal(ridgeEstimate([1],[0]).explained,null);near(ridgeEstimate([1],[0]).lambda,0);
 });
-test('manual MLP backprop agrees with central finite differences',()=>{
- const m=createModel(7),d=dataset(7,13),analytic=lossGradient(m,d).gradient,eps=1e-6;
+for(const activation of ['relu','tanh'])for(const width of [16,32,64])test(`${activation} width ${width} backprop agrees with central finite differences`,()=>{
+ const m=createModel(7,width,activation),d=dataset(7,13),analytic=lossGradient(m,d).gradient,eps=1e-6;
  for(let i=0;i<m.weights.length;i++){const old=m.weights[i];m.weights[i]=old+eps;const plus=lossGradient(m,d).loss;m.weights[i]=old-eps;const minus=lossGradient(m,d).loss;m.weights[i]=old;near(analytic[i],(plus-minus)/(2*eps),1e-7);}
 });
 test('seeded data and network initialization reproduce exactly',()=>{
@@ -32,4 +32,13 @@ test('all exposed seed and penalty presets recover the explicit coefficient',()=
  assert.ok(Math.abs(result.estimate.lambda-lambda)/lambda<.05,`poor recovery: seed ${seed}, lambda ${lambda}, estimate ${result.estimate.lambda}`);
  assert.ok(result.estimate.explained>.95,`poor gradient fit: seed ${seed}, lambda ${lambda}`);
  }
+});
+
+for(const activation of ['relu','tanh'])for(const width of [16,32,64])test(`${activation} width ${width} recovers the explicit penalty`,()=>{
+ const m=createModel(7,width,activation),d=dataset(7),lambda=.015,before=lossGradient(m,d).loss;
+ assert.equal(m.weights.length,3*width+1);
+ trainSteps(m,d,lambda,20000);const result=diagnostics(m,d,lambda);
+ assert.ok(result.loss<before);
+ assert.ok(Math.abs(result.estimate.lambda-lambda)/lambda<.05);
+ assert.ok(result.estimate.explained>.95);
 });

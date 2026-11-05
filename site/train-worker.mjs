@@ -1,4 +1,4 @@
-import {createModel,dataset,trainSteps,diagnostics} from './math.mjs';
+import {createModel,dataset,trainSteps,diagnostics} from './math.mjs?v=2';
 let run=null, generation=0;
 function tick(token){
   if(!run || run.paused || token!==generation) return;
@@ -13,7 +13,7 @@ function tick(token){
 onmessage=({data})=>{
   if(data.type==='start'){
     generation++;
-    run={model:createModel(data.initSeed??data.seed),data:dataset(data.seed),lambda:data.lambda,epoch:0,limit:20000,paused:false};
+    run={model:createModel(data.initSeed??data.seed,data.width??16,data.activation??'relu'),data:dataset(data.seed),lambda:data.lambda,epoch:0,limit:20000,paused:false};
     tick(generation);
   } else if(data.type==='pause' && run){run.paused=true;}
   else if(data.type==='resume' && run){run.paused=false;generation++;tick(generation);}

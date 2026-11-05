@@ -1049,3 +1049,5 @@ footer  {
 .inverse-cases { padding: 8px 0; font-weight: 400; line-height: 1.6; }
 .point-status output { float: none; }
 @media (max-width: 760px) { .inverse-plots { grid-template-columns: 1fr; } .inverse-plots .plot-wrap + .plot-wrap { border-left: 0; border-top: 1px solid var(--line); } }
+
+.network-architecture { grid-template-columns: 1fr 1fr; max-width: 640px; }

@@ -35,13 +35,13 @@ The workflow can be manually run on a feature branch to validate and upload an a
 - `index.html`: essay, accessible controls, methods, and research context.
 - `style.css`: responsive layout and chart colors, reduced-motion support.
 - `app.mjs`: canvas views, linked controls, and worker lifecycle.
-- `math.mjs`: pure numerical functions, seeded data, explicit ReLU backpropagation.
+- `math.mjs`: pure numerical functions, seeded data, explicit ReLU and tanh backpropagation.
 - `train-worker.mjs`: full-batch training in interruptible chunks.
 - `tests/math.test.mjs`: numerical regression tests.
 
 ## Scientific conventions
 
-Every example uses `R(theta) = lambda * ||theta||^2`, so the gradient is `2 * lambda * theta`. The MLP has one hidden layer of 16 ReLUs (49 parameters), includes biases in the penalty, and uses mean squared error over 64 noisy synthetic observations. It trains with full-batch GD, learning rate 0.04, for 20,000 steps. Diagnostics always use the unregularized, full-training-set gradient.
+Every example uses `R(theta) = lambda * ||theta||^2`, so the gradient is `2 * lambda * theta`. The MLP has one hidden layer with selectable width (16, 32, or 64) and activation (ReLU or tanh), with 3 × width + 1 parameters, includes biases in the penalty, and uses mean squared error over 64 noisy synthetic observations. It trains with full-batch GD, learning rate 0.04 × 16 / width, for 20,000 steps. Diagnostics always use the unregularized, full-training-set gradient.
 
 The scalar estimate is constrained to be nonnegative. Gradient explained is `1 - ||grad L + 2 lambda_hat theta||^2 / ||grad L||^2`, not prediction R-squared. A zero/near-zero denominator is displayed as unavailable. ReLU kinks and incomplete convergence can leave a residual. Recovery of an explicit penalty is a sanity check, not a demonstration that arbitrary implicit effects are equivalent to ridge. The final dropout discussion summarizes the manuscript; the live experiment does not train with dropout.
 

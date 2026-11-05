@@ -35,16 +35,17 @@ export function dataset(seed=7,n=64) {
   const random=rng(seed);
   return Array.from({length:n},(_,i)=>{ const x=-1.5+3*i/(n-1); return {x,y:target(x)+(random()+random()+random()-1.5)*0.16}; });
 }
-// A 1 -> width -> 1 ReLU MLP. Layout: input weights, hidden biases,
+// A 1 -> width -> 1 MLP with ReLU or tanh activation. Layout: input weights, hidden biases,
 // output weights, output bias. All parameters, including biases, are penalized.
-export function createModel(seed=7,width=16) {
+export function createModel(seed=7,width=16,activation='relu') {
+  if(!['relu','tanh'].includes(activation)) throw new Error('Unsupported activation');
   const random=rng(seed+1000), weights=new Float64Array(3*width+1);
   for(let j=0;j<width;j++){ weights[j]=(random()*2-1)*0.8; weights[width+j]=(random()*2-1)*0.8; weights[2*width+j]=(random()*2-1)*0.3; }
-  return {width,weights};
+  return {width,weights,activation};
 }
 export function predict(model,x) {
   const {width:h,weights:w}=model; let y=w[3*h];
-  for(let j=0;j<h;j++) y+=w[2*h+j]*Math.max(0,w[j]*x+w[h+j]);
+  for(let j=0;j<h;j++) y+=w[2*h+j]*(model.activation==='tanh'?Math.tanh(w[j]*x+w[h+j]):Math.max(0,w[j]*x+w[h+j]));
   return y;
 }
 export function lossGradient(model,data) {
@@ -52,11 +53,11 @@ export function lossGradient(model,data) {
   for(const {x,y} of data){
     const error=predict(model,x)-y; loss+=error*error/data.length;
     const delta=2*error/data.length; gradient[3*h]+=delta;
-    for(let j=0;j<h;j++) { const z=w[j]*x+w[h+j]; if(z>0){ gradient[2*h+j]+=delta*z; gradient[j]+=delta*w[2*h+j]*x; gradient[h+j]+=delta*w[2*h+j]; } }
+    for(let j=0;j<h;j++) { const z=w[j]*x+w[h+j],a=model.activation==='tanh'?Math.tanh(z):Math.max(0,z),derivative=model.activation==='tanh'?1-a*a:(z>0?1:0); gradient[2*h+j]+=delta*a; gradient[j]+=delta*w[2*h+j]*derivative*x; gradient[h+j]+=delta*w[2*h+j]*derivative; }
   }
   return {loss,gradient};
 }
-export function trainSteps(model,data,lambda,steps,rate=0.04) {
+export function trainSteps(model,data,lambda,steps,rate=0.04*16/model.width) {
   for(let step=0;step<steps;step++) {
     const {gradient}=lossGradient(model,data);
     for(let i=0;i<model.weights.length;i++) model.weights[i]-=rate*(gradient[i]+2*lambda*model.weights[i]);
