@@ -203,7 +203,7 @@ $('surface-chart').onpointerup=$('surface-chart').onpointercancel=()=>{drag=null
 let initSeed=7;
 function networkConfig(){return {width:+$('network-width').value,activation:$('network-activation').value};}
 function lockNetworkControls(locked){for(const id of ['seed','penalty-choice','network-width','network-activation'])$(id).disabled=locked;}
-let data=dataset(7),curve=[],worker=null,state='ready',revealed=false,lastStats=null;
+let data=dataset(7),curve=[],worker=null,state='ready',lastStats=null;
 function drawNetwork(){
  const v=canvas('network-chart'),{ctx}=v,{X,Y}=axes(v,{xmin:-1.6,xmax:1.6,ymin:-1.2,ymax:1.2,xlabel:'Input x',ylabel:'Prediction f(x)'});
  line(ctx,Array.from({length:151},(_,i)=>{const x=-1.5+i/50;return[X(x),Y(target(x))];}),colors.muted,1.5,[5,4]);
@@ -215,13 +215,13 @@ function updateStats(stats){
  lastStats=stats;curve=stats.curve;drawNetwork();
  $('estimate').textContent=number(stats.estimate.lambda,4);$('explained').textContent=stats.estimate.explained===null?'—':number(stats.estimate.explained*100,1)+'%';
  $('explained-meter').style.width=(Math.max(0,stats.estimate.explained??0)*100)+'%';$('train-loss').textContent=number(stats.loss,4);$('stationarity').textContent=stats.stationary.toExponential(2);
- $('training-bar').style.width=stats.epoch/stats.limit*100+'%';$('reveal').disabled=false;
+ $('training-bar').style.width=stats.epoch/stats.limit*100+'%';
  if(state==='running')$('train-status').textContent=`Training · ${stats.epoch.toLocaleString()} / ${stats.limit.toLocaleString()} full-batch steps`;
  if(stats.done){state='done';$('train').textContent='Train again';$('train-status').textContent=`Finished ${stats.epoch.toLocaleString()} steps. Change the architecture, seed, or penalty to try another run.`;lockNetworkControls(false);}
- if(revealed)showReveal();
+ updateRecovery();
 }
-function showReveal(){revealed=true;const truth=+$('penalty-choice').value;$('true-lambda').textContent=number(truth,4);$('reveal').textContent='True penalty revealed';$('reveal').disabled=true;if(lastStats?.estimate.lambda!==null&&lastStats){const error=Math.abs(lastStats.estimate.lambda-truth)/truth*100;$('recovery-note').textContent=`Relative recovery error: ${number(error,1)}%. ${state==='done'?'Finite training can leave a residual; ReLU also has nondifferentiable kinks.':'Keep training to see whether the estimate improves.'}`;}}
-function reset(){worker?.terminate();worker=null;state='ready';revealed=false;lastStats=null;lockNetworkControls(false);data=dataset(+$('seed').value);initialCurve();for(const id of ['estimate','explained','train-loss','stationarity'])$(id).textContent='—';$('true-lambda').textContent='hidden';$('reveal').disabled=true;$('reveal').textContent='Reveal the true penalty';$('train').textContent='Train the network →';$('train-status').textContent='Ready. Training runs locally; training data stays in your browser.';$('training-bar').style.width=$('explained-meter').style.width='0%';$('recovery-note').textContent='Watch the estimate settle as the network approaches a stationary point.';drawNetwork();}
+function updateRecovery(){const truth=+$('penalty-choice').value;$('true-lambda').textContent=number(truth,4);if(lastStats?.estimate.lambda!=null){const error=Math.abs(lastStats.estimate.lambda-truth)/truth*100;$('recovery-note').textContent=`Relative recovery error: ${number(error,1)}%. ${state==='done'?'Finite training can leave a residual.':'Keep training to see whether the estimate improves.'}`;}}
+function reset(){worker?.terminate();worker=null;state='ready';lastStats=null;lockNetworkControls(false);data=dataset(+$('seed').value);initialCurve();for(const id of ['estimate','explained','train-loss','stationarity'])$(id).textContent='—';updateRecovery();$('train').textContent='Train the network →';$('train-status').textContent='Ready. Training runs locally; training data stays in your browser.';$('training-bar').style.width=$('explained-meter').style.width='0%';$('recovery-note').textContent='Watch the estimate settle as the network approaches a stationary point.';drawNetwork();}
 $('train').onclick=()=>{
  if(state==='running'){worker.postMessage({type:'pause'});state='paused';$('train').textContent='Resume training';$('train-status').textContent='Paused. Inspect the current estimate or resume training.';return;}
  if(state==='paused'){state='running';worker.postMessage({type:'resume'});$('train').textContent='Pause training';return;}
@@ -229,7 +229,7 @@ $('train').onclick=()=>{
  try{worker=new Worker(new URL('./train-worker.mjs?v=2',import.meta.url),{type:'module'});worker.onmessage=({data})=>updateStats(data);worker.onerror=()=>{state='error';worker?.terminate();$('train-status').textContent='Training could not start. Try a modern browser with module-worker support, served over HTTP(S).';$('train').textContent='Try again';lockNetworkControls(false);};state='running';lockNetworkControls(true);$('train').textContent='Pause training';$('train-status').textContent='Starting local training…';worker.postMessage({type:'start',seed:+$('seed').value,initSeed,...networkConfig(),lambda:+$('penalty-choice').value});}
  catch(error){state='error';lockNetworkControls(false);$('train-status').textContent=`Training unavailable: ${error.message}`;}
 };
-$('reset').onclick=reset;$('reveal').onclick=showReveal;for(const id of ['seed','penalty-choice','network-width','network-activation'])$(id).onchange=reset;
+$('reset').onclick=reset;for(const id of ['seed','penalty-choice','network-width','network-activation'])$(id).onchange=reset;
 $('random-network').onclick=()=>{initSeed=(initSeed+1+Math.floor(Math.random()*999999))%1000000;reset();};
 let resizeFrame;new ResizeObserver(()=>{cancelAnimationFrame(resizeFrame);resizeFrame=requestAnimationFrame(()=>{drawBalance();drawInverse();drawLandscape();drawNetwork();});}).observe(document.querySelector('main'));
-initialCurve();drawBalance();drawInverse();drawLandscape();drawNetwork();
+initialCurve();updateRecovery();drawBalance();drawInverse();drawLandscape();drawNetwork();

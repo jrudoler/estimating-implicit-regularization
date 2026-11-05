@@ -1062,3 +1062,5 @@ footer  {
 .display-equation { margin:20px 0; padding:8px 0; overflow-x:auto; color:#222; }
 .display-equation math { font-size:1.15rem; }
 @media(max-width:600px) { .display-equation math { font-size:1rem; } }
+
+.method-subsection { margin-top:48px; scroll-margin-top:24px; }
