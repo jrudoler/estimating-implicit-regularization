@@ -206,7 +206,7 @@ function drawNetwork(){
  for(const p of data)dot(ctx,X(p.x),Y(p.y),'#777777',3);
  if(curve.length)line(ctx,curve.map(p=>[X(p.x),Y(p.y)]),colors.total,2.5);
 }
-function initialCurve(){const {width,activation}=networkConfig(),model=createModel(initSeed,width,activation);$('network-summary').textContent=`1 input → ${width} ${activation==='relu'?'ReLUs':'tanh units'} → 1 output · ${3*width+1} parameters`;$('network-shape-note').textContent=activation==='relu'?'ReLU predictions are piecewise linear: corners are part of the model.':'Tanh predictions are smooth.';$('init-seed-value').textContent=initSeed;curve=Array.from({length:151},(_,i)=>({x:-1.5+i/50,y:predict(model,-1.5+i/50)}));}
+function initialCurve(){const {width,activation}=networkConfig(),model=createModel(initSeed,width,activation);$('network-summary').textContent=`1 input → ${width} ${activation==='relu'?'ReLUs':'tanh units'} → 1 output · ${3*width+1} parameters`;$('init-seed-value').textContent=initSeed;curve=Array.from({length:151},(_,i)=>({x:-1.5+i/50,y:predict(model,-1.5+i/50)}));}
 function updateStats(stats){
  lastStats=stats;curve=stats.curve;drawNetwork();
  $('estimate').textContent=number(stats.estimate.lambda,4);$('explained').textContent=stats.estimate.explained===null?'—':number(stats.estimate.explained*100,1)+'%';
@@ -217,7 +217,7 @@ function updateStats(stats){
  updateRecovery();
 }
 function updateRecovery(){const truth=+$('penalty-choice').value;$('true-lambda').textContent=number(truth,4);if(lastStats?.estimate.lambda!=null){const error=Math.abs(lastStats.estimate.lambda-truth)/truth*100;$('recovery-note').textContent=`Relative recovery error: ${number(error,1)}%.`;}}
-function reset(){worker?.terminate();worker=null;state='ready';lastStats=null;lockNetworkControls(false);data=dataset(+$('seed').value);initialCurve();for(const id of ['estimate','explained','train-loss','stationarity'])$(id).textContent='—';updateRecovery();$('train').textContent='Train the network →';$('train-status').textContent='';$('training-bar').style.width=$('explained-meter').style.width='0%';$('recovery-note').textContent='';drawNetwork();}
+function reset(){worker?.terminate();worker=null;state='ready';lastStats=null;lockNetworkControls(false);data=dataset(+$('seed').value);initialCurve();for(const id of ['estimate','explained','train-loss','stationarity'])$(id).textContent='—';updateRecovery();$('train').textContent='Train the network';$('train-status').textContent='';$('training-bar').style.width=$('explained-meter').style.width='0%';$('recovery-note').textContent='';drawNetwork();}
 $('train').onclick=()=>{
  if(state==='running'){worker.postMessage({type:'pause'});state='paused';$('train').textContent='Resume training';$('train-status').textContent='Paused.';return;}
  if(state==='paused'){state='running';worker.postMessage({type:'resume'});$('train').textContent='Pause training';return;}

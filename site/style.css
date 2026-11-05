@@ -1107,3 +1107,8 @@ math[display="inline"] { white-space:nowrap; }
 .landscape-layers .opacity-control { display:grid; grid-template-columns:1fr auto; column-gap:20px; row-gap:10px; width:240px; max-width:100%; }
 .opacity-control output { float:none; text-align:right; }
 .opacity-control input[type="range"] { grid-column:1 / -1; margin:0; }
+
+/* Use the same typography and spacing for every displayed equation. */
+.display-equation, .equation, .formula { margin:20px 0; padding:8px 0; overflow-x:auto; color:var(--ink); }
+.display-equation math, .equation math, .formula math { font-size:1.1rem; }
+@media(max-width:600px) { .display-equation math, .equation math, .formula math { font-size:1rem; } }

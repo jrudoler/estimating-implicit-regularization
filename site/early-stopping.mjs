@@ -10,7 +10,7 @@ export function initEarlyStopping({canvas,axes,line,colors,number}){
   $('early-endpoints-value').textContent=$('early-endpoints').value;
   $('early-step-value').textContent=t;$('early-fit').textContent=s.explained===null?'—':number(100*s.explained,1)+'%';$('early-weight-error').textContent=s.weightError===null?'—':s.weightError.toExponential(2);$('early-residual').textContent=s.residual.toExponential(2);
   $('early-initialization').textContent=initSeed?`Random start (seed ${initSeed}); data unchanged.`:'Zero initialization.';
-  $('early-status').textContent=(family()==='full'?`Endpoint span: ${s.rank}/10. `:'')+(s.unidentified?'A zero weight makes a coefficient unidentifiable.':!s.convex?'The fitted total objective is not strictly convex; gradient cancellation does not establish a unique minimum.':s.weightError<1e-8?'The explicit solution recovers the displayed endpoint weights. This alone does not identify the theoretical matrix.':'The fitted penalty does not exactly recover the displayed endpoint weights.');
+  $('early-status').textContent=(family()==='full'?`Independent weight directions: ${s.rank}/10. `:'')+(s.unidentified?'A zero weight makes a coefficient unidentifiable.':!s.convex?'The fitted total objective is not strictly convex; gradient cancellation does not establish a unique minimum.':s.weightError<1e-8?'The explicit solution recovers the displayed endpoint weights. This alone does not identify the theoretical matrix.':'The fitted penalty does not exactly recover the displayed endpoint weights.');
   const estimated=s.A,reference=initSeed?null:penaltyMatrix(problem,theoreticalPenalty(problem,t));
   const difference=reference?estimated.map((row,i)=>row.map((value,j)=>value-reference[i][j])):null;
   const matrixLimit=Math.max(1e-12,...estimated.flat().map(Math.abs),...(reference??[]).flat().map(Math.abs),...(difference??[]).flat().map(Math.abs));
@@ -47,7 +47,7 @@ export function initEarlyStopping({canvas,axes,line,colors,number}){
   const logTicks=Array.from({length:Math.floor((high-low)/stride)+1},(_,i)=>high-i*stride);
   const ymax=log?high+.3:maximum*1.08, ymin=log?low-.5:0;
   const val=x=>log?Math.log10(x):x;
-  const a=axes(trace,{xmin:0,xmax:400,ymin,ymax,xlabel:'Training step',ylabel:'Estimated penalty λ',left:65,xticks:[0,100,200,300,400],yticks:log?logTicks:null,formatY:x=>log?(x< -3?'10^'+x:String(10**x)):number(x,2)});
+  const a=axes(trace,{xmin:0,xmax:400,ymin,ymax,xlabel:'Training step',ylabel:'Estimated penalty λ̂',left:65,xticks:[0,100,200,300,400],yticks:log?logTicks:null,formatY:x=>log?(x< -3?'10^'+x:String(10**x)):number(x,2)});
   for(let j=0;j<1;j++){
    let points=[];
    const flush=()=>{if(points.length)line(trace.ctx,points,colors.total,2.5,[]);points=[];};
@@ -61,7 +61,7 @@ export function initEarlyStopping({canvas,axes,line,colors,number}){
    trace.ctx.strokeStyle=colors.total;trace.ctx.lineWidth=1.5;trace.ctx.beginPath();trace.ctx.arc(x,y,4,0,2*Math.PI);trace.ctx.stroke();
   }
   line(trace.ctx,[[a.X(t),a.Y(ymin)],[a.X(t),a.Y(ymax)]],colors.ink,1,[3,4]);
-  $('early-penalty-caption').textContent=`Paper Fig. 4E: a separate scalar ridge estimate at every step of the displayed trajectory, regardless of the matrix estimator selected above. The dot marks step ${t}. `+(log?`The vertical axis is logarithmic and spans all positive estimates; tick labels give actual penalty values. ${firstZero?'The hollow marker at the bottom marks the first zero estimate (step '+firstZero.t+'); zero has no logarithmic coordinate. Values can reach numerical precision.':''}`:'Both axes are linear: equal distances mean equal changes.');
+  $('early-penalty-caption').textContent=`A separate scalar ridge estimate at each step, independent of the selected matrix family. The dot marks step ${t}. `+(log?`Tick labels show penalty values on a logarithmic scale. ${firstZero?'The hollow marker at the bottom marks the first zero estimate (step '+firstZero.t+'); zero has no logarithmic coordinate. Values can reach numerical precision.':''}`:'');
 
  }
  function tick(now){if(!playing)return;if(now-lastTime>65){lastTime=now;$('early-step').value=Math.min(400,step()+1);draw();}if(step()===400){stop();return;}frame=requestAnimationFrame(tick);}
