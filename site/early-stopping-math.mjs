@@ -24,3 +24,12 @@ export function regressionAt(problem,step,start=Array(10).fill(0),family='direct
  return {z,g,weights,fitted,scalar,directional,penalties,explained:g2<1e-20?null:1-dot(residual,residual)/g2,residual:Math.hypot(...residual),weightError:Math.hypot(...weights.map((v,k)=>v-fitted[k])),unidentified:family==='directional'?directional.some(v=>v===null):scalar.lambda===null};
 }
 export function randomRegressionStart(seed){const random=rng(seed);return Array.from({length:10},()=>1.2*(random()-.5));}
+
+// R(theta) = theta^T A theta, expressed in the original feature coordinates.
+export function penaltyMatrix(problem,coefficients){
+ return problem.V.map(row=>problem.V.map(other=>row.reduce((sum,v,k)=>sum+v*coefficients[k]*other[k],0)));
+}
+// Independent theoretical reference for full-batch GD from zero initialization.
+export function theoreticalPenalty(problem,step){
+ return problem.h.map(h=>{const q=(1-problem.rate*h)**step;return h*q/(2*(1-q));});
+}

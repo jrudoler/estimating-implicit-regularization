@@ -5,12 +5,12 @@ const randomBetween=(min,max)=>min+(max-min)*Math.random();
 const colors={loss:'#ff0000',reg:'#0000ff',total:'#555555',ink:'#222222',muted:'#707070',grid:'#e9e9e9'};
 const number=(x,d=2)=>Number.isFinite(x)?(Math.abs(x)<0.5*10**(-d)?0:x).toFixed(d):'—';
 function canvas(id){const el=$(id),r=el.getBoundingClientRect(),dpr=window.devicePixelRatio||1;el.width=r.width*dpr;el.height=r.height*dpr;const ctx=el.getContext('2d');ctx.scale(dpr,dpr);ctx.font='11px system-ui';return {el,ctx,w:r.width,h:r.height};}
-function axes(view,{xmin,xmax,ymin,ymax,xlabel='θ',ylabel='Objective',left=55,bottom=38,equalAspect=false,xticks=null,formatX=null}){
+function axes(view,{xmin,xmax,ymin,ymax,xlabel='θ',ylabel='Objective',left=55,bottom=38,equalAspect=false,xticks=null,formatX=null,yticks=null,formatY=null}){
  const {ctx,w,h}=view,pad={l:left,r:25,t:24,b:bottom};
  if(equalAspect){const unit=Math.min((w-pad.l-pad.r)/(xmax-xmin),(h-pad.t-pad.b)/(ymax-ymin)),dx=(w-pad.l-pad.r-unit*(xmax-xmin))/2,dy=(h-pad.t-pad.b-unit*(ymax-ymin))/2;pad.l+=dx;pad.r+=dx;pad.t+=dy;pad.b+=dy;}
  const X=x=>pad.l+(x-xmin)/(xmax-xmin)*(w-pad.l-pad.r),Y=y=>h-pad.b-(y-ymin)/(ymax-ymin)*(h-pad.t-pad.b);
  ctx.strokeStyle=colors.grid;ctx.fillStyle=colors.muted;ctx.lineWidth=1;
- for(let i=0;i<=4;i++){const y=ymin+(ymax-ymin)*i/4;ctx.beginPath();ctx.moveTo(X(xmin),Y(y));ctx.lineTo(X(xmax),Y(y));ctx.stroke();ctx.textAlign='right';ctx.fillText(number(y,1),pad.l-10,Y(y)+4);}
+ for(const y of (yticks??Array.from({length:5},(_,i)=>ymin+(ymax-ymin)*i/4))){ctx.beginPath();ctx.moveTo(X(xmin),Y(y));ctx.lineTo(X(xmax),Y(y));ctx.stroke();ctx.textAlign='right';ctx.fillText(formatY?formatY(y):number(y,1),pad.l-10,Y(y)+4);}
  for(const x of (xticks??Array.from({length:5},(_,i)=>xmin+(xmax-xmin)*i/4))){ctx.textAlign='center';ctx.fillText(formatX?formatX(x):number(x,Number.isInteger(x)?0:1),X(x),h-pad.b+20);}
  ctx.textAlign='right';ctx.fillText(xlabel,w-pad.r,h-5);ctx.textAlign='left';ctx.fillText(ylabel,pad.l,14);
  return {X,Y,unX:px=>xmin+(px-pad.l)/(w-pad.l-pad.r)*(xmax-xmin),unY:py=>ymin+(h-pad.b-py)/(h-pad.t-pad.b)*(ymax-ymin),pad};

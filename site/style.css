@@ -1084,3 +1084,8 @@ footer  {
 @media(max-width:420px) { .experiment-actions { gap:8px; } .experiment-actions button { padding:10px 12px; } }
 
 .ending li { font-size:15px; line-height:1.7; margin-bottom:16px; color:#444; }
+
+.early-matrix-intro { margin-top:28px; }
+.early-heatmaps { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:16px; margin-top:20px; }
+.early-heatmaps canvas { display:block; width:100%; height:260px; }
+@media(max-width:760px) { .early-heatmaps { grid-template-columns:1fr; } }
