@@ -1064,3 +1064,18 @@ footer  {
 @media(max-width:600px) { .display-equation math { font-size:1rem; } }
 
 .method-subsection { margin-top:48px; scroll-margin-top:24px; }
+
+.early-plots { display:grid; grid-template-columns:1fr 1fr; gap:24px; margin:24px 0; }
+.early-plots canvas { display:block; width:100%; height:310px; }
+.early-controls { grid-template-columns:1fr 1fr; }
+.trajectory-diagram { display:block; width:100%; max-width:480px; margin:20px auto; }
+@media(max-width:760px) { .early-plots { grid-template-columns:1fr; } .early-controls { grid-template-columns:1fr; } }
+
+.network-settings { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:16px; margin-top:20px; }
+.network-settings label { display:flex; flex-direction:column; gap:8px; font-size:12px; }
+.network-settings select { width:100%; min-width:0; }
+.experiment-actions { display:flex; flex-wrap:wrap; align-items:center; gap:10px; margin:16px 0; }
+.experiment-actions button { width:auto; min-height:40px; margin:0; }
+.early-controls { grid-template-columns:repeat(3,minmax(0,1fr)); }
+@media(max-width:760px) { .network-settings { grid-template-columns:1fr 1fr; } .early-controls { grid-template-columns:1fr; } }
+@media(max-width:420px) { .experiment-actions { gap:8px; } .experiment-actions button { padding:10px 12px; } }
