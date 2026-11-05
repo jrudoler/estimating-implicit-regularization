@@ -41,3 +41,30 @@ test('penalty matrices preserve gradients in original coordinates and agree with
  }
  const ridge=penaltyMatrix(p,Array(10).fill(.2));ridge.forEach((row,i)=>row.forEach((v,j)=>near(v,i===j?.2:0)));
 });
+
+test('original-coordinate diagonal recovers weights without recovering theory',async()=>{
+ const {estimateRegularizer}=await import('../early-stopping-math.mjs');
+ const p=regressionProblem(7,5),s=estimateRegularizer(p,20,Array(10).fill(0),'diagonal'),theory=penaltyMatrix(p,theoreticalPenalty(p,20));
+ assert.ok(s.convex);assert.ok(s.weightError<1e-9);
+ assert.ok(Math.hypot(...s.A.flatMap((row,i)=>row.map((v,j)=>v-theory[i][j])))>1e-5);
+ s.A.forEach((row,i)=>row.forEach((v,j)=>{if(i!==j)near(v,0);}));
+ const nonconvex=estimateRegularizer(regressionProblem(7,25),20,Array(10).fill(0),'diagonal');
+ assert.ok(nonconvex.residual<1e-9);assert.equal(nonconvex.convex,false);assert.equal(nonconvex.fitted,null);
+});
+test('full symmetric estimator learns the theoretical matrix from independent endpoints',async()=>{
+ const {estimateRegularizer}=await import('../early-stopping-math.mjs');
+ for(const condition of [1,5,25,100]){
+  const pool=Array.from({length:12},(_,i)=>regressionProblem(7+i,condition)),p=pool[0];
+  for(const t of [1,20,100,400]){
+   const s=estimateRegularizer(p,t,Array(10).fill(0),'full',pool),theory=penaltyMatrix(p,theoreticalPenalty(p,t));
+   assert.equal(s.rank,10);assert.ok(s.weightError<1e-7);
+   s.A.forEach((row,i)=>row.forEach((v,j)=>near(v,theory[i][j],1e-7)));
+  }
+ }
+});
+test('insufficient endpoints match observations but do not identify the full penalty',async()=>{
+ const {estimateRegularizer}=await import('../early-stopping-math.mjs');
+ const p=regressionProblem(7,5),s=estimateRegularizer(p,20,Array(10).fill(0),'full',[p]),theory=penaltyMatrix(p,theoreticalPenalty(p,20));
+ assert.equal(s.rank,1);assert.ok(s.residual<1e-8);
+ assert.ok(Math.hypot(...s.A.flatMap((row,i)=>row.map((v,j)=>v-theory[i][j])))>1e-5);
+});

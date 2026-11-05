@@ -1089,3 +1089,7 @@ footer  {
 .early-heatmaps { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:16px; margin-top:20px; }
 .early-heatmaps canvas { display:block; width:100%; height:260px; }
 @media(max-width:760px) { .early-heatmaps { grid-template-columns:1fr; } }
+
+.early-endpoint-control { display:block; max-width:600px; margin:18px 0; }
+.early-endpoint-control[hidden] { display:none; }
+.early-endpoint-control input { display:block; width:100%; margin:10px 0; }
