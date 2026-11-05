@@ -1057,3 +1057,8 @@ footer  {
 .landscape-layers legend { font-size:12px; margin-bottom:8px; }
 .landscape-layers label { font-size:12px; }
 .landscape-layers input[type="checkbox"] { width:auto; margin-right:5px; }
+
+.method-explanation { max-width:760px; margin-bottom:28px; color:#444; }
+.display-equation { margin:20px 0; padding:8px 0; overflow-x:auto; color:#222; }
+.display-equation math { font-size:1.15rem; }
+@media(max-width:600px) { .display-equation math { font-size:1rem; } }
