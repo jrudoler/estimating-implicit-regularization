@@ -1095,3 +1095,13 @@ footer  {
 .early-endpoint-control input { display:block; width:100%; margin:10px 0; }
 
 #train-status:empty, #recovery-note:empty { display:none; }
+
+.header-links { display:flex; gap:20px; flex-shrink:0; }
+.hero .affiliation { margin:6px 0 0; color:#555; font-size:13px; line-height:1.5; }
+math { font-family:"STIX Two Math","Cambria Math",math; font-size:1em; }
+math[display="inline"] { white-space:nowrap; }
+.equation, .formula { overflow-x:auto; padding:10px 0; }
+.equation math, .formula math { font-size:1.1rem; }
+@media(max-width:600px) { .masthead { gap:16px; flex-wrap:wrap; } .header-links { gap:16px; } }
+
+.byline span { white-space:nowrap; }
