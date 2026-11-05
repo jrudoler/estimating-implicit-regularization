@@ -8,11 +8,13 @@ export function initEarlyStopping({canvas,axes,line,colors,number}){
   const t=step(),s=estimateRegularizer(problem,t,start,family(),pool.slice(0,+$('early-endpoints').value));
   $('early-endpoints-control').hidden=family()!=='full';
   $('early-endpoints-value').textContent=$('early-endpoints').value;
-  $('early-step-value').textContent=t;$('early-fit').textContent=s.explained===null?'—':number(100*s.explained,1)+'%';$('early-weight-error').textContent=s.weightError===null?'—':s.weightError.toExponential(2);$('early-residual').textContent=s.residual.toExponential(2);
+  $('early-step-value').textContent=t;$('early-weight-error').textContent=s.weightError===null?'—':s.weightError.toExponential(2);$('early-residual').textContent=s.residual.toExponential(2);
   $('early-initialization').textContent=initSeed?`Random start (seed ${initSeed}); data unchanged.`:'Zero initialization.';
   $('early-status').textContent=(family()==='full'?`Independent weight directions: ${s.rank}/10. `:'')+(s.unidentified?'A zero weight makes a coefficient unidentifiable.':!s.convex?'The fitted total objective is not strictly convex; gradient cancellation does not establish a unique minimum.':s.weightError<1e-8?'The explicit solution recovers the displayed endpoint weights. This alone does not identify the theoretical matrix.':'The fitted penalty does not exactly recover the displayed endpoint weights.');
   const estimated=s.A,reference=initSeed?null:penaltyMatrix(problem,theoreticalPenalty(problem,t));
   const difference=reference?estimated.map((row,i)=>row.map((value,j)=>value-reference[i][j])):null;
+  const referenceNorm=reference?Math.hypot(...reference.flat()):0;
+  $('early-matrix-error').textContent=difference&&referenceNorm>0?(Math.hypot(...difference.flat())/referenceNorm).toExponential(2):'—';
   const matrixLimit=Math.max(1e-12,...estimated.flat().map(Math.abs),...(reference??[]).flat().map(Math.abs),...(difference??[]).flat().map(Math.abs));
   const compact=x=>Math.abs(x)<.001&&x!==0?x.toExponential(2):number(x,3);
   function heatmap(id,matrix){
@@ -27,7 +29,7 @@ export function initEarlyStopping({canvas,axes,line,colors,number}){
    ctx.textAlign='right';for(let i=0;i<10;i++)ctx.fillText(i+1,left-8,top+(i+.5)*cell+3);
   }
   heatmap('early-theory',reference);heatmap('early-estimated',estimated);heatmap('early-difference',difference);
-  $('early-matrix-scale').textContent=`Shared color scale: red = −${compact(matrixLimit)}, white = 0, blue = +${compact(matrixLimit)}. Rescaled at each selected step. `+(difference?`Largest absolute estimation error: ${Math.max(...difference.flat().map(Math.abs)).toExponential(2)}.`:'The zero-initialization theory is not a reference for this random start.');
+  $('early-matrix-scale').textContent=`Shared color scale: red = −${compact(matrixLimit)}, white = 0, blue = +${compact(matrixLimit)}. Rescaled at each selected step. `+(difference?'':'The zero-initialization theory is not a reference for this random start.');
   const v=canvas('early-coefficients'),{ctx}=v;
   const ols=regressionAt(problem,2000).weights,limit=Math.max(.5,...ols.map(Math.abs),...s.weights.map(Math.abs),...(s.fitted??[]).map(Math.abs))*1.18;
   const {X,Y}=axes(v,{xmin:-limit,xmax:limit,ymin:-limit,ymax:limit,xlabel:'Early-stopped weight',ylabel:'Recovered weight',equalAspect:true});
