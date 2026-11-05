@@ -1,7 +1,7 @@
 import {balance,landscape,optimum2D,ridgeEstimate,dataset,createModel,predict,target} from './math.mjs';
 const $=id=>document.getElementById(id);
 const colors={loss:'#ff0000',reg:'#0000ff',total:'#555555',ink:'#222222',muted:'#707070',grid:'#e9e9e9'};
-const number=(x,d=2)=>Number.isFinite(x)?x.toFixed(d):'—';
+const number=(x,d=2)=>Number.isFinite(x)?(Math.abs(x)<0.5*10**(-d)?0:x).toFixed(d):'—';
 function canvas(id){const el=$(id),r=el.getBoundingClientRect(),dpr=window.devicePixelRatio||1;el.width=r.width*dpr;el.height=r.height*dpr;const ctx=el.getContext('2d');ctx.scale(dpr,dpr);ctx.font='11px system-ui';return {el,ctx,w:r.width,h:r.height};}
 function axes(view,{xmin,xmax,ymin,ymax,xlabel='θ',ylabel='Objective',left=55,bottom=38}){
  const {ctx,w,h}=view,pad={l:left,r:25,t:24,b:bottom};
@@ -15,9 +15,11 @@ function axes(view,{xmin,xmax,ymin,ymax,xlabel='θ',ylabel='Objective',left=55,b
 function line(ctx,points,color,width=2,dash=[]){ctx.beginPath();ctx.strokeStyle=color;ctx.lineWidth=width;ctx.setLineDash(dash);points.forEach(([x,y],i)=>i?ctx.lineTo(x,y):ctx.moveTo(x,y));ctx.stroke();ctx.setLineDash([]);}
 function dot(ctx,x,y,color,r=5){ctx.beginPath();if(color===colors.reg){ctx.moveTo(x,y-r-1);ctx.lineTo(x+r+1,y+r);ctx.lineTo(x-r-1,y+r);ctx.closePath();}else if(color===colors.total){ctx.moveTo(x,y-r-1);ctx.lineTo(x+r+1,y);ctx.lineTo(x,y+r+1);ctx.lineTo(x-r-1,y);ctx.closePath();}else{ctx.arc(x,y,r,0,2*Math.PI);}ctx.fillStyle=color;ctx.fill();ctx.strokeStyle='#ffffff';ctx.lineWidth=2;ctx.stroke();}
 function arrow(ctx,from,to,color){const dx=to[0]-from[0],dy=to[1]-from[1],len=Math.hypot(dx,dy);if(len<1)return;line(ctx,[from,to],color,color===colors.total?3:2.5,color===colors.reg?[5,4]:[]);const a=Math.atan2(dy,dx);ctx.beginPath();ctx.moveTo(...to);ctx.lineTo(to[0]-8*Math.cos(a-.42),to[1]-8*Math.sin(a-.42));ctx.lineTo(to[0]-8*Math.cos(a+.42),to[1]-8*Math.sin(a+.42));ctx.closePath();ctx.fillStyle=color;ctx.fill();ctx.font='11px system-ui';ctx.textAlign='left';ctx.strokeStyle='#fff';ctx.lineWidth=3;const label=color===colors.loss?'∇L':color===colors.reg?'∇R':'Net';ctx.strokeText(label,to[0]+5,to[1]-6);ctx.fillText(label,to[0]+5,to[1]-6);}
+// Keep the computed parameter independent of the range input's 0.01 snapping.
+let balanceTheta=+$('theta').value;
 let hidden=false,balAxes,balAnimation=0;
 function drawBalance(){
- const v=canvas('balance-chart'),{ctx}=v,l=+$('lambda').value,t=+$('theta').value,b=balance(t,l);
+ const v=canvas('balance-chart'),{ctx}=v,l=+$('lambda').value,t=balanceTheta,b=balance(t,l);
  balAxes=axes(v,{xmin:-1,xmax:3,ymin:0,ymax:Math.max(5,9*l+1),ylabel:'Objective value'});
  const {X,Y}=balAxes;
  for(const [key,col] of [['loss',colors.loss],['penalty',colors.reg],['total',colors.total]]){
@@ -34,10 +36,10 @@ function drawBalance(){
  const span=.45;line(ctx,[[X(t-span),Y(b.loss-b.gLoss*span)],[X(t+span),Y(b.loss+b.gLoss*span)]],colors.loss,4.5);
  if(!hidden)line(ctx,[[X(t-span),Y(b.penalty-b.gReg*span)],[X(t+span),Y(b.penalty+b.gReg*span)]],colors.reg,4.5,[7,4]);
  drawGradientBalance(b,t);
- $('lambda-value').textContent=hidden?'hidden':number(l);$('theta-value').textContent=number(t);
+ $('lambda-value').textContent=hidden?'hidden':number(l);$('theta-value').textContent=number(t,4);
  $('g-loss').textContent=number(b.gLoss);$('g-reg').textContent=hidden?'?':number(b.gReg);$('g-net').textContent=hidden?'?':number(b.gLoss+b.gReg);
- $('balance-status').textContent=hidden?'What penalty could explain this point?':Math.abs(b.gLoss+b.gReg)<.025?'At the optimum, the slopes cancel.':'The net gradient is nonzero. Move toward the balance.';
- if(hidden){const est=ridgeEstimate([t],[b.gLoss]);$('inverse-result').textContent=est.lambda===null?'At θ = 0, ridge supplies no gradient. Its strength cannot be identified here.':`Assuming this point is stationary: estimated λ = ${number(est.lambda,3)}. Unexplained gradient = ${number(est.residual,3)}.${Math.abs(t-b.optimum)>.02?' Away from the true optimum, this need not recover the hidden penalty.':' This matches the hidden penalty at the true optimum.'}`;}
+ $('balance-status').textContent=hidden?'What penalty could explain this point?':Math.abs(b.gLoss+b.gReg)<1e-10?'At the optimum, the slopes cancel.':'The net gradient is nonzero. Move toward the balance.';
+ if(hidden){const est=ridgeEstimate([t],[b.gLoss]);$('inverse-result').textContent=est.lambda===null?'At θ = 0, ridge supplies no gradient. Its strength cannot be identified here.':`Assuming this point is stationary: estimated λ = ${number(est.lambda,3)}. Unexplained gradient = ${number(est.residual,3)}.${Math.abs(t-b.optimum)>1e-10?' Away from the true optimum, this need not recover the hidden penalty.':' This matches the hidden penalty at the true optimum.'}`;}
 }
 function drawGradientBalance(b,theta){
  const {ctx,w}=canvas('gradient-chart');
@@ -52,17 +54,18 @@ function drawGradientBalance(b,theta){
    ctx.font='13px system-ui';ctx.fillText(value===null?'hidden':(value>0?'+':'')+number(value,2),0,y+14);
    if(value===null){ctx.fillStyle='#707070';ctx.fillText('?',center,y+4);return;}
    const end=center+value*scale;
-   if(Math.abs(value)<.015){ctx.beginPath();ctx.arc(center,y,4,0,Math.PI*2);ctx.fillStyle=color;ctx.fill();if(i===2){ctx.font='12px system-ui';ctx.fillText('balanced',center+10,y+4);}return;}
+   if(Math.abs(value)<1e-10){ctx.beginPath();ctx.arc(center,y,4,0,Math.PI*2);ctx.fillStyle=color;ctx.fill();if(i===2){ctx.font='12px system-ui';ctx.fillText('balanced',center+10,y+4);}return;}
    line(ctx,[[center,y],[end,y]],color,i===2?3:4,color===colors.reg?[8,5]:[]);
    const direction=Math.sign(value);ctx.beginPath();ctx.moveTo(end,y);ctx.lineTo(end-direction*10,y-6);ctx.lineTo(end-direction*10,y+6);ctx.closePath();ctx.fillStyle=color;ctx.fill();
    ctx.beginPath();ctx.arc(center,y,3,0,Math.PI*2);ctx.fill();
  });
 }
-for(const id of ['lambda','theta'])$(id).addEventListener('input',()=>{balAnimation++;drawBalance();});
-$('find-balance').onclick=()=>{const token=++balAnimation,start=+$('theta').value,end=balance(0,+$('lambda').value).optimum,time=performance.now(),duration=matchMedia('(prefers-reduced-motion: reduce)').matches?0:650;function step(now){if(token!==balAnimation)return;const u=duration?Math.min(1,(now-time)/duration):1;$('theta').value=start+(end-start)*(1-(1-u)**3);drawBalance();if(u<1)requestAnimationFrame(step);}requestAnimationFrame(step);};
+$('lambda').addEventListener('input',()=>{balAnimation++;drawBalance();});
+$('theta').addEventListener('input',()=>{balAnimation++;balanceTheta=+$('theta').value;drawBalance();});
+$('find-balance').onclick=()=>{const token=++balAnimation,start=balanceTheta,end=balance(0,+$('lambda').value).optimum,time=performance.now(),duration=matchMedia('(prefers-reduced-motion: reduce)').matches?0:650;function step(now){if(token!==balAnimation)return;const u=duration?Math.min(1,(now-time)/duration):1;balanceTheta=u===1?end:start+(end-start)*(1-(1-u)**3);$('theta').value=balanceTheta;drawBalance();if(u<1)requestAnimationFrame(step);}requestAnimationFrame(step);};
 $('hide-penalty').onclick=()=>{hidden=!hidden;$('hide-penalty').textContent=hidden?'Reveal the penalty':'Hide λ & infer it from θ';$('hide-penalty').setAttribute('aria-pressed',hidden);$('lambda').disabled=hidden;$('inverse-result').hidden=!hidden;drawBalance();};
-$('balance-chart').addEventListener('pointerdown',e=>{balAnimation++;const r=e.currentTarget.getBoundingClientRect();$('theta').value=Math.max(-1,Math.min(3,balAxes.unX(e.clientX-r.left)));drawBalance();e.currentTarget.setPointerCapture(e.pointerId);});
-$('balance-chart').addEventListener('pointermove',e=>{if(e.buttons){const r=e.currentTarget.getBoundingClientRect();$('theta').value=Math.max(-1,Math.min(3,balAxes.unX(e.clientX-r.left)));drawBalance();}});
+$('balance-chart').addEventListener('pointerdown',e=>{balAnimation++;const r=e.currentTarget.getBoundingClientRect();balanceTheta=Math.max(-1,Math.min(3,balAxes.unX(e.clientX-r.left)));$('theta').value=balanceTheta;drawBalance();e.currentTarget.setPointerCapture(e.pointerId);});
+$('balance-chart').addEventListener('pointermove',e=>{if(e.buttons){const r=e.currentTarget.getBoundingClientRect();balanceTheta=Math.max(-1,Math.min(3,balAxes.unX(e.clientX-r.left)));$('theta').value=balanceTheta;drawBalance();}});
 let point=[1,.5],followOptimum=true,contourAxes,yaw=-.61,pitch=.7;
 function config(){return {l:+$('lambda2').value,a:+$('angle').value*Math.PI/180,s:+$('stretch').value};}
 function drawLandscape(){
