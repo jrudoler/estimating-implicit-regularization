@@ -1,0 +1,1051 @@
+:root {
+  --paper:#ffffff;
+  --ink:#222222;
+  --muted:#606060;
+  --line:#dddddd;
+  --loss:#ff0000;
+  --reg:#0000ff;
+  --total:#555555;
+  --white:#ffffff;
+  font-family:system-ui,-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;
+  color:var(--ink);
+  background:var(--paper);
+  font-synthesis:none;
+  scroll-behavior:smooth
+}
+
+* {
+  box-sizing:border-box
+}
+body {
+  margin:0
+}
+a {
+  color:inherit;
+  text-decoration:none
+}
+a:hover {
+  text-decoration:underline
+}
+button,input,select {
+  font:inherit
+}
+button,a,input,select,summary {
+  touch-action:manipulation
+}
+button {
+  cursor:pointer
+}
+button:disabled {
+  cursor:default;
+  opacity:.45
+}
+button:focus-visible,a:focus-visible,input:focus-visible,select:focus-visible,summary:focus-visible {
+  outline:3px solid var(--reg);
+  outline-offset:5px
+}
+.masthead {
+  max-width:1280px;
+  margin:auto;
+  padding:28px 40px;
+  display:flex;
+  justify-content:space-between;
+  font-size:13px
+}
+.wordmark {
+  font-weight:700;
+  letter-spacing:.1em
+}
+.wordmark span {
+  font-weight:400;
+  letter-spacing:0;
+  color:var(--muted);
+  margin-left:14px
+}
+.hero {
+  max-width:1200px;
+  margin:auto;
+  padding:76px 40px 55px;
+  position:relative
+}
+.eyebrow {
+  font-size:11px;
+  letter-spacing:.15em;
+  font-weight:700;
+  color:var(--muted)
+}
+h1,h2,h3 {
+  font-family:'Libre Caslon Display',Georgia,serif;
+  font-weight:400;
+  letter-spacing:-.035em;
+  margin:0
+}
+h1 {
+  font-size:clamp(56px,6.8vw,91px);
+  line-height:1.02;
+  margin:25px 0
+}
+h1 em {
+  font-weight:400;
+  color:var(--total)
+}
+.dek {
+  font-size:19px;
+  line-height:1.7;
+  color:var(--muted)
+}
+.byline {
+  font-size:12px;
+  margin-top:26px;
+  color:var(--muted)
+}
+.start-link {
+  display:inline-flex;
+  gap:40px;
+  font-size:13px;
+  margin-top:42px;
+  border-bottom:1px solid var(--ink);
+  padding-bottom:10px
+}
+.hero-equation {
+  position:absolute;
+  right:48px;
+  bottom:65px;
+  display:flex;
+  align-items:center;
+  gap:16px;
+  font-family:Georgia,serif;
+  font-size:45px;
+  transform:rotate(-5deg)
+}
+.hero-equation span:nth-child(even) {
+  font-size:25px;
+  color:#9ba69e
+}
+.loss {
+  color:var(--loss)
+}
+.reg {
+  color:var(--reg)
+}
+.total {
+  color:var(--total)
+}
+.chapter-nav {
+  max-width:1120px;
+  margin:15px auto 0;
+  display:flex;
+  justify-content:space-between;
+  border-top:1px solid var(--line);
+  border-bottom:1px solid var(--line);
+  padding:22px 0;
+  font-size:12px;
+  color:var(--muted)
+}
+.chapter {
+  max-width:1120px;
+  margin:auto;
+  padding-top:90px;
+  scroll-margin-top:20px
+}
+.section-intro {
+  max-width:700px;
+  margin-bottom:32px
+}
+h2 {
+  font-size:clamp(38px,4.5vw,59px);
+  line-height:1.08;
+  margin:15px 0 20px
+}
+p {
+  font-size:16px;
+  line-height:1.75
+}
+.section-intro p,.aside-prose p,.ending p {
+  color:var(--muted)
+}
+.lab {
+  background:var(--white);
+  border:1px solid var(--line);
+  border-radius:8px;
+  overflow:hidden;
+  box-shadow:0 6px 18px #22222204
+}
+.lab-top {
+  min-height:58px;
+  padding:18px 25px;
+  border-bottom:1px solid var(--line);
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:18px;
+  font-size:10px;
+  letter-spacing:.07em;
+  font-weight:600
+}
+.subtle {
+  color:var(--muted);
+  font-weight:400
+}
+.live-dot {
+  display:inline-block;
+  background:#6e9478;
+  width:6px;
+  height:6px;
+  border-radius:50%;
+  margin-right:8px
+}
+.legend {
+  display:flex;
+  gap:20px;
+  font-size:11px;
+  font-weight:500;
+  letter-spacing:0
+}
+.plot-wrap {
+  position:relative;
+  min-width:0
+}
+canvas {
+  display:block;
+  width:100%;
+  height:360px
+}
+.balance-lab canvas {
+  height:350px;
+  cursor:crosshair
+}
+.control-grid {
+  padding:22px 25px;
+  display:grid;
+  grid-template-columns:1fr 1fr auto;
+  gap:30px;
+  align-items:end
+}
+label {
+  display:block;
+  font-size:12px;
+  font-weight:500
+}
+output {
+  float:right;
+  font-variant-numeric:tabular-nums;
+  color:var(--muted)
+}
+input[type=range] {
+  display:block;
+  width:100%;
+  accent-color:var(--total);
+  margin:14px 0 0;
+  cursor:pointer
+}
+button.primary,.link-button {
+  background:var(--ink);
+  color:#fff;
+  border:1px solid var(--ink)
+}
+button.primary:hover,.link-button:hover {
+  background:#444444;
+  text-decoration:none
+}
+.primary,.secondary {
+  border-radius:4px;
+  padding:12px 18px;
+  font-size:12px;
+  font-weight:500;
+  min-height:42px
+}
+.primary span {
+  margin-left:15px
+}
+.secondary {
+  border:1px solid var(--line);
+  background:transparent;
+  color:var(--ink)
+}
+.secondary:hover {
+  background:#f5f5f5
+}
+.gradient-strip {
+  margin:0 25px;
+  padding:22px 0;
+  display:flex;
+  align-items:center;
+  gap:27px;
+  border-top:1px solid var(--line)
+}
+.gradient-strip div {
+  min-width:110px
+}
+.gradient-strip div span {
+  display:block;
+  font-size:11px
+}
+.gradient-strip strong {
+  font-size:23px;
+  font-weight:500;
+  font-variant-numeric:tabular-nums;
+  display:block;
+  margin-top:6px
+}
+.gradient-strip>span {
+  color:#777777
+}
+.gradient-strip p {
+  font-size:12px;
+  margin:0 0 0 auto;
+  max-width:220px;
+  color:var(--muted)
+}
+.lab-foot {
+  padding:15px 25px;
+  border-top:1px solid var(--line);
+  display:flex;
+  justify-content:space-between;
+  gap:15px;
+  font-size:11px;
+  color:var(--muted);
+  line-height:1.6;
+  background:#ffffff
+}
+.text-button {
+  border:0;
+  background:transparent;
+  color:var(--total);
+  font-size:11px;
+  text-decoration:underline;
+  padding:0
+}
+.inverse {
+  padding:18px 25px;
+  font-size:13px;
+  line-height:1.7;
+  background:#f7f7f7
+}
+.aside-prose {
+  margin:35px 0 0 25%;
+  max-width:690px
+}
+h3 {
+  font-size:29px
+}
+.aside-prose p {
+  font-size:15px;
+  margin-top:10px
+}
+.landscape-plots {
+  display:grid;
+  grid-template-columns:1fr 1fr
+}
+.landscape-plots .plot-wrap:first-child {
+  border-right:1px solid var(--line)
+}
+.plot-label {
+  display:block;
+  font-size:10px;
+  letter-spacing:.06em;
+  padding:20px 25px 0
+}
+.plot-label small {
+  float:right;
+  color:var(--muted);
+  font-size:10px;
+  letter-spacing:0
+}
+#contour-chart {
+  cursor:crosshair
+}
+#surface-chart {
+  cursor:grab;
+  touch-action:none
+}
+.landscape-controls {
+  grid-template-columns:1fr 1fr 1fr auto;
+  border-top:1px solid var(--line);
+  gap:24px
+}
+.landscape-readout {
+  display:flex;
+  gap:24px;
+  padding:20px 25px;
+  font-size:12px;
+  align-items:center
+}
+.landscape-readout span {
+  color:var(--muted)
+}
+.keyboard-controls {
+  font-size:12px;
+  padding:0 25px 10px;
+  color:var(--muted)
+}
+summary {
+  cursor:pointer
+}
+details[open] summary {
+  margin-bottom:16px
+}
+.network-layout {
+  display:grid;
+  grid-template-columns:1fr 300px
+}
+.network-layout canvas {
+  height:360px
+}
+.experiment-panel {
+  border-left:1px solid var(--line);
+  padding:27px
+}
+.estimate-big {
+  font-family:Georgia,serif;
+  font-size:53px;
+  color:var(--total);
+  margin-top:16px;
+  font-variant-numeric:tabular-nums
+}
+.metric-caption {
+  font-size:11px;
+  color:var(--muted);
+  margin:0 0 24px
+}
+.metric-row {
+  display:flex;
+  justify-content:space-between;
+  font-size:11px;
+  margin:14px 0;
+  gap:12px
+}
+.metric-row span {
+  color:var(--muted)
+}
+.metric-row strong {
+  font-weight:500;
+  font-variant-numeric:tabular-nums
+}
+.meter {
+  height:4px;
+  background:#eeecef;
+  border-radius:2px
+}
+.meter>div {
+  height:100%;
+  width:0;
+  background:var(--total);
+  transition:width .15s
+}
+.experiment-panel button {
+  width:100%;
+  margin-top:12px
+}
+.small-note {
+  font-size:11px;
+  color:var(--muted);
+  line-height:1.6;
+  margin-bottom:0
+}
+.chart-legend {
+  justify-content:center;
+  padding:0 15px 25px
+}
+.data-color {
+  color:#666666
+}
+.training-progress {
+  height:3px;
+  background:#eeeeee
+}
+.training-progress>div {
+  height:100%;
+  width:0;
+  background:var(--total)
+}
+.train-controls {
+  grid-template-columns:1fr 1fr auto auto;
+  gap:20px
+}
+select {
+  display:block;
+  width:100%;
+  margin-top:8px;
+  border:1px solid var(--line);
+  border-radius:3px;
+  background:var(--white);
+  padding:9px;
+  color:var(--ink)
+}
+.train-status {
+  font-size:12px;
+  margin:0;
+  padding:0 25px 20px;
+  color:var(--muted)
+}
+.methods {
+  padding:22px 0;
+  border-bottom:1px solid var(--line);
+  font-size:13px;
+  color:var(--muted)
+}
+.methods>div {
+  max-width:800px
+}
+.methods p {
+  font-size:14px
+}
+.methods .formula {
+  font-family:Georgia,serif;
+  font-size:22px;
+  color:var(--total);
+  padding:10px 0
+}
+.ending {
+  max-width:760px;
+  margin:100px auto 90px;
+  padding:0 20px
+}
+.ending p {
+  font-size:16px
+}
+.link-button {
+  display:inline-block;
+  margin-top:20px
+}
+footer {
+  max-width:1200px;
+  margin:auto;
+  border-top:1px solid var(--line);
+  padding:27px 40px;
+  display:flex;
+  justify-content:space-between;
+  gap:20px;
+  font-size:10px;
+  color:var(--muted)
+}
+[hidden] {
+  display:none!important
+}
+
+@media(max-width:1180px) {
+  .chapter,.chapter-nav {
+  margin-left:30px;
+  margin-right:30px
+}
+.hero-equation {
+  font-size:32px;
+  right:40px;
+  bottom:70px
+}
+
+}
+
+@media(max-width:760px) {
+  .masthead {
+  padding:22px
+}
+.wordmark span {
+  display:none
+}
+.hero {
+  padding:50px 22px 35px
+}
+.hero-equation {
+  position:static;
+  transform:none;
+  margin-top:35px;
+  font-size:35px
+}
+.dek {
+  font-size:17px
+}
+.desktop {
+  display:none
+}
+.byline {
+  line-height:1.8;
+  max-width:290px
+}
+.chapter,.chapter-nav {
+  margin-left:18px;
+  margin-right:18px
+}
+.chapter-nav {
+  font-size:10px;
+  gap:12px;
+  padding:18px 0
+}
+.chapter {
+  padding-top:60px
+}
+.lab-top {
+  padding:17px;
+  flex-wrap:wrap;
+  gap:10px
+}
+.legend {
+  gap:12px
+}
+.control-grid {
+  grid-template-columns:1fr 1fr;
+  padding:20px 17px;
+  gap:20px
+}
+.control-grid button {
+  width:100%;
+  grid-column:span 2
+}
+.gradient-strip {
+  margin:0 17px;
+  gap:12px;
+  flex-wrap:wrap
+}
+.gradient-strip div {
+  min-width:70px;
+  flex:1
+}
+.gradient-strip strong {
+  font-size:20px
+}
+.gradient-strip p {
+  flex-basis:100%;
+  max-width:none;
+  margin:0
+}
+.lab-foot {
+  padding:15px 17px;
+  flex-wrap:wrap
+}
+.aside-prose {
+  margin:28px 0 0
+}
+.landscape-plots {
+  grid-template-columns:1fr
+}
+.landscape-plots .plot-wrap:first-child {
+  border-right:0;
+  border-bottom:1px solid var(--line)
+}
+.landscape-controls {
+  grid-template-columns:1fr 1fr
+}
+.landscape-controls label:last-of-type {
+  grid-column:span 2
+}
+.landscape-readout {
+  flex-direction:column;
+  align-items:start;
+  gap:8px
+}
+.network-layout {
+  grid-template-columns:1fr
+}
+.experiment-panel {
+  border-left:0;
+  border-top:1px solid var(--line);
+  padding:23px
+}
+.estimate-big {
+  font-size:45px
+}
+.train-controls {
+  grid-template-columns:1fr 1fr
+}
+.train-controls button {
+  grid-column:auto
+}
+.network-layout canvas {
+  height:300px
+}
+.ending {
+  margin:65px auto
+}
+footer {
+  padding:25px 20px;
+  flex-direction:column;
+  line-height:1.6
+}
+canvas {
+  height:330px
+}
+.balance-lab canvas {
+  height:290px
+}
+h2 {
+  font-size:40px
+}
+
+}
+
+@media(prefers-reduced-motion:reduce) {
+  :root {
+  scroll-behavior:auto
+}
+* {
+  transition:none!important
+}
+
+}
+
+/* Research notebook: typography and structure stay quiet around the figures. */
+.masthead  {
+   max-width: 1040px;
+   padding: 20px 24px;
+   font-size: 12px;
+
+}
+
+.wordmark  {
+   font-weight: 500;
+   letter-spacing: 0;
+
+}
+
+.wordmark span  {
+   margin-left: 8px;
+
+}
+
+.hero  {
+   max-width: 1040px;
+   padding: 24px 24px 18px;
+
+}
+
+h1, h2, h3  {
+   font-family: inherit;
+   font-weight: 600;
+   letter-spacing: -.02em;
+
+}
+
+h1  {
+   max-width: 850px;
+   font-size: 32px;
+   line-height: 1.25;
+   margin: 0 0 16px;
+
+}
+
+h1 em  {
+   font-style: normal;
+   color: inherit;
+   font-weight: inherit;
+
+}
+
+h2  {
+   font-size: 23px;
+   line-height: 1.35;
+   margin: 0 0 12px;
+
+}
+
+h3  {
+   font-size: 17px;
+   line-height: 1.4;
+
+}
+
+.dek  {
+   font-size: 16px;
+   line-height: 1.65;
+   max-width: 730px;
+   margin: 0;
+   color: var(--ink);
+
+}
+
+.byline  {
+   font-size: 12px;
+   margin-top: 14px;
+
+}
+
+.hero-equation, .start-link, .live-dot, .hero > .eyebrow  {
+   display: none;
+
+}
+
+.chapter-nav  {
+   max-width: 992px;
+   margin: 6px auto 0;
+   padding: 14px 0;
+   justify-content: flex-start;
+   gap: 32px;
+   font-size: 12px;
+   border-top: 0;
+
+}
+
+.chapter  {
+   max-width: 992px;
+   padding-top: 38px;
+
+}
+
+.section-intro  {
+   max-width: 760px;
+   margin-bottom: 20px;
+
+}
+
+.eyebrow  {
+   font-size: 11px;
+   letter-spacing: .035em;
+   font-weight: 500;
+   margin-bottom: 8px;
+
+}
+
+p  {
+   font-size: 15px;
+   line-height: 1.7;
+
+}
+
+.section-intro p, .aside-prose p, .ending p  {
+   color: #444;
+
+}
+
+.lab  {
+   border: 0;
+   border-top: 1px solid var(--line);
+   border-bottom: 1px solid var(--line);
+   border-radius: 0;
+   box-shadow: none;
+   overflow: hidden;
+
+}
+
+.lab-top  {
+   min-height: 44px;
+   padding: 13px 0;
+   font-size: 11px;
+   letter-spacing: 0;
+   font-weight: 500;
+
+}
+
+.control-grid  {
+   padding: 18px 0;
+
+}
+
+.gradient-strip  {
+   margin: 0;
+   padding: 18px 0;
+
+}
+
+.gradient-strip strong  {
+   font-size: 20px;
+
+}
+
+.lab-foot  {
+   padding: 13px 0;
+
+}
+
+.primary, .secondary  {
+   min-height: 38px;
+   border-radius: 3px;
+   padding: 9px 14px;
+
+}
+
+button.primary, .link-button  {
+   background: #fff;
+   color: #222;
+   border-color: #aaa;
+
+}
+
+button.primary:hover, .link-button:hover  {
+   background: #f3f3f3;
+
+}
+
+.aside-prose  {
+   margin: 24px 0 0;
+   max-width: 760px;
+
+}
+
+.plot-label  {
+   padding: 16px 12px 0;
+   letter-spacing: 0;
+
+}
+
+.landscape-readout  {
+   padding: 16px 0;
+
+}
+
+.keyboard-controls  {
+   padding-left: 0;
+   padding-right: 0;
+
+}
+
+.estimate-big  {
+   font-family: inherit;
+   font-size: 34px;
+   font-weight: 500;
+
+}
+
+.metric-caption  {
+   margin-bottom: 18px;
+
+}
+
+.train-status  {
+   padding-left: 0;
+   padding-right: 0;
+
+}
+
+.ending  {
+   max-width: 992px;
+   padding: 0;
+   margin: 48px auto;
+
+}
+
+.ending p  {
+   max-width: 760px;
+   font-size: 15px;
+
+}
+
+footer  {
+   max-width: 1040px;
+   padding: 22px 24px;
+
+}
+
+.legend-key  {
+   display: inline-block;
+   width: 22px;
+   margin-right: 5px;
+   vertical-align: middle;
+   border-top: 2px solid currentColor;
+
+}
+
+.reg .legend-key  {
+   border-top-style: dashed;
+
+}
+
+.total .legend-key  {
+   border-top-width: 3px;
+
+}
+
+@media (max-width: 1040px)  {
+   .chapter, .chapter-nav, .ending  {
+   margin-left: 24px;
+   margin-right: 24px;
+
+}
+
+}
+
+@media (max-width: 760px)  {
+
+  .masthead  {
+   padding: 16px 18px;
+
+}
+
+  .hero  {
+   padding: 18px;
+
+}
+
+  h1  {
+   font-size: 27px;
+
+}
+
+  h2  {
+   font-size: 21px;
+
+}
+
+  .byline  {
+   max-width: none;
+
+}
+
+  .chapter, .chapter-nav, .ending  {
+   margin-left: 18px;
+   margin-right: 18px;
+
+}
+
+  .chapter  {
+   padding-top: 30px;
+
+}
+
+  .chapter-nav  {
+   flex-wrap: wrap;
+   gap: 12px 20px;
+   font-size: 11px;
+
+}
+
+  .lab-top  {
+   gap: 10px;
+
+}
+
+  .control-grid  {
+   gap: 18px;
+
+}
+
+  .plot-label  {
+   padding-left: 0;
+   padding-right: 0;
+
+}
+
+  .experiment-panel  {
+   padding: 20px 0;
+
+}
+
+  .estimate-big  {
+   font-size: 32px;
+
+}
+
+  .ending  {
+   margin-top: 36px;
+   margin-bottom: 36px;
+
+}
+
+}
+
+.gradient-panel { border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); padding: 16px 0 8px; }
+.gradient-heading { font-size: 13px; font-weight: 600; margin-bottom: 8px; }
+.gradient-heading span { display: inline-block; margin-left: 12px; font-size: 11px; font-weight: 400; color: var(--muted); }
+.balance-lab #gradient-chart { height: 156px; cursor: default; }
+@media (max-width: 760px) { .gradient-heading span { display: block; margin: 6px 0 0; } }
+
+.landscape-actions { display: flex; flex-direction: column; gap: 8px; }
+.point-status { font-size: 12px; color: var(--muted); margin: 12px 0 0; font-variant-numeric: tabular-nums; }
+@media(max-width:760px) { .landscape-actions { grid-column: span 2; } }
+
+.inverse-plots { display: grid; grid-template-columns: 3fr 2fr; }
+.inverse-plots .plot-wrap + .plot-wrap { border-left: 1px solid var(--line); }
+#inverse-gradient-chart { height: 156px; }
+.inverse-metrics { display: flex; gap: 24px; flex-wrap: wrap; font-size: 12px; padding: 18px 0; font-variant-numeric: tabular-nums; }
+.inverse-cases { padding: 8px 0; font-weight: 400; line-height: 1.6; }
+.point-status output { float: none; }
+@media (max-width: 760px) { .inverse-plots { grid-template-columns: 1fr; } .inverse-plots .plot-wrap + .plot-wrap { border-left: 0; border-top: 1px solid var(--line); } }
