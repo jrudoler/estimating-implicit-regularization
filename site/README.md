@@ -45,7 +45,7 @@ Every example uses `R(theta) = lambda * ||theta||^2`, so the gradient is `2 * la
 
 The scalar estimate is constrained to be nonnegative. Gradient explained is `1 - ||grad L + 2 lambda_hat theta||^2 / ||grad L||^2`, not prediction R-squared. A zero/near-zero denominator is displayed as unavailable. ReLU kinks and incomplete convergence can leave a residual. Recovery of an explicit penalty is a sanity check, not a demonstration that arbitrary implicit effects are equivalent to ridge. The final dropout discussion summarizes the manuscript; the live experiment does not train with dropout.
 
-The 3D plot renders the actual two-parameter quadratic objective (clipped above 24 for display), not a slice through the MLP's parameter space. Both views use the same parameters and selected point. Surface arrows lie in the parameter plane. Keyboard-accessible sliders provide alternatives to canvas pointer interactions.
+The 3D plot renders the actual two-parameter quadratic objective (unclipped wireframe with an automatically scaled height axis), not a slice through the MLP's parameter space. Both views use the same parameters and selected point. Gradient arrows are shown in the contour view; the surface labels the selected point and optimum. The selected point starts at the loss minimum. “Go to optimum” animates both views and disables at the optimum; changing the objective retains the selected point. Keyboard-accessible sliders provide alternatives to canvas pointer interactions.
 
 Future extensions: early-stopped linear regression with its theoretical matrix regularizer; alternate candidate families; dropout and replacement training; downloadable experiment records and precomputed multi-seed paper results.
 

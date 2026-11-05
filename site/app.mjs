@@ -66,10 +66,10 @@ $('find-balance').onclick=()=>{const token=++balAnimation,start=balanceTheta,end
 $('hide-penalty').onclick=()=>{hidden=!hidden;$('hide-penalty').textContent=hidden?'Reveal the penalty':'Hide λ & infer it from θ';$('hide-penalty').setAttribute('aria-pressed',hidden);$('lambda').disabled=hidden;$('inverse-result').hidden=!hidden;drawBalance();};
 $('balance-chart').addEventListener('pointerdown',e=>{balAnimation++;const r=e.currentTarget.getBoundingClientRect();balanceTheta=Math.max(-1,Math.min(3,balAxes.unX(e.clientX-r.left)));$('theta').value=balanceTheta;drawBalance();e.currentTarget.setPointerCapture(e.pointerId);});
 $('balance-chart').addEventListener('pointermove',e=>{if(e.buttons){const r=e.currentTarget.getBoundingClientRect();balanceTheta=Math.max(-1,Math.min(3,balAxes.unX(e.clientX-r.left)));$('theta').value=balanceTheta;drawBalance();}});
-let point=[1,.5],followOptimum=true,contourAxes,yaw=-.61,pitch=.7;
+let point=[1.5,.9],landscapeAnimation=0,contourAxes,yaw=-.61,pitch=.7;
 function config(){return {l:+$('lambda2').value,a:+$('angle').value*Math.PI/180,s:+$('stretch').value};}
 function drawLandscape(){
- const {l,a,s}=config(),opt=optimum2D(l,a,s);if(followOptimum)point=opt;
+ const {l,a,s}=config(),opt=optimum2D(l,a,s);
  const v=canvas('contour-chart'),{ctx}=v;contourAxes=axes(v,{xmin:-2,xmax:3,ymin:-2,ymax:3,xlabel:'θ₁',ylabel:'θ₂'});const {X,Y}=contourAxes;
  ctx.save();ctx.beginPath();ctx.rect(X(-2),Y(3),X(3)-X(-2),Y(-2)-Y(3));ctx.clip();
  for(const level of [.1,.35,.8,1.5,2.7,4.5,7,10,15,22]){
@@ -82,27 +82,53 @@ function drawLandscape(){
  dot(ctx,X(1.5),Y(.9),colors.loss,4);dot(ctx,X(0),Y(0),colors.reg,4);dot(ctx,X(opt[0]),Y(opt[1]),colors.total,5);dot(ctx,...from,colors.ink,4);ctx.restore();
  $('lambda2-value').textContent=number(l);$('stretch-value').textContent=number(s,1)+'×';$('angle-value').textContent=number(a*180/Math.PI,0)+'°';$('point-x').value=point[0];$('point-y').value=point[1];
  $('vector-status').textContent=`‖∇L + ∇R‖ = ${number(Math.hypot(...sum),3)}`;
- $('vector-detail').textContent=Math.hypot(...sum)<.001?'The two gradients cancel at the combined minimum.':'The arrows do not cancel here. Descent follows the negative net gradient.';
+ const atOptimum=Math.hypot(...sum)<1e-10;
+ $('snap2').disabled=atOptimum;$('snap2').textContent=atOptimum?'At the optimum':'Go to optimum';
+ $('point-status').textContent=`Selected: (${number(point[0],3)}, ${number(point[1],3)}) · Optimum: (${number(opt[0],3)}, ${number(opt[1],3)})`;
+ $('vector-detail').textContent=atOptimum?'The two gradients cancel at the combined minimum.':'The arrows do not cancel here. Descent follows the negative net gradient.';
  drawSurface();
 }
 function drawSurface(){
- const v=canvas('surface-chart'),{ctx,w,h}=v,{l,a,s}=config(),range=5,scale=Math.min(w/7.8,h/6.2);
- const maxZ=24;const project=(x,y,z)=>{x-=.5;y-=.5;const xx=Math.cos(yaw)*x-Math.sin(yaw)*y,yy=Math.sin(yaw)*x+Math.cos(yaw)*y;return[w*.5+scale*xx,h*.66+scale*(Math.sin(pitch)*yy-Math.cos(pitch)*z*.13)];};
- const z=(x,y)=>Math.min(maxZ,landscape(x,y,l,a,s).total);
- const cells=[];const n=25;
- for(let i=0;i<n;i++)for(let j=0;j<n;j++){const x=-2+range*i/n,y=-2+range*j/n,d=range/n;const vertices=[[x,y],[x+d,y],[x+d,y+d],[x,y+d]];cells.push({vertices,depth:Math.sin(yaw)*(x+d/2)+Math.cos(yaw)*(y+d/2),z:z(x+d/2,y+d/2)});}
- cells.sort((u,v)=>u.depth-v.depth);
- for(const cell of cells){ctx.beginPath();cell.vertices.forEach(([x,y],i)=>{const p=project(x,y,z(x,y));i?ctx.lineTo(...p):ctx.moveTo(...p);});ctx.closePath();ctx.fillStyle=`hsl(0 0% ${94-28*Math.min(cell.z/maxZ,1)}%)`;ctx.fill();ctx.strokeStyle='#ffffff90';ctx.lineWidth=.6;ctx.stroke();}
- const opt=optimum2D(l,a,s);dot(ctx,...project(opt[0],opt[1],z(...opt)),colors.total,5);dot(ctx,...project(point[0],point[1],z(...point)),colors.ink,4);
- // Gradients live in parameter space, so draw them on the z=0 plane.
- const b=landscape(...point,l,a,s),base=project(...point,0);line(ctx,[base,project(...point,z(...point))],colors.muted,1,[3,3]);
- for(const [g,c] of [[b.gLoss,colors.loss],[b.gReg,colors.reg],[b.gLoss.map((x,i)=>x+b.gReg[i]),colors.total]])arrow(ctx,base,project(point[0]+g[0]*.25,point[1]+g[1]*.25,0),c);
- ctx.fillStyle=colors.muted;ctx.textAlign='left';ctx.fillText('Height = loss + penalty · view clipped at 24',20,h-13);
+ const {ctx,w,h}=canvas('surface-chart'),{l,a,s}=config();
+ const z=(x,y)=>landscape(x,y,l,a,s).total;
+ const maxZ=Math.max(...[[-2,-2],[-2,3],[3,-2],[3,3]].map(p=>z(...p)));
+ // Orthographic wireframe: retain the full objective, fit the projected bounds,
+ // and avoid opaque foreground faces hiding the minimum or selected point.
+ const raw=(x,y,height)=>{x-=.5;y-=.5;const xx=Math.cos(yaw)*x-Math.sin(yaw)*y,yy=Math.sin(yaw)*x+Math.cos(yaw)*y;return [xx,Math.sin(pitch)*yy-Math.cos(pitch)*height/maxZ*5];};
+ const grid=[];for(let i=0;i<=24;i++)for(let j=0;j<=24;j++){const x=-2+5*i/24,y=-2+5*j/24;grid.push(raw(x,y,z(x,y)));}
+ const floor=[[-2,-2],[-2,3],[3,3],[3,-2],[-2,-2]];
+ const bounds=grid.concat(floor.map(p=>raw(...p,0)),[raw(-2,-2,maxZ)]);
+ const xs=bounds.map(p=>p[0]),ys=bounds.map(p=>p[1]),xmin=Math.min(...xs),xmax=Math.max(...xs),ymin=Math.min(...ys),ymax=Math.max(...ys);
+ const scale=Math.min((w-80)/(xmax-xmin),(h-70)/(ymax-ymin));
+ const project=(x,y,height)=>{const p=raw(x,y,height);return [w/2+(p[0]-(xmin+xmax)/2)*scale,32+(p[1]-ymin)*scale];};
+ line(ctx,floor.map(p=>project(...p,0)),'#b0b0b0',1);
+ for(let i=0;i<=16;i++){
+   const q=-2+5*i/16;
+   line(ctx,Array.from({length:65},(_,j)=>{const t=-2+5*j/64;return project(q,t,z(q,t));}),'#aaa',1);
+   line(ctx,Array.from({length:65},(_,j)=>{const t=-2+5*j/64;return project(t,q,z(t,q));}),'#c5c5c5',1);
+ }
+ line(ctx,[project(-2,-2,0),project(-2,-2,maxZ)],'#888',1);
+ ctx.fillStyle=colors.muted;ctx.textAlign='left';ctx.font='11px system-ui';
+ for(const [label,p] of [['θ₁',project(3,-2,0)],['θ₂',project(-2,3,0)],['L + R',project(-2,-2,maxZ)]])ctx.fillText(label,p[0]+5,p[1]);
+ const opt=optimum2D(l,a,s),selected=project(...point,z(...point)),minimum=project(...opt,z(...opt));
+ line(ctx,[project(...point,0),selected],colors.ink,1.5,[4,4]);
+ dot(ctx,...minimum,colors.total,6);dot(ctx,...selected,colors.ink,6);
+ ctx.font='600 12px system-ui';ctx.strokeStyle='#fff';ctx.lineWidth=4;ctx.fillStyle=colors.ink;
+ const label=Math.hypot(point[0]-opt[0],point[1]-opt[1])<1e-9?'Selected = optimum':'Selected';
+ ctx.strokeText(label,selected[0]+9,selected[1]-10);ctx.fillText(label,selected[0]+9,selected[1]-10);
+ if(label==='Selected'){ctx.font='11px system-ui';ctx.strokeText('Optimum',minimum[0]+9,minimum[1]+17);ctx.fillText('Optimum',minimum[0]+9,minimum[1]+17);}
+ ctx.font='11px system-ui';ctx.fillStyle=colors.muted;ctx.fillText(`Selected objective: ${number(z(...point),3)} · height autoscaled`,12,h-10);
 }
-for(const id of ['lambda2','stretch','angle'])$(id).addEventListener('input',drawLandscape);
-$('snap2').onclick=()=>{followOptimum=true;drawLandscape();};
-$('contour-chart').onclick=e=>{const r=e.currentTarget.getBoundingClientRect();point=[Math.max(-2,Math.min(3,contourAxes.unX(e.clientX-r.left))),Math.max(-2,Math.min(3,contourAxes.unY(e.clientY-r.top)))];followOptimum=false;drawLandscape();};
-for(const id of ['point-x','point-y'])$(id).oninput=()=>{point=[+$('point-x').value,+$('point-y').value];followOptimum=false;drawLandscape();};
+for(const id of ['lambda2','stretch','angle'])$(id).addEventListener('input',()=>{landscapeAnimation++;drawLandscape();});
+$('snap2').onclick=()=>{
+ const token=++landscapeAnimation,start=[...point],{l,a,s}=config(),end=optimum2D(l,a,s),time=performance.now();
+ const duration=matchMedia('(prefers-reduced-motion: reduce)').matches?0:800;
+ function step(now){if(token!==landscapeAnimation)return;const u=duration?Math.min(1,(now-time)/duration):1,ease=1-(1-u)**3;point=u===1?end:start.map((v,i)=>v+(end[i]-v)*ease);drawLandscape();if(u<1)requestAnimationFrame(step);}
+ requestAnimationFrame(step);
+};
+$('reset2').onclick=()=>{landscapeAnimation++;point=[1.5,.9];drawLandscape();};
+$('contour-chart').onclick=e=>{const r=e.currentTarget.getBoundingClientRect();point=[Math.max(-2,Math.min(3,contourAxes.unX(e.clientX-r.left))),Math.max(-2,Math.min(3,contourAxes.unY(e.clientY-r.top)))];landscapeAnimation++;drawLandscape();};
+for(const id of ['point-x','point-y'])$(id).oninput=()=>{point=[+$('point-x').value,+$('point-y').value];landscapeAnimation++;drawLandscape();};
 $('camera').oninput=()=>{yaw=+$('camera').value*Math.PI/180;drawSurface();};
 let drag=null;$('surface-chart').onpointerdown=e=>{drag={x:e.clientX,y:e.clientY,yaw,pitch};e.currentTarget.setPointerCapture(e.pointerId);};
 $('surface-chart').onpointermove=e=>{if(!drag)return;yaw=drag.yaw+(e.clientX-drag.x)*.009;pitch=Math.max(.25,Math.min(1.3,drag.pitch+(e.clientY-drag.y)*.005));$('camera').value=((yaw*180/Math.PI+180)%360+360)%360-180;drawSurface();};

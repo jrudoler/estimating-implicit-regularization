@@ -1037,3 +1037,7 @@ footer  {
 .gradient-heading span { display: inline-block; margin-left: 12px; font-size: 11px; font-weight: 400; color: var(--muted); }
 .balance-lab #gradient-chart { height: 156px; cursor: default; }
 @media (max-width: 760px) { .gradient-heading span { display: block; margin: 6px 0 0; } }
+
+.landscape-actions { display: flex; flex-direction: column; gap: 8px; }
+.point-status { font-size: 12px; color: var(--muted); margin: 12px 0 0; font-variant-numeric: tabular-nums; }
+@media(max-width:760px) { .landscape-actions { grid-column: span 2; } }
