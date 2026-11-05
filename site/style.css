@@ -1112,3 +1112,6 @@ math[display="inline"] { white-space:nowrap; }
 .display-equation, .equation, .formula { margin:20px 0; padding:8px 0; overflow-x:auto; color:var(--ink); }
 .display-equation math, .equation math, .formula math { font-size:1.1rem; }
 @media(max-width:600px) { .display-equation math, .equation math, .formula math { font-size:1rem; } }
+
+/* Keep scientific-notation values intact when metric labels wrap. */
+.inverse-metrics strong { display:inline-block; white-space:nowrap; }
