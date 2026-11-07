@@ -17,4 +17,4 @@ command:
   - run
   - python
   - ${program}
-program: experiments/elasticnet_train_and_recover.py
+program: analysis/elasticnet_train_and_recover/run.py
