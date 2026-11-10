@@ -1,0 +1,96 @@
+\documentclass{article}
+\usepackage[paperwidth=140cm,paperheight=90cm,margin=0cm]{geometry}
+\usepackage[T1]{fontenc}
+\usepackage{cmbright}
+\usepackage{amsmath,amssymb,graphicx,tikz,ragged2e}
+\usepackage[hidelinks]{hyperref}
+\usepackage{qrcode,multicol}
+\usepackage[numbers,sort&compress]{natbib}
+\bibliographystyle{unsrtnat}
+\renewcommand{\bibsection}{}
+\renewcommand{\bibfont}{\fontsize{21}{26}\selectfont}
+\setlength{\bibsep}{0.25cm}
+\definecolor{WhartonBlue}{HTML}{011F5B}
+\definecolor{WhartonRed}{HTML}{990000}
+\definecolor{Ink}{HTML}{2D2C41}
+\definecolor{PaleBlue}{HTML}{EEF3F9}
+\definecolor{Rule}{HTML}{D7DFEA}
+\pagestyle{empty}
+\setlength{\parindent}{0pt}
+\newcommand{\bodyfont}{\fontsize{36}{44}\selectfont}
+\newcommand{\smallfont}{\fontsize{28}{34}\selectfont}
+\newcommand{\icon}[2][1.3cm]{\raisebox{-0.12em}{\includegraphics[height=#1]{assets/lucide/#2.pdf}}}
+\newcommand{\heading}[1]{{\color{WhartonBlue}\fontsize{46}{52}\selectfont\bfseries #1}}
+\newcommand{\subhead}[1]{{\color{WhartonBlue}\fontsize{36}{43}\selectfont\bfseries #1}}
+% Coordinates in centimetres from the upper-left corner.
+\newcommand{\block}[4]{\node[anchor=north west,inner sep=0pt,text width=#3cm] at (#1,-#2) {\RaggedRight\bodyfont\color{Ink}#4};}
+\newcommand{\fig}[4]{\node[anchor=north west,inner sep=0pt] at (#1,-#2) {\includegraphics[width=#3cm]{#4}};}
+\begin{document}\null
+\begin{tikzpicture}[remember picture,overlay,x=1cm,y=1cm]
+\begin{scope}[shift={(current page.north west)}]
+\fill[WhartonBlue] (0,0) rectangle (140,-0.65);
+\fig{102}{2.2}{34}{assets/wharton-statistics.pdf}
+\block{4}{2}{106}{{\fontsize{82}{92}\selectfont\bfseries\color{WhartonBlue}Estimating Implicit Regularization in Deep Learning}}
+\block{4}{6.1}{132}{{\fontsize{34}{42}\selectfont Joseph H. Rudoler\enspace $\cdot$\enspace Kevin Tan\enspace $\cdot$\enspace Giles Hooker\enspace $\cdot$\enspace Konrad P. Kording\quad {\color{WhartonBlue}\textbar}\quad {\fontsize{28}{35}\selectfont\color{WhartonBlue}University of Pennsylvania}}}
+\draw[WhartonBlue,line width=1.6pt] (4,-9.5) -- (136,-9.5);
+\draw[Rule,line width=1pt] (47.5,-12) -- (47.5,-78.5);
+\draw[Rule,line width=1pt] (92.5,-12) -- (92.5,-78.5);
+\block{4}{12}{42}{\heading{\icon{scan-search}\quad Reverse-engineer the bias}}
+\fill[PaleBlue,rounded corners=8pt] (4,-15) rectangle (46,-31.5);
+\fill[WhartonRed] (4,-15) rectangle (4.3,-31.5);
+\block{5.3}{16}{39.4}{\subhead{Why do overparameterized networks generalize?}\\[0.5cm]
+Deep networks can memorize training data yet still generalize to new examples~\cite{zhangUnderstandingDeepLearning2021}.\\[0.5cm]
+\textbf{Explicit regularization} adds penalties that favor simpler solutions and can improve generalization. \textbf{Implicit regularization} arises from training and architectural choices, biasing which solutions are learned~\cite{bartlettDeepLearningStatistical2021a}.\\[0.5cm]
+{\color{WhartonBlue}\bfseries Can we estimate an explicit penalty that mimics an implicit bias?}}
+\fig{12}{33}{26}{../results/figures/tradeoff-vis.pdf}
+\block{4}{51}{42}{\subhead{Fix the weights; estimate the penalty}\\[0.4cm]
+At a hypothetical minimum of $\mathcal L+\mathcal R$, the gradients counteract one another:
+\[\color{WhartonBlue}-\nabla_\theta\mathcal L(\hat\theta,D)=\nabla_\theta\mathcal R(\hat\theta,D;\Lambda).\]
+Fit the regularizer parameters with the weights held fixed:
+\[\hat\Lambda=\arg\min_\Lambda\frac{1}{p}\left\|\nabla_\theta\mathcal L+\nabla_\theta\mathcal R_\Lambda\right\|_2^2.\]}
+\block{4}{63}{42}{\subhead{Follow the trajectory, not just the endpoint}}
+\fig{36.5}{64.7}{9}{../results/figures/sgd-vs-full-batch.pdf}
+\block{4}{65.5}{30.5}{{\fontsize{32}{39}\selectfont SGD iterates deviate from the full-batch gradient-flow path (right). For a gradient-step reference, match the update residual:
+\[\color{WhartonBlue}-\frac{\Delta\theta_t}{\eta}-\nabla_\theta\mathcal L(\theta_t)
+\;\approx\;\nabla_\theta\mathcal R(\theta_t;\Lambda),\]
+where $\Delta\theta_t=\theta_{t+1}-\theta_t$.\\[0.45cm]
+{\smallfont Stack steps to estimate a shared regularizer, or fit time-varying parameters. Setting the update to zero recovers the endpoint perspective.}}}
+\block{49}{12}{42}{\heading{\icon{target}\quad Recover known effects}}
+\block{49}{15.5}{42}{\subhead{Explicit $\ell_1$ and $\ell_2$ penalties}}
+\fig{49}{19}{42}{../results/figures/elasticnet_recovery_mean_se.pdf}
+\block{49}{33}{42}{{\smallfont Deep ReLU networks; $6\!\times\!6$ penalty grid, 10 datasets per cell. Mean $\pm$ SE; dashed line = exact recovery.}\\[0.55cm]
+Recovery is accurate at intermediate strengths. Weak signals and nearly collinear gradients limit identification at the extremes.}
+\block{49}{40}{42}{\subhead{Early stopping induces a quadratic penalty}\\[0.4cm]
+{\smallfont The early-stopped OLS iterate solves a regularized problem~\cite{ali2019continuous}:}
+{\fontsize{32}{39}\selectfont
+\[\hat\theta_t=\arg\min_\theta\left\{\frac{1}{n}\|y-X\theta\|_2^2+\mathcal R_t(\theta)\right\},\]
+\[\color{WhartonBlue}\mathcal R_t(\theta)=\theta^\top\Lambda^{(t)}\theta,\qquad
+\Lambda^{(t)}=VS\big[(I-\eta S)^{-t}-I\big]^{-1}V^\top.\]}
+{\fontsize{25}{31}\selectfont Here $X^\top X/n=VSV^\top$, $\theta_0=0$, and $0<\eta s_i<1$. The step convention is $\theta_{t+1}=\theta_t+\eta X^\top(y-X\theta_t)/n$.}}
+\fig{51.5}{53}{37}{../results/figures/ols_composite.pdf}
+\block{49}{75.3}{42}{{\smallfont \textbf{A--B:} recover the theoretical matrix. \textbf{C:} a diagonal fit reproduces weights. \textbf{D--E:} more endpoints improve estimation; the penalty decays over training.}}
+\block{94}{12}{42}{\heading{\icon{network}\quad Implicit bias in networks}}
+\block{94}{15.5}{42}{Dropout has data-dependent regularization effects~\cite{weiImplicitExplicitRegularization2020}. On MNIST, vary depth, width, and dropout rate; fit $\mathcal R(\theta,\lambda)=\lambda\|\theta\|_2^2$.}
+\fig{97}{20}{36}{../results/figures/dropout_bias_ridge_panel.pdf}
+\block{94}{43}{42}{{\smallfont Each point is one of 10 seeds. Color shows gradient fit: lighter = more explained. Zero-dropout controls are included.}\\[0.6cm]
+Narrow networks show an upturn at high dropout; wider networks have smaller estimates. Scalar ridge summarizes part of the effect.}
+\block{94}{50}{42}{\subhead{Recover regularization along trajectories}}
+\block{94}{52.7}{42}{{\smallfont Barrett \& Dherin predict $\mathcal R=\frac{\lambda}{p}\|\nabla\mathcal L\|^2$ with $\lambda=\eta p/4$~\cite{barrettImplicitGradientRegularization2022}. Estimates from deviations of discrete GD from continuous gradient flow track theory (right).}}
+\fig{94}{57.5}{42}{../results/figures/barrett_igr_figure2.pdf}
+\block{94}{70}{42}{\subhead{Our contributions}\smallfont
+\begin{list}{\color{WhartonRed}\textbullet}{\setlength{\leftmargin}{1.1cm}\setlength{\labelsep}{0.35cm}\setlength{\itemsep}{0.2cm}\setlength{\topsep}{0.3cm}\setlength{\parsep}{0pt}}
+\item \textbf{Estimate implicit bias} by matching loss gradients to a proposed regularizer.
+\item \textbf{Characterize success:} recover known regularization or reproduce the original model's weights.
+\item \textbf{Bridge theory and practice:} validate analytical results and diagnose bias in complex networks.
+\end{list}}
+\draw[Rule,line width=1pt] (4,-79.5) -- (136,-79.5);
+\block{4}{80}{132}{{\fontsize{28}{34}\selectfont\color{WhartonBlue}\bfseries References}}
+\block{4}{81.1}{132}{\setlength{\columnsep}{2cm}\setlength{\multicolsep}{0pt}\begin{multicols}{3}\bibliography{references}\end{multicols}}
+\draw[WhartonBlue,line width=1.6pt] (4,-85) -- (136,-85);
+\block{4}{86}{29}{{\fontsize{24}{30}\selectfont\icon[0.65cm]{file-text}\enspace\textbf{Paper:} \href{https://arxiv.org/abs/2605.05436}{arXiv:2605.05436}}}
+\block{34}{86}{53}{{\fontsize{24}{30}\selectfont\icon[0.65cm]{book-open}\enspace\textbf{Blog:} \href{https://jrudoler.com/estimating-implicit-regularization/}{jrudoler.com/estimating-implicit-regularization/}}}
+\block{88}{86}{42}{{\fontsize{24}{30}\selectfont\icon[0.65cm]{code-xml}\enspace\textbf{Code:} \href{https://github.com/jrudoler/estimating-implicit-regularization}{github.com/jrudoler/estimating-implicit-regularization}}}
+\block{4}{88}{125}{{\fontsize{20}{25}\selectfont Supported in part by a Susquehanna PhD Fellowship awarded to Joseph H. Rudoler.}}
+\node[anchor=north east,inner sep=0pt] at (136,-85.8) {\qrcode[height=2.7cm]{https://jrudoler.com/estimating-implicit-regularization/}};
+\end{scope}\end{tikzpicture}
+\end{document}

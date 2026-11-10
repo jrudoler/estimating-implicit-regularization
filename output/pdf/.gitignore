@@ -1,0 +1,4 @@
+# Keep the deliverable; exclude LaTeX build intermediates.
+*
+!.gitignore
+!neurips-2026-poster.pdf
