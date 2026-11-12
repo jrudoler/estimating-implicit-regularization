@@ -39,28 +39,28 @@
 \block{4}{6.1}{132}{{\fontsize{34}{42}\selectfont Joseph H. Rudoler\enspace $\cdot$\enspace Kevin Tan\enspace $\cdot$\enspace Giles Hooker\enspace $\cdot$\enspace Konrad P. Kording\quad {\color{WhartonBlue}\textbar}\quad {\fontsize{28}{35}\selectfont\color{WhartonBlue}University of Pennsylvania}}}
 \draw[WhartonBlue,line width=1.6pt] (4,-8.8) -- (136,-8.8);
 % Related explanations and figures share panels, following the earlier poster.
-\panel{3.3}{34.423}{46.7}{84.8}
+\panel{3.3}{30.4}{46.7}{84.8}
 \panel{48.3}{19.361}{91.7}{42.4}
 \panel{48.3}{43.4}{91.7}{85.0}
 \panel{93.3}{12.746}{136.7}{45.822}
 \panel{93.3}{48.061}{136.7}{67.8}
 \panel{93.3}{68.9}{136.7}{75.9}
-\fill[PaleBlue,rounded corners=18pt] (4,-10.1) rectangle (46,-31.675);
-\fill[WhartonRed] (4,-10.1) rectangle (4.3,-31.675);
+\fill[PaleBlue,rounded corners=18pt] (4,-10.1) rectangle (46,-27.5);
+\fill[WhartonRed] (4,-10.1) rectangle (4.3,-27.5);
 \block{5.3}{11.118}{39.4}{\subhead{What regularization is implicit in your training procedure?}\\[0.6cm]
 {\bodyfont
-\textbf{Why regularization?} Explicit regularization adds penalties to the objective function that steer learning toward certain solutions---for example, those with smaller weights---in ways that can reduce overfitting and improve generalization. Training choices such as early stopping, minibatching, and dropout also bias which solutions are learned, but we often don't know exactly how~\cite{bartlettDeepLearningStatistical2021a,smithOriginImplicitRegularization2021}.\\[0.6cm]
-\textbf{Characterizing implicit regularization.} Theory characterizes some of these implicit effects, mostly in simplified settings~\cite{soudryImplicitBiasGradient2018,aroraImplicitRegularizationDeep2019}. We propose an empirical framework for testing theoretical predictions and extending the study of implicit regularization to networks that are not analytically tractable.\\[0.6cm]
-\textbf{Our approach.} Work backwards: observe the learned weights and training dynamics, and estimate a parameterized regularizer that explains them. We match loss gradients or update residuals to the gradients of a proposed regularizer and solve for its parameters. \par}}
-\block{4}{32.49}{42}{\heading{\icon{scan-search}\quad Gradient matching}}
-\block{4}{35.237}{42}{{\bodyfont
+\textbf{Motivation.} Explicit regularization adds penalties to the training objective, steering learning toward solutions such as smaller weights to reduce overfitting and improve generalization. Early stopping, minibatching, and dropout also bias which solutions are learned, but their effects are harder to characterize~\cite{bartlettDeepLearningStatistical2021a,smithOriginImplicitRegularization2021}.\\[0.6cm]
+\textbf{The gap.} Theory explains some implicit effects, mostly in simplified settings~\cite{soudryImplicitBiasGradient2018,aroraImplicitRegularizationDeep2019}. How can we test these predictions and study networks beyond analytical reach?\\[0.6cm]
+\textbf{Work backwards.} Rather than choosing a penalty and learning weights, observe the weights or training dynamics and infer a penalty that explains them. We choose a regularizer family and estimate its parameters by gradient matching---an empirical bridge between theory and practice. \par}}
+\block{4}{28.3}{42}{\heading{\icon{scan-search}\quad Gradient matching}}
+\block{4}{31.2}{42}{{\bodyfont
 Training minimizes empirical risk (ERM). We model the learned weights as a regularized ERM (RERM) solution, choosing a family $\mathcal R(\theta,D;\Lambda)$ and estimating its parameters $\Lambda$:
 \[\hat\theta_{\mathrm{ERM}}=\arg\min_\theta\mathcal L(\theta,D)
 \qquad\longrightarrow\qquad
 \hat\theta_{\mathrm{RERM}}=\arg\min_\theta\big\{\mathcal L(\theta,D)+\mathcal R(\theta,D;\Lambda)\big\}\]\par}}
-\fig{12.5}{40.224}{25}{figures/tradeoff-vis.pdf}
-\block{4}{56.915}{42}{{\captionfont An $\ell_2$ penalty shifts the solution, where the empirical loss gradient and regularizer gradient cancel.\par}}
-\block{4}{58.747}{42}{\subhead{Estimating from learned weights}\\[0.3cm]
+\fig{11}{36.3}{28}{figures/tradeoff-vis.pdf}
+\block{4}{54.8}{42}{{\captionfont An $\ell_2$ penalty shifts the solution, where the empirical loss gradient and regularizer gradient cancel.\par}}
+\block{4}{57}{42}{\subhead{Estimating from learned weights}\\[0.3cm]
 {\bodyfont
 \setlength{\abovedisplayskip}{0.25cm}\setlength{\belowdisplayskip}{0.25cm}
 At a hypothetical optimum $\hat\theta$ of $\mathcal L+\mathcal R$, the gradients sum to zero:
@@ -85,8 +85,8 @@ Pool steps to fit a shared regularizer, or let its parameters vary over time. A 
 \block{49}{20.074}{42}{\subhead{Recovering elastic-net coefficients}}
 \block{49}{22.1}{42}{Estimate both $\lambda_1$ and $\lambda_2$ in $\mathcal R=\lambda_1\|\theta\|_{1,\beta}+\lambda_2\|\theta\|_2^2$.}
 \fig{51}{24.2}{38}{figures/elasticnet_recovery_mean_se.pdf}
-\block{49}{36.7}{42}{{\captionfont Deep ReLU networks; $6\!\times\!6$ grid, 10 datasets per cell. Mean $\pm$ SE; dashed = exact recovery.\par}\vspace{0.3cm}
-Recovery is accurate at intermediate strengths. For $|\theta_j|<\beta=10^{-3}$, smoothed $\ell_1$ is quadratic, $\theta_j^2/(2\beta)$, so its gradient is proportional to the $\ell_2$ gradient. Strong penalties shrink weights into this region, making $\lambda_1$ and $\lambda_2$ hard to distinguish; weak penalties give little signal.}
+\block{49}{36.7}{42}{{\captionfont Deep ReLU networks; $6\!\times\!6$ penalty grid, 10 datasets/cell. Mean $\pm$ SE; dashed line: exact recovery.\par}\vspace{0.3cm}
+Recovery is best at intermediate strengths. For $|\theta_j|<\beta=10^{-3}$, smoothed $\ell_1$ is quadratic, $\theta_j^2/(2\beta)$: its gradient is proportional to the $\ell_2$ gradient. Strong penalties make the two effects hard to distinguish; weak penalties give little signal.}
 \block{49}{44}{42}{\subhead{Early stopping as a quadratic penalty}\\[0.4cm]
 {\bodyfont The early-stopped OLS iterate minimizes $\|y-X\theta\|_2^2/n+\mathcal R_t(\theta)$~\cite{ali2019continuous}:}
 {\bodyfont
@@ -97,16 +97,16 @@ Recovery is accurate at intermediate strengths. For $|\theta_j|<\beta=10^{-3}$, 
 \block{49}{51.3}{42}{{\bodyfont A symmetric $\Lambda$ has $p(p+1)/2$ unknowns; each endpoint supplies $p$ equations. For B, we pool diverse endpoints with shared $X$ and $t$ and varied responses. Diagonal fits use only $p$ parameters.}}
 \fig{49}{54.2}{42}{figures/ols_composite.pdf}
 \block{49}{79.5}{42}{{\captionfont
-\textbf{A--B:} Theory (A) and recovery from 10 endpoints at the same stopping time (B).\\[0.08cm]
-\textbf{C:} A diagonal fit from one endpoint is underparameterized, yet retraining reproduces the early-stopped weights: an equivalent regularizer, despite differing from the theoretical matrix.\\[0.08cm]
-\textbf{D:} More endpoints improve matrix estimation, even when stopping times vary.\\[0.08cm]
-\textbf{E:} The estimated scalar penalty decreases over training.\par}}
+\textbf{A--B:} Theoretical matrix (A) and estimate from 10 endpoints at a shared stopping time (B).\\[0.08cm]
+\textbf{C:} A diagonal fit from one endpoint differs from theory, yet retraining reproduces the early-stopped weights: an equivalent, underparameterized regularizer.\\[0.08cm]
+\textbf{D:} Matrix recovery improves with more endpoints, even when stopping times vary.\\[0.08cm]
+\textbf{E:} The estimated scalar penalty decays over training.\par}}
 \block{94}{10.1}{42}{\heading{\icon{network}\quad Implicit regularization in deep networks}}
 \block{94}{13.458}{42}{{\bodyfont\paragraph{Dropout}This training procedure has data-dependent regularization effects~\cite{weiImplicitExplicitRegularization2020}. On MNIST, vary depth, width, and dropout rate; fit $\mathcal R(\theta,\lambda)=\lambda\|\theta\|_2^2$.}}
 \fig{96.75}{18.14}{36.5}{figures/dropout_bias_ridge_panel.pdf}
-\block{94}{41.649}{42}{{\captionfont Ten seeds per setting, including zero-dropout controls. Color shows gradient fit: lighter = more explained.\par}\vspace{0.6cm}
-Narrow networks show an upturn at high dropout; wider networks have smaller estimates. Scalar ridge summarizes part of the effect.}
-\block{94}{48.773}{42}{{\bodyfont\paragraph{Implicit gradient regularization}Finite GD steps approximately follow a modified gradient flow with penalty $\mathcal R=\frac{\lambda}{p}\|\nabla\mathcal L\|^2$ and strength \mbox{$\lambda=\eta p/4$}~\cite{barrettImplicitGradientRegularization2022}. This penalizes steep parts of the trajectory, biasing learning toward flatter minima associated with better generalization. We recover $\lambda$ from trajectory deviations (right); stronger regularization accompanies smaller gradients and higher test accuracy (left, middle).}}
+\block{94}{41.649}{42}{{\captionfont 10 seeds per setting, including zero-dropout controls. Lighter color indicates better gradient fit.\par}\vspace{0.6cm}
+In narrow networks, estimated ridge strength rises at high dropout; wider networks have smaller estimates. Ridge captures part of the effect.}
+\block{94}{48.773}{42}{{\bodyfont\paragraph{Implicit gradient regularization}Finite GD steps induce an approximate penalty $\mathcal R=\frac{\lambda}{p}\|\nabla\mathcal L\|^2$ with strength \mbox{$\lambda=\eta p/4$}~\cite{barrettImplicitGradientRegularization2022}. Penalizing steep trajectories favors flatter minima associated with generalization. We recover $\lambda$ (right); stronger regularization accompanies smaller gradients and higher test accuracy (left, middle).}}
 \fig{94}{55.49}{42}{figures/barrett_igr_figure2.pdf}
 \block{94}{69.6}{42}{\subhead{Future work}\bodyfont
 \begin{list}{\color{WhartonRed}\textbullet}{\setlength{\leftmargin}{1.1cm}\setlength{\labelsep}{0.35cm}\setlength{\itemsep}{0.2cm}\setlength{\topsep}{0.3cm}\setlength{\parsep}{0pt}}
