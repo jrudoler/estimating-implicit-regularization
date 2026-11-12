@@ -39,38 +39,38 @@
 \block{4}{2}{106}{{\fontsize{82}{92}\selectfont\bfseries\color{WhartonBlue}Estimating Implicit Regularization in Deep Learning}}
 \block{4}{6.1}{132}{{\fontsize{34}{42}\selectfont Joseph H. Rudoler\enspace $\cdot$\enspace Kevin Tan\enspace $\cdot$\enspace Giles Hooker\enspace $\cdot$\enspace Konrad P. Kording\quad {\color{WhartonBlue}\textbar}\quad {\fontsize{28}{35}\selectfont\color{WhartonBlue}University of Pennsylvania}}}
 \draw[WhartonBlue,line width=1.6pt] (4,-8.8) -- (136,-8.8);
-\draw[Rule,line width=1pt] (47.5,-11.4) -- (47.5,-83.5);
-\draw[Rule,line width=1pt] (92.5,-11.4) -- (92.5,-83.5);
+\draw[Rule,line width=1pt] (47.5,-10.1) -- (47.5,-83.477);
+\draw[Rule,line width=1pt] (92.5,-10.1) -- (92.5,-83.477);
 % Related explanations and figures share panels, following the earlier poster.
-\panel{3.3}{35.3}{46.7}{84.8}
-\band{3.7}{58.8}{46.3}{60.9}
-\band{3.7}{72.4}{34.2}{74.5}
-\panel{48.3}{20.5}{91.7}{39.6}
-\band{48.7}{20.8}{91.3}{22.9}
-\panel{48.3}{39.9}{91.7}{84.8}
-\band{48.7}{40}{91.3}{42.1}
-\panel{93.3}{14}{136.7}{46.5}
-\band{93.7}{14.3}{136.3}{17.6}
-\panel{93.3}{48.7}{136.7}{68.7}
-\band{93.7}{49}{136.3}{54.9}
-\panel{93.3}{69}{136.7}{75.7}
-\band{93.7}{69.1}{136.3}{71.2}
-\fill[PaleBlue,rounded corners=18pt] (4,-11.4) rectangle (46,-32.6);
-\fill[WhartonRed] (4,-11.4) rectangle (4.3,-32.6);
-\block{5.3}{12.4}{39.4}{\subhead{What regularization is implicit in your training procedure?}\\[0.6cm]
+\panel{3.3}{34.423}{46.7}{84.8}
+\band{3.7}{58.34}{46.3}{60.477}
+\band{3.7}{72.18}{34.2}{74.318}
+\panel{48.3}{19.361}{91.7}{38.799}
+\band{48.7}{19.666}{91.3}{21.804}
+\panel{48.3}{39.105}{91.7}{84.8}
+\band{48.7}{39.207}{91.3}{41.344}
+\panel{93.3}{12.746}{136.7}{45.822}
+\band{93.7}{13.051}{136.3}{16.41}
+\panel{93.3}{48.061}{136.7}{68.415}
+\band{93.7}{48.366}{136.3}{54.37}
+\panel{93.3}{68.72}{136.7}{75.539}
+\band{93.7}{68.822}{136.3}{70.959}
+\fill[PaleBlue,rounded corners=18pt] (4,-10.1) rectangle (46,-31.675);
+\fill[WhartonRed] (4,-10.1) rectangle (4.3,-31.675);
+\block{5.3}{11.118}{39.4}{\subhead{What regularization is implicit in your training procedure?}\\[0.6cm]
 {\bodyfont
 \textbf{Why regularization?} Explicit regularization adds penalties to the objective function that steer learning toward certain solutions---for example, those with smaller weights---in ways that can reduce overfitting and improve generalization. Training choices such as early stopping, minibatching, and dropout also bias which solutions are learned, but we often don't know exactly how~\cite{bartlettDeepLearningStatistical2021a,smithOriginImplicitRegularization2021}.\\[0.6cm]
 \textbf{Characterizing implicit regularization.} Theory characterizes some of these implicit effects, mostly in simplified settings~\cite{soudryImplicitBiasGradient2018,aroraImplicitRegularizationDeep2019}. We propose an empirical framework for testing theoretical predictions and extending the study of implicit regularization to networks that are not analytically tractable.\\[0.6cm]
 \textbf{Our approach.} Work backwards: observe the learned weights and training dynamics, and estimate a parameterized regularizer that explains them. We match loss gradients or update residuals to the gradients of a proposed regularizer and solve for its parameters. \par}}
-\block{4}{33.4}{42}{\heading{\icon{scan-search}\quad Gradient matching}}
-\block{4}{36.1}{42}{{\bodyfont
+\block{4}{32.49}{42}{\heading{\icon{scan-search}\quad Gradient matching}}
+\block{4}{35.237}{42}{{\bodyfont
 Training minimizes empirical risk (ERM). We model the learned weights as a regularized ERM (RERM) solution, choosing a family $\mathcal R(\theta,D;\Lambda)$ and estimating its parameters $\Lambda$:
 \[\hat\theta_{\mathrm{ERM}}=\arg\min_\theta\mathcal L(\theta,D)
 \qquad\longrightarrow\qquad
 \hat\theta_{\mathrm{RERM}}=\arg\min_\theta\big\{\mathcal L(\theta,D)+\mathcal R(\theta,D;\Lambda)\big\}\]\par}}
-\fig{12.5}{41}{25}{figures/tradeoff-vis.pdf}
-\block{4}{57.4}{42}{{\captionfont An $\ell_2$ penalty shifts the solution, where the empirical loss gradient and regularizer gradient cancel.\par}}
-\block{4}{59.2}{42}{\subhead{Estimating from learned weights}\\[0.3cm]
+\fig{12.5}{40.224}{25}{figures/tradeoff-vis.pdf}
+\block{4}{56.915}{42}{{\captionfont An $\ell_2$ penalty shifts the solution, where the empirical loss gradient and regularizer gradient cancel.\par}}
+\block{4}{58.747}{42}{\subhead{Estimating from learned weights}\\[0.3cm]
 {\bodyfont
 \setlength{\abovedisplayskip}{0.25cm}\setlength{\belowdisplayskip}{0.25cm}
 At a hypothetical optimum $\hat\theta$ of $\mathcal L+\mathcal R$, the gradients sum to zero:
@@ -80,22 +80,22 @@ These $p=\dim(\theta)$ equations let us solve for, or estimate, $\Lambda$:
 \textbf{Example:} For predictions $\hat y=f_\theta(X)$, MSE $\mathcal L=\|y-\hat y\|^2/n$ and $\mathcal R=\lambda\|\theta\|^2$ give
 \[J^\top(y-\hat y)/n=\lambda\hat\theta\]
 where $J=\partial\hat y/\partial\theta$ is the prediction Jacobian, evaluated at $\hat\theta$.\par}}
-\block{4}{72.8}{42}{\subhead{Estimating from weight updates}}
-\fig{35.5}{69.4}{10}{figures/sgd-vs-full-batch.pdf}
-\block{4}{75}{29.5}{{\bodyfont SGD iterates deviate from the full-batch gradient-flow path (right). For a gradient-step reference, match the update residual:
+\block{4}{72.587}{42}{\subhead{Estimating from weight updates}}
+\fig{35.5}{69.127}{10}{figures/sgd-vs-full-batch.pdf}
+\block{4}{74.826}{29.5}{{\bodyfont SGD iterates deviate from the full-batch gradient-flow path (right). For a gradient-step reference, match the update residual:
 \[-\frac{\Delta\theta_t}{\eta}-\nabla_\theta\mathcal L(\theta_t)
 \;\approx\;\nabla_\theta\mathcal R(\theta_t;\Lambda)\]
 where $\Delta\theta_t=\theta_{t+1}-\theta_t$.\\[0.45cm]
 Pool steps to fit a shared regularizer, or let its parameters vary over time. A zero update recovers the endpoint case.\par}}
-\block{49}{11.4}{42}{\heading{\icon{target}\quad Recovering known regularization}}
-\block{49}{14.7}{42}{Two ways to know that we have successfully estimated the implicit regularization:\\[0.35cm]
+\block{49}{10.1}{42}{\heading{\icon{target}\quad Recovering known regularization}}
+\block{49}{13.458}{42}{Two ways to know that we have successfully estimated the implicit regularization:\\[0.35cm]
 \textbf{Recover the penalty:} match known regularization parameters.\\[0.25cm]
 \textbf{Recover the weights:} retrain with the estimated penalty to reproduce the learned weights.}
-\block{49}{21.2}{42}{\subhead{Recovering elastic-net coefficients}}
-\fig{49}{23.4}{42}{figures/elasticnet_recovery_mean_se.pdf}
-\block{49}{36.9}{42}{{\captionfont Deep ReLU networks; $6\!\times\!6$ grid, 10 datasets per cell. Mean $\pm$ SE; dashed = exact recovery.}\\[0.35cm]
+\block{49}{20.074}{42}{\subhead{Recovering elastic-net coefficients}}
+\fig{49}{22.313}{42}{figures/elasticnet_recovery_mean_se.pdf}
+\block{49}{36.052}{42}{{\captionfont Deep ReLU networks; $6\!\times\!6$ grid, 10 datasets per cell. Mean $\pm$ SE; dashed = exact recovery.}\\[0.35cm]
 Accurate at intermediate strengths; weak signals and collinear gradients limit recovery.}
-\block{49}{40.2}{42}{\subhead{Early stopping as a quadratic penalty}\\[0.4cm]
+\block{49}{39.41}{42}{\subhead{Early stopping as a quadratic penalty}\\[0.4cm]
 {\bodyfont The early-stopped OLS iterate solves a regularized problem~\cite{ali2019continuous}:}
 {\bodyfont
 \setlength{\abovedisplayskip}{0.25cm}\setlength{\belowdisplayskip}{0.25cm}
@@ -103,28 +103,28 @@ Accurate at intermediate strengths; weak signals and collinear gradients limit r
 \[\mathcal R_t(\theta)=\theta^\top\Lambda^{(t)}\theta,\qquad
 \Lambda^{(t)}=VS\big[(I-\eta S)^{-t}-I\big]^{-1}V^\top\]}
 {\captionfont Here $X^\top X/n=VSV^\top$, $\theta_0=0$, and $0<\eta s_i<1$.}}
-\block{49}{49.7}{42}{{\bodyfont A symmetric $\Lambda$ has $p(p+1)/2$ unknowns; each endpoint supplies $p$ equations. For B, we pool diverse endpoints with shared $X$ and $t$ and varied responses. Diagonal fits use only $p$ parameters.}}
-\fig{49}{53.4}{42}{figures/ols_composite.pdf}
-\block{49}{78.7}{42}{{\captionfont
+\block{49}{49.078}{42}{{\bodyfont A symmetric $\Lambda$ has $p(p+1)/2$ unknowns; each endpoint supplies $p$ equations. For B, we pool diverse endpoints with shared $X$ and $t$ and varied responses. Diagonal fits use only $p$ parameters.}}
+\fig{49}{52.844}{42}{figures/ols_composite.pdf}
+\block{49}{78.592}{42}{{\captionfont
 \textbf{A--B:} Theory (A) and recovery from 10 endpoints at the same stopping time (B).\\[0.15cm]
 \textbf{C:} A diagonal fit from one endpoint is underparameterized, yet retraining reproduces the early-stopped weights: an equivalent regularizer, despite differing from the theoretical matrix.\\[0.15cm]
 \textbf{D:} More endpoints improve matrix estimation, even when stopping times vary.\\[0.15cm]
 \textbf{E:} The estimated scalar penalty decreases over training.\par}}
-\block{94}{11.4}{42}{\heading{\icon{network}\quad Implicit regularization in deep networks}}
-\block{94}{14.7}{42}{{\bodyfont\paragraph{Dropout}This training procedure has data-dependent regularization effects~\cite{weiImplicitExplicitRegularization2020}. On MNIST, vary depth, width, and dropout rate; fit $\mathcal R(\theta,\lambda)=\lambda\|\theta\|_2^2$.}}
-\fig{96.75}{19.3}{36.5}{figures/dropout_bias_ridge_panel.pdf}
-\block{94}{42.4}{42}{{\captionfont Ten seeds per setting, including zero-dropout controls. Color shows gradient fit: lighter = more explained.}\\[0.6cm]
+\block{94}{10.1}{42}{\heading{\icon{network}\quad Implicit regularization in deep networks}}
+\block{94}{13.458}{42}{{\bodyfont\paragraph{Dropout}This training procedure has data-dependent regularization effects~\cite{weiImplicitExplicitRegularization2020}. On MNIST, vary depth, width, and dropout rate; fit $\mathcal R(\theta,\lambda)=\lambda\|\theta\|_2^2$.}}
+\fig{96.75}{18.14}{36.5}{figures/dropout_bias_ridge_panel.pdf}
+\block{94}{41.649}{42}{{\captionfont Ten seeds per setting, including zero-dropout controls. Color shows gradient fit: lighter = more explained.}\\[0.6cm]
 Narrow networks show an upturn at high dropout; wider networks have smaller estimates. Scalar ridge summarizes part of the effect.}
-\block{94}{49.4}{42}{{\bodyfont\paragraph{Implicit gradient regularization}Finite GD steps approximately follow a modified gradient flow with penalty $\mathcal R=\frac{\lambda}{p}\|\nabla\mathcal L\|^2$ and strength \mbox{$\lambda=\eta p/4$}~\cite{barrettImplicitGradientRegularization2022}. This penalizes steep parts of the trajectory, biasing learning toward flatter minima associated with better generalization. We recover $\lambda$ from trajectory deviations (right); stronger regularization accompanies smaller gradients and higher test accuracy (left, middle).}}
-\fig{94}{56}{42}{figures/barrett_igr_figure2.pdf}
-\block{94}{69.4}{42}{\subhead{Future work}\bodyfont
+\block{94}{48.773}{42}{{\bodyfont\paragraph{Implicit gradient regularization}Finite GD steps approximately follow a modified gradient flow with penalty $\mathcal R=\frac{\lambda}{p}\|\nabla\mathcal L\|^2$ and strength \mbox{$\lambda=\eta p/4$}~\cite{barrettImplicitGradientRegularization2022}. This penalizes steep parts of the trajectory, biasing learning toward flatter minima associated with better generalization. We recover $\lambda$ from trajectory deviations (right); stronger regularization accompanies smaller gradients and higher test accuracy (left, middle).}}
+\fig{94}{55.49}{42}{figures/barrett_igr_figure2.pdf}
+\block{94}{69.127}{42}{\subhead{Future work}\bodyfont
 \begin{list}{\color{WhartonRed}\textbullet}{\setlength{\leftmargin}{1.1cm}\setlength{\labelsep}{0.35cm}\setlength{\itemsep}{0.2cm}\setlength{\topsep}{0.3cm}\setlength{\parsep}{0pt}}
 \item \textbf{Diagnose training choices early}, before expensive full runs.
 \item \textbf{Study complex architectures and optimizers} through their implicit penalties.
 \item \textbf{Improve identification} with diverse endpoints and richer regularizer families.
 \end{list}}
-\block{94}{76.4}{42}{{\fontsize{28}{34}\selectfont\color{WhartonBlue}\bfseries References}}
-\block{94}{77.4}{42}{\bibliography{references}}
+\block{94}{76.251}{42}{{\fontsize{28}{34}\selectfont\color{WhartonBlue}\bfseries References}}
+\block{94}{77.269}{42}{\bibliography{references}}
 \draw[WhartonBlue,line width=1.6pt] (4,-85.5) -- (136,-85.5);
 \block{4}{87}{100}{{\fontsize{20}{25}\selectfont Supported in part by a Susquehanna PhD Fellowship awarded to Joseph H. Rudoler.}}
 \node[anchor=west,inner sep=0pt,font=\fontsize{28}{34}\selectfont\bfseries,text=Ink] at (98,-87.6) {Paper};
