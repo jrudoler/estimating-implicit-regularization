@@ -15,6 +15,9 @@
 \definecolor{Ink}{HTML}{2D2C41}
 \definecolor{PaleBlue}{HTML}{EEF3F9}
 \definecolor{Rule}{HTML}{D7DFEA}
+\definecolor{Panel}{HTML}{F7F8FA}
+\newcommand{\panel}[4]{\filldraw[fill=Panel,draw=Rule!65!white,line width=0.4pt,rounded corners=18pt] (#1,-#2) rectangle (#3,-#4);}
+\newcommand{\band}[4]{\fill[PaleBlue,rounded corners=12pt] (#1,-#2) rectangle (#3,-#4);}
 \pagestyle{empty}
 \setlength{\parindent}{0pt}
 \newcommand{\bodyfont}{\fontsize{30}{37}\selectfont}
@@ -38,7 +41,21 @@
 \draw[WhartonBlue,line width=1.6pt] (4,-8.8) -- (136,-8.8);
 \draw[Rule,line width=1pt] (47.5,-11.4) -- (47.5,-83.5);
 \draw[Rule,line width=1pt] (92.5,-11.4) -- (92.5,-83.5);
-\fill[PaleBlue,rounded corners=8pt] (4,-11.4) rectangle (46,-32.6);
+% Related explanations and figures share panels, following the earlier poster.
+\panel{3.3}{35.3}{46.7}{84.8}
+\band{3.7}{58.8}{46.3}{60.9}
+\band{3.7}{72.4}{34.2}{74.5}
+\panel{48.3}{20.5}{91.7}{39.6}
+\band{48.7}{20.8}{91.3}{22.9}
+\panel{48.3}{39.9}{91.7}{84.8}
+\band{48.7}{40}{91.3}{42.1}
+\panel{93.3}{14}{136.7}{46.5}
+\band{93.7}{14.3}{136.3}{17.6}
+\panel{93.3}{48.7}{136.7}{68.7}
+\band{93.7}{49}{136.3}{54.9}
+\panel{93.3}{69}{136.7}{75.7}
+\band{93.7}{69.1}{136.3}{71.2}
+\fill[PaleBlue,rounded corners=18pt] (4,-11.4) rectangle (46,-32.6);
 \fill[WhartonRed] (4,-11.4) rectangle (4.3,-32.6);
 \block{5.3}{12.4}{39.4}{\subhead{What regularization is implicit in your training procedure?}\\[0.6cm]
 {\bodyfont
@@ -51,7 +68,7 @@ Training minimizes empirical risk (ERM). We model the learned weights as a regul
 \[\hat\theta_{\mathrm{ERM}}=\arg\min_\theta\mathcal L(\theta,D)
 \qquad\longrightarrow\qquad
 \hat\theta_{\mathrm{RERM}}=\arg\min_\theta\big\{\mathcal L(\theta,D)+\mathcal R(\theta,D;\Lambda)\big\}\]\par}}
-\fig{13}{41.6}{24}{figures/tradeoff-vis.pdf}
+\fig{12.5}{41}{25}{figures/tradeoff-vis.pdf}
 \block{4}{57.4}{42}{{\captionfont An $\ell_2$ penalty shifts the solution, where the empirical loss gradient and regularizer gradient cancel.\par}}
 \block{4}{59.2}{42}{\subhead{Estimating from learned weights}\\[0.3cm]
 {\bodyfont
@@ -60,11 +77,12 @@ At a hypothetical optimum $\hat\theta$ of $\mathcal L+\mathcal R$, the gradients
 \[-\nabla_\theta\mathcal L(\hat\theta,D)=\nabla_\theta\mathcal R(\hat\theta,D;\Lambda)\]
 These $p=\dim(\theta)$ equations let us solve for, or estimate, $\Lambda$:
 \[\hat\Lambda=\arg\min_\Lambda\frac{1}{p}\left\|\nabla_\theta\mathcal L+\nabla_\theta\mathcal R_\Lambda\right\|_2^2\]
-\textbf{Example:} With MSE $\mathcal L=\|y-X\theta\|^2/n$ and $\ell_2$ penalty $\mathcal R=\lambda\|\theta\|^2$, gradient cancellation gives
-\[X^\top(y-X\hat\theta)/n=\lambda\hat\theta\]\par}}
-\block{4}{71.4}{42}{\subhead{Estimating from weight updates}}
+\textbf{Example:} For predictions $\hat y=f_\theta(X)$, MSE $\mathcal L=\|y-\hat y\|^2/n$ and $\mathcal R=\lambda\|\theta\|^2$ give
+\[J^\top(y-\hat y)/n=\lambda\hat\theta\]
+where $J=\partial\hat y/\partial\theta$ is the prediction Jacobian, evaluated at $\hat\theta$.\par}}
+\block{4}{72.8}{42}{\subhead{Estimating from weight updates}}
 \fig{35.5}{69.4}{10}{figures/sgd-vs-full-batch.pdf}
-\block{4}{73.9}{29.5}{{\bodyfont SGD iterates deviate from the full-batch gradient-flow path (right). For a gradient-step reference, match the update residual:
+\block{4}{75}{29.5}{{\bodyfont SGD iterates deviate from the full-batch gradient-flow path (right). For a gradient-step reference, match the update residual:
 \[-\frac{\Delta\theta_t}{\eta}-\nabla_\theta\mathcal L(\theta_t)
 \;\approx\;\nabla_\theta\mathcal R(\theta_t;\Lambda)\]
 where $\Delta\theta_t=\theta_{t+1}-\theta_t$.\\[0.45cm]
@@ -94,11 +112,11 @@ Accurate at intermediate strengths; weak signals and collinear gradients limit r
 \textbf{E:} The estimated scalar penalty decreases over training.\par}}
 \block{94}{11.4}{42}{\heading{\icon{network}\quad Implicit regularization in deep networks}}
 \block{94}{14.7}{42}{{\bodyfont\paragraph{Dropout}This training procedure has data-dependent regularization effects~\cite{weiImplicitExplicitRegularization2020}. On MNIST, vary depth, width, and dropout rate; fit $\mathcal R(\theta,\lambda)=\lambda\|\theta\|_2^2$.}}
-\fig{97.5}{20.5}{35}{figures/dropout_bias_ridge_panel.pdf}
+\fig{96.75}{19.3}{36.5}{figures/dropout_bias_ridge_panel.pdf}
 \block{94}{42.4}{42}{{\captionfont Ten seeds per setting, including zero-dropout controls. Color shows gradient fit: lighter = more explained.}\\[0.6cm]
 Narrow networks show an upturn at high dropout; wider networks have smaller estimates. Scalar ridge summarizes part of the effect.}
 \block{94}{49.4}{42}{{\bodyfont\paragraph{Implicit gradient regularization}Finite GD steps approximately follow a modified gradient flow with penalty $\mathcal R=\frac{\lambda}{p}\|\nabla\mathcal L\|^2$ and strength \mbox{$\lambda=\eta p/4$}~\cite{barrettImplicitGradientRegularization2022}. This penalizes steep parts of the trajectory, biasing learning toward flatter minima associated with better generalization. We recover $\lambda$ from trajectory deviations (right); stronger regularization accompanies smaller gradients and higher test accuracy (left, middle).}}
-\fig{94}{57.3}{42}{figures/barrett_igr_figure2.pdf}
+\fig{94}{56}{42}{figures/barrett_igr_figure2.pdf}
 \block{94}{69.4}{42}{\subhead{Future work}\bodyfont
 \begin{list}{\color{WhartonRed}\textbullet}{\setlength{\leftmargin}{1.1cm}\setlength{\labelsep}{0.35cm}\setlength{\itemsep}{0.2cm}\setlength{\topsep}{0.3cm}\setlength{\parsep}{0pt}}
 \item \textbf{Diagnose training choices early}, before expensive full runs.
