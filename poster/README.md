@@ -52,3 +52,10 @@ SVG conversion.
 - `build/`: ignored LaTeX intermediates and local QA previews.
 
 You can copy this entire folder elsewhere and build it with `make`.
+
+The local `posterunsrtnat.bst` adapts `unsrtnat` to print surnames only and
+use “et al.” for three or more authors, preserving full author metadata in
+`references.bib`. References appear below future work in column three.
+
+Typography uses 30/37 pt main text, 26/32 pt captions, navy section headings,
+and dark ink body text. References and footer links use smaller dedicated styles.
