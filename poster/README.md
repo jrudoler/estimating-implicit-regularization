@@ -35,10 +35,9 @@ A render preview is kept under `poster/build/qa/preview.png` for local visual QA
 it is not an additional analysis figure or print deliverable.
 
 Numbered citations are built from `references.bib`, a compact selection from the
-manuscript bibliography. The footer distinguishes the paper, blog, and code repository.
+manuscript bibliography. The footer has three labeled QR codes linking directly to the paper, blog, and code repository.
 
-Lucide icons (https://lucide.dev/icons/) identify the three sections and Paper,
-Blog, and Code links. Official SVGs are vendored in `assets/lucide/`, recolored
+Lucide icons (https://lucide.dev/icons/) identify the three main sections. Official SVGs are vendored in `assets/lucide/`, recolored
 Wharton Blue, and converted to vector PDFs with `rsvg-convert`. The upstream
 license is retained in that folder; rebuilding the poster needs no network or
 SVG conversion.
