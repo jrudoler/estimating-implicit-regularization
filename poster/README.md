@@ -1,7 +1,7 @@
 # NeurIPS 2026 poster
 
 Build from the repository root with `make -C poster`. The result is
-`output/pdf/neurips-2026-poster.pdf` (one page, 140 cm wide × 90 cm high).
+`poster/neurips-2026-poster.pdf` (one page, 140 cm wide × 90 cm high).
 Print at 100% / actual size, without fitting to a different paper size.
 
 This uses the **main-conference** landscape size in the official instructions,
@@ -14,8 +14,10 @@ Workshop posters use a different format (61 × 85 cm portrait).
 Edit `main.tex`. Positions are centimetres from the upper-left corner.
 A TeX Live installation with latexmk, pdfLaTeX, BibTeX, natbib, cmbright, TikZ, multicol, and qrcode is
 required. Body and math use Computer Modern Bright; existing vector figures
-retain their original typography. The figure PDFs are read directly from
-`../results/figures/`; no training or figure regeneration is required.
+retain their original typography. The figure PDFs are bundled in `figures/`; no training, figure regeneration,
+or files outside this folder are required. These are poster snapshots of the
+workflow outputs in `results/figures/`, which remain the canonical analysis outputs.
+To refresh a plot, rerun its workflow rule and copy the resulting PDF here.
 
 The poster summarizes the current manuscript's endpoint gradient-matching
 framework, elastic-net recovery, OLS early stopping, dropout ridge projection, and recovery
@@ -29,7 +31,7 @@ come from the supplied `wharton-colors.json`. Pale blue is a layout tint.
 its PDF is a vector conversion made with epstopdf. The logo is not redrawn.
 The user's cmbright preference overrides using the supplied Whitney font.
 
-A render preview is kept under `tmp/pdfs/poster/preview.png` for local visual QA;
+A render preview is kept under `poster/build/qa/preview.png` for local visual QA;
 it is not an additional analysis figure or print deliverable.
 
 Numbered citations are built from `references.bib`, a compact selection from the
@@ -40,3 +42,13 @@ Blog, and Code links. Official SVGs are vendored in `assets/lucide/`, recolored
 Wharton Blue, and converted to vector PDFs with `rsvg-convert`. The upstream
 license is retained in that folder; rebuilding the poster needs no network or
 SVG conversion.
+
+## Folder contents
+
+- `main.tex` and `references.bib`: editable source.
+- `figures/`: vector figure snapshots used by the poster.
+- `assets/`: Wharton branding and Lucide icons with license.
+- `neurips-2026-poster.pdf`: compiled deliverable.
+- `build/`: ignored LaTeX intermediates and local QA previews.
+
+You can copy this entire folder elsewhere and build it with `make`.
